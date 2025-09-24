@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.45"
+echo "caseScope Bug Fixes Script v7.0.46"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.45..."
+log "Updating version to 7.0.46..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.45 "Fix 3-dot menu alignment, improve rule patterns, add duplicate check and error reprocessing" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.46 "Critical fixes: 3-dot menu CSS conflicts, rerun includes errors, Sigma patterns, search encoding" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -207,6 +207,11 @@ echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
 echo "🎯 MAIN FIXES APPLIED:"
+echo "  ✅ CRITICAL: Removed conflicting CSS causing 3-dot menu misalignment"
+echo "  ✅ CRITICAL: Fixed rerun processing to include error files"
+echo "  ✅ CRITICAL: Added violation count reset during reprocessing"
+echo "  ✅ CRITICAL: Improved Sigma patterns with broader matching and debugging"
+echo "  ✅ CRITICAL: Fixed search encoding issues (char '#' error)"
 echo "  ✅ Fixed 3-dot menu uniform alignment with CSS Grid layout"
 echo "  ✅ Improved rule pattern specificity (less false positives)"
 echo "  ✅ Added duplicate file upload check with skip notification"
@@ -251,4 +256,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.45 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.46 deployment complete!"

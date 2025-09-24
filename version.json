@@ -1,6 +1,6 @@
 {
-  "version": "7.0.45",
+  "version": "7.0.46",
   "release_date": "2025-09-24",
-  "description": "Fix 3-dot menu alignment, improve rule patterns, add duplicate check and error reprocessing",
+  "description": "Critical fixes: 3-dot menu CSS conflicts, rerun includes errors, Sigma patterns, search encoding",
   "build": "production"
 }

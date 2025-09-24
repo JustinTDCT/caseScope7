@@ -1021,17 +1021,7 @@ body {
   font-size: 0.9rem;
 }
 
-/* File List */
-.file-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem;
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  margin-bottom: 0.5rem;
-}
+/* File List - using grid layout defined at top of file */
 
 .file-info {
   display: flex;
@@ -1067,10 +1057,7 @@ body {
   margin-top: 0.25rem;
 }
 
-.file-actions {
-  display: flex;
-  gap: 0.5rem;
-}
+/* file-actions styling moved to top of file */
 
 /* Search Interface */
 .search-container {

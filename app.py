@@ -488,31 +488,48 @@ def apply_sigma_rules(events, case_file):
             
         # Simple pattern matching for common indicators
         # In a full implementation, this would use the Sigma rule engine
+        logger.info(f"Analyzing {len(events)} events for Sigma patterns")
+        
         for event in events:
             event_data_str = str(event.get('event_data', {})).lower()
             
-            # Check for common malicious patterns
+            # Log first few events for debugging
+            if violations < 3:
+                logger.info(f"Checking event data sample: {event_data_str[:200]}...")
+            
+            # Check for common malicious patterns (broader matching)
             malicious_patterns = [
-                'powershell.exe',
-                'cmd.exe /c',
-                'wscript.exe',
-                'cscript.exe',
-                'regsvr32.exe',
-                'rundll32.exe',
-                'mshta.exe',
-                'certutil.exe -decode',
-                'bitsadmin.exe',
+                'powershell',
+                'cmd.exe',
+                'cmd /c',
+                'wscript',
+                'cscript',
+                'regsvr32',
+                'rundll32',
+                'mshta',
+                'certutil',
+                'bitsadmin',
                 'base64',
                 'invoke-expression',
+                'iex',
                 'downloadstring',
                 'bypass',
                 'hidden',
-                'encoded'
+                'encoded',
+                'executionpolicy',
+                'noprofile',
+                '-e ',
+                '-enc',
+                'frombase64string',
+                'system.convert',
+                'reflection.assembly',
+                'net.webclient'
             ]
             
             for pattern in malicious_patterns:
                 if pattern in event_data_str:
                     violations += 1
+                    logger.info(f"Sigma violation found: '{pattern}' in event")
                     # Tag event in OpenSearch
                     try:
                         opensearch_client.update(
@@ -1076,14 +1093,21 @@ def search():
         if query:
             # Search OpenSearch
             try:
+                # Clean query to remove problematic characters
+                clean_query = query.replace('#', '').replace('\x00', '').strip()
+                if not clean_query:
+                    clean_query = '*'
+                
                 search_body = {
                     "query": {
                         "bool": {
                             "must": [
                                 {"term": {"case_id": case.id}},
-                                {"multi_match": {
-                                    "query": query,
-                                    "fields": ["event_data.*", "source_file"]
+                                {"query_string": {
+                                    "query": clean_query,
+                                    "fields": ["event_data.*", "source_file"],
+                                    "default_operator": "AND",
+                                    "analyze_wildcard": True
                                 }}
                             ]
                         }
@@ -1097,16 +1121,20 @@ def search():
                         "term": {"rule_violations.type": rule_type}
                     })
                 
+                logger.info(f"Executing search with query: {clean_query}")
                 response = opensearch_client.search(
                     index=f"casescope-case-{case.id}",
                     body=search_body
                 )
                 
                 results = response.get('hits', {}).get('hits', [])
+                logger.info(f"Search returned {len(results)} results")
                 
             except Exception as e:
                 logger.error(f"Search error: {e}")
-                flash('Search error occurred.', 'error')
+                logger.error(f"Original query: {repr(query)}")
+                flash('Search error occurred. Please try a simpler search term.', 'error')
+                results = []
         
         return render_template('search.html', case=case, query=query, results=results)
     
@@ -1138,9 +1166,17 @@ def rerun_rules():
         flash('Case not found or inactive.', 'error')
         return redirect(url_for('system_dashboard'))
     
-    # Queue all files for rule re-run
-    files = case.files.filter_by(processing_status='completed').all()
+    # Queue all files for rule re-run (including error files)
+    files = case.files.filter(CaseFile.processing_status.in_(['completed', 'error'])).all()
     for file in files:
+        # Reset violation counts before reprocessing
+        file.sigma_violations = 0
+        file.chainsaw_violations = 0
+        file.error_message = None
+        if file.processing_status == 'error':
+            file.processing_status = 'pending'
+            file.processing_progress = 0
+        db.session.commit()
         process_evtx_file.delay(file.id)
     
     log_audit('rules_rerun', f'Re-running rules for case: {case.name}')
