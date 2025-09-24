@@ -1,5 +1,5 @@
 /**
- * caseScope v7.0.0 - Main JavaScript
+ * caseScope v7.0.21 - Main JavaScript
  * Copyright 2025 Justin Dube
  */
 
@@ -114,29 +114,38 @@ function closeAllDropdowns() {
 // File Upload
 function initializeFileUpload() {
     const uploadArea = document.querySelector('.upload-area');
-    const fileInput = document.querySelector('input[type="file"]');
+    const fileInput = document.querySelector('#file-input');
     const uploadBtn = document.getElementById('upload-btn');
     const clearBtn = document.getElementById('clear-btn');
     
     if (uploadArea && fileInput) {
-        // Prevent multiple event listeners
-        uploadArea.removeEventListener('click', handleUploadAreaClick);
-        fileInput.removeEventListener('change', handleFileInputChange);
+        console.log('Initializing file upload - removing existing listeners');
+        
+        // Clear existing listeners by cloning and replacing the element
+        const newUploadArea = uploadArea.cloneNode(true);
+        uploadArea.parentNode.replaceChild(newUploadArea, uploadArea);
+        
+        const newFileInput = fileInput.cloneNode(true);
+        fileInput.parentNode.replaceChild(newFileInput, fileInput);
+        
+        // Get references to the new elements
+        const freshUploadArea = document.querySelector('.upload-area');
+        const freshFileInput = document.querySelector('#file-input');
         
         // Drag and drop functionality
-        uploadArea.addEventListener('dragover', function(e) {
+        freshUploadArea.addEventListener('dragover', function(e) {
             e.preventDefault();
-            uploadArea.classList.add('dragover');
+            freshUploadArea.classList.add('dragover');
         });
 
-        uploadArea.addEventListener('dragleave', function(e) {
+        freshUploadArea.addEventListener('dragleave', function(e) {
             e.preventDefault();
-            uploadArea.classList.remove('dragover');
+            freshUploadArea.classList.remove('dragover');
         });
 
-        uploadArea.addEventListener('drop', function(e) {
+        freshUploadArea.addEventListener('drop', function(e) {
             e.preventDefault();
-            uploadArea.classList.remove('dragover');
+            freshUploadArea.classList.remove('dragover');
             
             const files = e.dataTransfer.files;
             if (files.length > 0) {
@@ -144,26 +153,29 @@ function initializeFileUpload() {
             }
         });
 
-        // Add named functions to prevent duplicate listeners
-        uploadArea.addEventListener('click', handleUploadAreaClick);
-        fileInput.addEventListener('change', handleFileInputChange);
+        // Click to browse - single listener only
+        freshUploadArea.addEventListener('click', function(e) {
+            console.log('Upload area clicked once');
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            
+            // Small delay to prevent double-click issues
+            setTimeout(() => {
+                freshFileInput.click();
+            }, 50);
+        }, { once: false, capture: true });
+
+        // File input change
+        freshFileInput.addEventListener('change', function(e) {
+            console.log('File input changed');
+            if (e.target.files.length > 0) {
+                handleFileSelection(e.target.files);
+            }
+        });
     }
 }
 
-function handleUploadAreaClick(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    const fileInput = document.querySelector('input[type="file"]');
-    if (fileInput) {
-        fileInput.click();
-    }
-}
-
-function handleFileInputChange(e) {
-    if (e.target.files.length > 0) {
-        handleFileSelection(e.target.files);
-    }
-}
+// Old functions removed - now using inline handlers to prevent conflicts
 
 function handleFileSelection(files) {
     // Validate file types
