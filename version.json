@@ -1,6 +1,6 @@
 {
-  "version": "7.0.53",
+  "version": "7.0.55",
   "release_date": "2025-09-24",
-  "description": "MAJOR: Real Sigma and Chainsaw rule engines - no more keyword matching",
+  "description": "FIX: Improve Sigma rule loading - should load 500+ rules instead of 49",
   "build": "production"
 }

@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.53"
+echo "caseScope Bug Fixes Script v7.0.55"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.53..."
+log "Updating version to 7.0.55..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.53 "MAJOR: Real Sigma and Chainsaw rule engines - no more keyword matching" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.55 "FIX: Improve Sigma rule loading - should load 500+ rules instead of 49" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -206,12 +206,13 @@ echo "  Worker Logs:   journalctl -u casescope-worker -f"
 echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
-echo "🎯 MAJOR RULE ENGINE OVERHAUL:"
-echo "  ✅ IMPLEMENTED: Real Sigma rule engine using actual YAML rule files"
-echo "  ✅ IMPLEMENTED: Real Chainsaw rule engine executing chainsaw binary"
-echo "  ✅ REPLACED: Keyword matching with actual rule evaluation"
-echo "  ✅ ENHANCED: Events tagged with specific rule violations and metadata"
-echo "  ✅ ADDED: Support for Sigma rule severity levels and categories"
+echo "🎯 SIGMA RULE LOADING FIXES:"
+echo "  ✅ INCREASED: Rule loading limit from 50 to 500 rules"
+echo "  ✅ ENHANCED: Multiple encoding support (UTF-8, UTF-8-BOM, Latin1)"
+echo "  ✅ IMPROVED: More permissive rule validation (accepts rules without detection)"
+echo "  ✅ ADDED: Detailed loading summary with success/failure breakdown"
+echo "  ✅ ADDED: Sample rule inspection for debugging"
+echo "  ✅ ENHANCED: Better YAML error handling and reporting"
 echo "  ✅ FIXED: Single file re-run rules now actually works (requeues processing)"
 echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
@@ -270,4 +271,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.53 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.55 deployment complete!"

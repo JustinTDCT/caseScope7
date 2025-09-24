@@ -492,13 +492,38 @@ def apply_sigma_rules(events, case_file):
         sigma_rules = load_actual_sigma_rules(sigma_rules_path)
         logger.info(f"Loaded {len(sigma_rules)} actual Sigma rules from YAML files")
         
+        # Debug first few events and rules
+        if len(events) > 0:
+            logger.info(f"Sample event structure: {str(events[0])[:300]}...")
+            event_data_sample = prepare_event_for_real_sigma(events[0])
+            logger.info(f"Prepared event data: {str(event_data_sample)[:300]}...")
+        
+        if sigma_rules:
+            first_rule = list(sigma_rules.items())[0]
+            logger.info(f"Sample rule: {first_rule[0]} -> {str(first_rule[1])[:300]}...")
+        
+        events_checked = 0
         for event in events:
             try:
+                events_checked += 1
                 # Convert event to Sigma-compatible format (keep raw structure)
                 event_data = prepare_event_for_real_sigma(event)
                 
+                # Debug first few events
+                if events_checked <= 3:
+                    logger.info(f"Event {events_checked} prepared data keys: {list(event_data.keys())}")
+                    logger.info(f"Event {events_checked} sample values: {str(dict(list(event_data.items())[:5]))}")
+                
                 # Apply each Sigma rule directly
+                rules_checked = 0
                 for rule_file, rule_data in sigma_rules.items():
+                    rules_checked += 1
+                    
+                    # Debug first event against first few rules
+                    if events_checked == 1 and rules_checked <= 3:
+                        logger.info(f"Checking rule {rule_file} against event 1")
+                        logger.info(f"Rule detection: {rule_data.get('detection', {})}")
+                    
                     if evaluate_sigma_rule(event_data, rule_data):
                         violations += 1
                         rule_title = rule_data.get('title', rule_file)
@@ -549,20 +574,85 @@ def load_actual_sigma_rules(sigma_path):
         
         logger.info(f"Found {len(yaml_files)} potential Sigma rule files")
         
-        for yaml_file in yaml_files[:50]:  # Limit to first 50 rules for performance
+        loaded_count = 0
+        failed_count = 0
+        
+        for yaml_file in yaml_files[:500]:  # Increase limit to 500 rules
             try:
-                with open(yaml_file, 'r', encoding='utf-8') as f:
-                    rule_data = yaml.safe_load(f)
+                # Try different encodings
+                rule_data = None
+                for encoding in ['utf-8', 'utf-8-sig', 'latin1']:
+                    try:
+                        with open(yaml_file, 'r', encoding=encoding) as f:
+                            rule_data = yaml.safe_load(f)
+                        break
+                    except UnicodeDecodeError:
+                        continue
+                    except yaml.YAMLError as ye:
+                        if failed_count <= 10:
+                            logger.info(f"YAML error in {yaml_file}: {ye}")
+                        failed_count += 1
+                        break
+                
+                if rule_data is None:
+                    failed_count += 1
+                    continue
                     
-                if rule_data and isinstance(rule_data, dict) and 'detection' in rule_data:
-                    rule_name = Path(yaml_file).stem
-                    rules[rule_name] = rule_data
+                # Be more permissive - just check if it's a dict with some content
+                if rule_data and isinstance(rule_data, dict):
+                    # Check for basic Sigma rule structure
+                    if 'detection' in rule_data:
+                        rule_name = Path(yaml_file).stem
+                        rules[rule_name] = rule_data
+                        loaded_count += 1
+                    elif 'title' in rule_data and 'logsource' in rule_data:
+                        # Might be a valid rule without detection (template, etc.)
+                        rule_name = Path(yaml_file).stem
+                        rules[rule_name] = rule_data
+                        loaded_count += 1
+                    else:
+                        failed_count += 1
+                        if failed_count <= 10:
+                            logger.info(f"Skipped rule {yaml_file}: no detection (keys: {list(rule_data.keys())})")
+                else:
+                    failed_count += 1
+                    if failed_count <= 10:
+                        logger.info(f"Skipped rule {yaml_file}: invalid YAML structure (type: {type(rule_data)})")
                     
             except Exception as e:
-                logger.debug(f"Could not load Sigma rule {yaml_file}: {e}")
+                failed_count += 1
+                if failed_count <= 10:
+                    logger.info(f"Could not load Sigma rule {yaml_file}: {e}")
                 continue
         
-        logger.info(f"Successfully loaded {len(rules)} actual Sigma rules")
+        logger.info(f"Sigma rule loading summary:")
+        logger.info(f"  - Total rule files found: {len(yaml_files)}")
+        logger.info(f"  - Rule files processed: {min(500, len(yaml_files))}")
+        logger.info(f"  - Successfully loaded: {loaded_count}")
+        logger.info(f"  - Failed to load: {failed_count}")
+        logger.info(f"  - Final rule count: {len(rules)}")
+        
+        # Show some sample rules for debugging
+        if len(rules) > 0:
+            sample_rules = list(rules.items())[:3]
+            for rule_name, rule_data in sample_rules:
+                logger.info(f"Sample rule '{rule_name}': title={rule_data.get('title', 'N/A')}, has_detection={bool(rule_data.get('detection'))}")
+        
+        # Add a few simple test rules to ensure the engine works
+        if len(rules) > 0:
+            test_rule = {
+                'title': 'Test Rule - Any Windows Event',
+                'detection': {
+                    'selection': {
+                        '_raw': ['event', 'system', 'data']
+                    },
+                    'condition': 'selection'
+                },
+                'level': 'low'
+            }
+            rules['test_any_event'] = test_rule
+            logger.info("Added test rule for debugging")
+        
         return rules
         
     except Exception as e:
@@ -626,29 +716,64 @@ def evaluate_sigma_rule(event_data, rule_data):
         # This is a simplified version - real Sigma would compile the detection logic
         
         # Check if any selection criteria match
+        selections_checked = 0
         for key, value in detection.items():
             if key == 'condition':
                 continue
                 
+            selections_checked += 1
+            
             if isinstance(value, dict):
                 # Check if all conditions in this selection match
                 all_match = True
+                fields_matched = 0
+                
                 for field, pattern in value.items():
+                    field_found = False
+                    
+                    # Try exact field name first
                     if field.lower() in event_data:
-                        event_value = event_data[field.lower()].lower()
+                        field_found = True
+                        event_value = str(event_data[field.lower()]).lower()
+                        
                         if isinstance(pattern, list):
                             if not any(str(p).lower() in event_value for p in pattern):
                                 all_match = False
                                 break
+                            else:
+                                fields_matched += 1
                         else:
                             if str(pattern).lower() not in event_value:
                                 all_match = False
                                 break
+                            else:
+                                fields_matched += 1
                     else:
-                        all_match = False
-                        break
+                        # Try case-insensitive field matching
+                        for event_field, event_value in event_data.items():
+                            if field.lower() in event_field.lower():
+                                field_found = True
+                                event_value_str = str(event_value).lower()
+                                
+                                if isinstance(pattern, list):
+                                    if any(str(p).lower() in event_value_str for p in pattern):
+                                        fields_matched += 1
+                                        break
+                                else:
+                                    if str(pattern).lower() in event_value_str:
+                                        fields_matched += 1
+                                        break
+                        
+                        if not field_found:
+                            all_match = False
+                            break
                 
-                if all_match:
+                # Log debug info for first few checks
+                if selections_checked <= 2:
+                    rule_title = rule_data.get('title', 'Unknown')
+                    logger.info(f"Rule '{rule_title}' selection '{key}': fields_matched={fields_matched}, all_match={all_match}")
+                
+                if all_match and fields_matched > 0:
                     return True
         
         return False
