@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.58"
+echo "caseScope Bug Fixes Script v7.0.59"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.58..."
+log "Updating version to 7.0.59..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.58 "FIX: Chainsaw binary permissions - add execute permissions to fix Permission denied" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.59 "ENHANCED: Comprehensive Chainsaw permission debugging and validation" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -117,11 +117,25 @@ redis-cli flushdb 2>/dev/null || log "Redis flush failed, continuing..."
 # 10. FIX CHAINSAW PERMISSIONS
 log "Fixing Chainsaw binary permissions..."
 if [ -f "/opt/casescope/rules/chainsaw" ]; then
-    chmod +x /opt/casescope/rules/chainsaw
+    log "Chainsaw binary found, checking current permissions..."
+    ls -la /opt/casescope/rules/chainsaw
+    
+    log "Setting executable permissions..."
+    chmod 755 /opt/casescope/rules/chainsaw
     chown casescope:casescope /opt/casescope/rules/chainsaw
-    log "Chainsaw binary permissions fixed"
+    
+    log "Verifying permissions after fix..."
+    ls -la /opt/casescope/rules/chainsaw
+    
+    # Test if it's actually executable by the casescope user
+    if sudo -u casescope test -x /opt/casescope/rules/chainsaw; then
+        log "✅ Chainsaw binary is executable by casescope user"
+    else
+        log "❌ ERROR: Chainsaw binary still not executable by casescope user"
+    fi
 else
-    log "Chainsaw binary not found, skipping permission fix"
+    log "Chainsaw binary not found, listing directory contents..."
+    ls -la /opt/casescope/rules/ || log "Rules directory not found"
 fi
 
 # 11. CLEAN UP ORPHANED FILES
@@ -216,13 +230,13 @@ echo "  Worker Logs:   journalctl -u casescope-worker -f"
 echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
-echo "🎯 CHAINSAW PERMISSION FIXES:"
-echo "  ✅ FIXED: Chainsaw binary execute permissions (chmod +x)"
-echo "  ✅ FIXED: Chainsaw binary ownership (casescope:casescope)"
-echo "  ✅ ADDED: Automatic permission fixing in Python code"
-echo "  ✅ ADDED: Permission validation before execution"
-echo "  ✅ RESOLVED: 'Permission denied' error should be gone"
-echo "  ✅ READY: Should now execute Chainsaw and detect ~150 violations"
+echo "🎯 COMPREHENSIVE CHAINSAW DEBUGGING:"
+echo "  ✅ ENHANCED: Detailed permission logging (before/after)"
+echo "  ✅ ENHANCED: Multiple permission validation points"
+echo "  ✅ ENHANCED: User-specific executable testing"
+echo "  ✅ ENHANCED: File listing and diagnostic output"
+echo "  ✅ FIXED: More thorough chmod 755 permissions"
+echo "  ✅ READY: Comprehensive debugging to identify exact issue"
 echo "  ✅ FIXED: Single file re-run rules now actually works (requeues processing)"
 echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
@@ -281,4 +295,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.58 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.59 deployment complete!"

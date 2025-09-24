@@ -867,15 +867,29 @@ def run_chainsaw_directly(case_file):
         
         # Check if Chainsaw binary is executable
         import stat
+        current_perms = oct(os.stat(chainsaw_path).st_mode)[-3:]
+        logger.info(f"Current Chainsaw permissions: {current_perms}")
+        
         if not os.access(chainsaw_path, os.X_OK):
             logger.warning(f"Chainsaw binary not executable at {chainsaw_path}")
             try:
                 # Try to fix permissions
                 os.chmod(chainsaw_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-                logger.info("Fixed Chainsaw binary permissions")
+                new_perms = oct(os.stat(chainsaw_path).st_mode)[-3:]
+                logger.info(f"Fixed Chainsaw binary permissions from {current_perms} to {new_perms}")
+                
+                # Double-check the fix worked
+                if not os.access(chainsaw_path, os.X_OK):
+                    logger.error("Permission fix failed - still not executable")
+                    return 0
+                else:
+                    logger.info("Permission fix successful - binary is now executable")
+                    
             except Exception as perm_error:
                 logger.error(f"Failed to fix Chainsaw permissions: {perm_error}")
                 return 0
+        else:
+            logger.info(f"Chainsaw binary is executable (permissions: {current_perms})")
         
         if not chainsaw_rules_path.exists():
             logger.warning(f"Chainsaw rules directory not found at {chainsaw_rules_path}")
@@ -917,6 +931,14 @@ def run_chainsaw_directly(case_file):
             ]
             
             logger.info(f"Running Chainsaw: {' '.join(cmd)}")
+            
+            # Final permission check before execution
+            if not os.access(chainsaw_path, os.X_OK):
+                logger.error(f"CRITICAL: Chainsaw still not executable right before subprocess call!")
+                current_perms = oct(os.stat(chainsaw_path).st_mode)[-3:]
+                logger.error(f"Current permissions: {current_perms}")
+                return 0
+            
             import time
             start_time = time.time()
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # 2 minute timeout
