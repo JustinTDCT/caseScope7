@@ -163,6 +163,8 @@ class SystemSettings(db.Model):
 
 # Forms
 class LoginForm(FlaskForm):
+    class Meta:
+        csrf = False  # Disable CSRF for login form
     username = StringField('Username', validators=[DataRequired()])
     password = PasswordField('Password', validators=[DataRequired()])
 
@@ -277,38 +279,42 @@ def get_system_info():
         
         def check_service_port(port, service_name):
             """Check if a service is running by port and process"""
+            # Method 1: Simple port check with netstat
             try:
-                # Method 1: Check with netstat (more reliable on some systems)
-                netstat_result = subprocess.run(['netstat', '-tlnp'], capture_output=True, text=True, timeout=5)
-                if f':{port}' in netstat_result.stdout:
-                    return True
-            except:
-                pass
+                result = subprocess.run(['netstat', '-an'], capture_output=True, text=True, timeout=10)
+                # Look for LISTEN state on the port
+                for line in result.stdout.split('\n'):
+                    if f':{port}' in line and 'LISTEN' in line:
+                        logger.info(f"Found {service_name} listening on port {port} via netstat")
+                        return True
+            except Exception as e:
+                logger.error(f"netstat check failed for {service_name}: {e}")
             
+            # Method 2: Simple port check with ss
             try:
-                # Method 2: Check with ss
-                ss_result = subprocess.run(['ss', '-tlnp'], capture_output=True, text=True, timeout=5)
-                if f':{port}' in ss_result.stdout:
-                    return True
-            except:
-                pass
+                result = subprocess.run(['ss', '-an'], capture_output=True, text=True, timeout=10)
+                # Look for LISTEN state on the port
+                for line in result.stdout.split('\n'):
+                    if f':{port}' in line and 'LISTEN' in line:
+                        logger.info(f"Found {service_name} listening on port {port} via ss")
+                        return True
+            except Exception as e:
+                logger.error(f"ss check failed for {service_name}: {e}")
             
+            # Method 3: TCP socket test
             try:
-                # Method 3: Check with lsof
-                lsof_result = subprocess.run(['lsof', '-i', f':{port}'], capture_output=True, text=True, timeout=5)
-                if lsof_result.stdout.strip():
+                import socket
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(3)
+                result = sock.connect_ex(('127.0.0.1', port))
+                sock.close()
+                if result == 0:
+                    logger.info(f"Found {service_name} via socket connection on port {port}")
                     return True
-            except:
-                pass
+            except Exception as e:
+                logger.error(f"Socket check failed for {service_name}: {e}")
             
-            try:
-                # Method 4: Process check
-                pgrep_result = subprocess.run(['pgrep', '-f', service_name], capture_output=True, text=True, timeout=5)
-                if pgrep_result.stdout.strip():
-                    return True
-            except:
-                pass
-            
+            logger.info(f"Service {service_name} not detected on port {port}")
             return False
         
         # Check each service
