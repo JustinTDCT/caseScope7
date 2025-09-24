@@ -6,6 +6,28 @@
 
 set -e
 
+# Cleanup function for failed installations
+cleanup_on_failure() {
+    log_error "Installation failed. Cleaning up..."
+    
+    # Stop services
+    systemctl stop casescope-web 2>/dev/null || true
+    systemctl stop casescope-worker 2>/dev/null || true
+    systemctl stop opensearch 2>/dev/null || true
+    
+    # Clean up temp files
+    rm -f /tmp/opensearch-2.11.1-linux-x64.tar.gz 2>/dev/null || true
+    rm -rf /tmp/opensearch-2.11.1 2>/dev/null || true
+    rm -f /tmp/chainsaw.zip 2>/dev/null || true
+    rm -rf /tmp/chainsaw* 2>/dev/null || true
+    
+    log_error "Cleanup completed. Check /opt/casescope/logs/install.log for details."
+    exit 1
+}
+
+# Set trap to run cleanup on failure
+trap cleanup_on_failure ERR
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -28,12 +50,12 @@ log_warning() {
 
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
-   log_error "This script must be run as root (use sudo)"
+   echo "This script must be run as root (use sudo)"
    exit 1
 fi
 
-# Create directory structure
-log "Creating caseScope directory structure..."
+# Create directory structure FIRST (before any logging)
+echo "Creating caseScope directory structure..."
 mkdir -p /opt/casescope/{app,config,logs,data,rules,venv,tmp}
 chmod 755 /opt/casescope
 chmod 755 /opt/casescope/logs
@@ -41,6 +63,50 @@ chmod 755 /opt/casescope/logs
 # Initialize install log
 touch /opt/casescope/logs/install.log
 chmod 644 /opt/casescope/logs/install.log
+
+# Cleanup any previous failed installations
+log "Cleaning up any previous failed installations..."
+
+# Stop any existing services
+log "Stopping any existing caseScope services..."
+systemctl stop casescope-web 2>/dev/null || true
+systemctl stop casescope-worker 2>/dev/null || true
+systemctl stop opensearch 2>/dev/null || true
+systemctl disable casescope-web 2>/dev/null || true
+systemctl disable casescope-worker 2>/dev/null || true
+systemctl disable opensearch 2>/dev/null || true
+
+# Remove existing service files
+rm -f /etc/systemd/system/casescope-web.service 2>/dev/null || true
+rm -f /etc/systemd/system/casescope-worker.service 2>/dev/null || true
+rm -f /etc/systemd/system/opensearch.service 2>/dev/null || true
+
+# Remove existing OpenSearch installation
+if [ -d "/opt/opensearch" ]; then
+    log "Removing existing OpenSearch installation..."
+    rm -rf /opt/opensearch
+fi
+
+# Clean up temporary files
+log "Cleaning up temporary files..."
+rm -f /tmp/opensearch-2.11.1-linux-x64.tar.gz 2>/dev/null || true
+rm -rf /tmp/opensearch-2.11.1 2>/dev/null || true
+rm -f /tmp/chainsaw.zip 2>/dev/null || true
+rm -rf /tmp/chainsaw* 2>/dev/null || true
+
+# Remove any existing caseScope installation (but preserve logs)
+if [ -d "/opt/casescope/app" ]; then
+    log "Removing existing caseScope application..."
+    rm -rf /opt/casescope/app 2>/dev/null || true
+fi
+
+if [ -d "/opt/casescope/venv" ]; then
+    log "Removing existing Python virtual environment..."
+    rm -rf /opt/casescope/venv 2>/dev/null || true
+fi
+
+# Reload systemd to clear removed services
+systemctl daemon-reload
 
 log "Starting caseScope v7.0.0 installation..."
 log "Target OS: Ubuntu 24 headless server"
@@ -131,14 +197,40 @@ fi
 # Install OpenSearch
 log "Installing OpenSearch..."
 cd /tmp
+
+# Clean up any existing files first
+rm -f opensearch-2.11.1-linux-x64.tar.gz 2>/dev/null || true
+rm -rf opensearch-2.11.1 2>/dev/null || true
+
+# Download OpenSearch
+log "Downloading OpenSearch 2.11.1..."
 wget https://artifacts.opensearch.org/releases/bundle/opensearch/2.11.1/opensearch-2.11.1-linux-x64.tar.gz
 if [ $? -ne 0 ]; then
     log_error "Failed to download OpenSearch"
     exit 1
 fi
 
+# Extract OpenSearch
+log "Extracting OpenSearch..."
 tar -xzf opensearch-2.11.1-linux-x64.tar.gz
+if [ $? -ne 0 ]; then
+    log_error "Failed to extract OpenSearch"
+    exit 1
+fi
+
+# Move to final location
+log "Installing OpenSearch to /opt/opensearch..."
+if [ -d "/opt/opensearch" ]; then
+    log "Removing existing OpenSearch directory..."
+    rm -rf /opt/opensearch
+fi
+
 mv opensearch-2.11.1 /opt/opensearch
+if [ $? -ne 0 ]; then
+    log_error "Failed to move OpenSearch to /opt/opensearch"
+    exit 1
+fi
+
 chown -R casescope:casescope /opt/opensearch
 
 # Configure OpenSearch
