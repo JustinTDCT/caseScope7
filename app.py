@@ -854,17 +854,32 @@ def run_chainsaw_directly(case_file):
     """Run Chainsaw directly on EVTX file - much faster than event-by-event processing"""
     try:
         violations = 0
-        # Use executable location to bypass noexec mount restrictions
+        # Try executable location first (preferred to bypass noexec)
         chainsaw_path = Path('/usr/local/bin/chainsaw')
         chainsaw_rules_path = Path('/opt/casescope/rules/chainsaw-rules/rules')
         
         if not chainsaw_path.exists():
             logger.warning(f"Chainsaw binary not found at {chainsaw_path}")
-            # Check what's actually in the rules directory
-            rules_dir = Path('/opt/casescope/rules')
-            if rules_dir.exists():
-                logger.info(f"Contents of /opt/casescope/rules: {list(rules_dir.iterdir())}")
-            return 0
+            # Fall back to original location and try to move it
+            fallback_path = Path('/opt/casescope/rules/chainsaw')
+            if fallback_path.exists():
+                logger.info("Found Chainsaw in original location, attempting to move to executable location...")
+                try:
+                    import shutil
+                    shutil.copy2(fallback_path, chainsaw_path)
+                    os.chmod(chainsaw_path, 0o755)
+                    logger.info(f"Successfully moved Chainsaw to {chainsaw_path}")
+                except Exception as move_error:
+                    logger.error(f"Failed to move Chainsaw: {move_error}")
+                    logger.info("Attempting to use original location despite potential noexec...")
+                    chainsaw_path = fallback_path
+            else:
+                logger.error("Chainsaw binary not found in any location")
+                # Check what's actually in the rules directory
+                rules_dir = Path('/opt/casescope/rules')
+                if rules_dir.exists():
+                    logger.info(f"Contents of /opt/casescope/rules: {list(rules_dir.iterdir())}")
+                return 0
         
         # Check if Chainsaw binary is executable
         import stat

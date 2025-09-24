@@ -1,6 +1,6 @@
 {
-  "version": "7.0.61",
+  "version": "7.0.62",
   "release_date": "2025-09-24",
-  "description": "FIX: Move Chainsaw binary to /usr/local/bin to bypass noexec mount restriction",
+  "description": "SMART FIX: Auto-move Chainsaw binary to bypass noexec with fallback detection",
   "build": "production"
 }
