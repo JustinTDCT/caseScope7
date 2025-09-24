@@ -137,10 +137,8 @@ function closeAllDropdowns() {
     });
 }
 
-// File Upload - v7.0.30 Final Chrome fix
+// File Upload - v7.0.38 Simplified fix
 let uploadInitialized = false;
-let lastUploadClick = 0;
-const UPLOAD_CLICK_THRESHOLD = 1500; // 1.5 seconds
 
 function initializeFileUpload() {
     console.log('Initializing file upload v7.0.30');
@@ -172,42 +170,14 @@ function initializeFileUpload() {
 }
 
 function setupUploadHandlers(uploadArea, fileInput) {
-    console.log('Setting up upload handlers with Chrome prevention v7.0.31');
+    console.log('Setting up upload handlers - simplified v7.0.38');
     
-    let clickInProgress = false;
-    
-    // Simple, direct click handler
+    // Simple click handler without aggressive debouncing
     function handleUploadClick(event) {
-        const now = Date.now();
-        
-        console.log('Upload click detected, time since last:', now - lastUploadClick);
-        
-        // Prevent rapid successive clicks
-        if (now - lastUploadClick < UPLOAD_CLICK_THRESHOLD) {
-            console.log('Click ignored - too recent');
-            event.preventDefault();
-            return false;
-        }
-        
-        // Prevent multiple clicks in progress
-        if (clickInProgress) {
-            console.log('Click ignored - already in progress');
-            event.preventDefault();
-            return false;
-        }
-        
-        clickInProgress = true;
-        lastUploadClick = now;
-        
-        console.log('Opening file dialog');
-        fileInput.click();
-        
-        // Reset click progress after a delay
-        setTimeout(() => {
-            clickInProgress = false;
-        }, 1000);
-        
+        console.log('Upload click detected - opening file dialog');
         event.preventDefault();
+        event.stopPropagation();
+        fileInput.click();
         return false;
     }
     
@@ -272,17 +242,20 @@ function setupUploadHandlers(uploadArea, fileInput) {
         }
     });
     
-    // Simple click handler - no cloning, no complex prevention
+    // Single click handler for upload area
     uploadArea.addEventListener('click', handleUploadClick);
-    
-    // Add debugging for upload area clicks
-    uploadArea.addEventListener('click', function(e) {
-        console.log('Upload area clicked!', e.target);
-    }, true); // Use capture phase for debugging
     
     console.log('Upload handlers attached');
     console.log('Upload area element:', uploadArea);
     console.log('File input element:', fileInput);
+    
+    // Check if handleFileSelection is available
+    setTimeout(() => {
+        console.log('Checking for window.handleFileSelection:', typeof window.handleFileSelection);
+        if (typeof window.handleFileSelection !== 'function') {
+            console.error('window.handleFileSelection is not available! Upload will not work.');
+        }
+    }, 1000); // Check after template loads
 }
 
 // handleFileSelection function is now provided by the upload template

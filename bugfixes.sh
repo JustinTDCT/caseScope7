@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.38"
+echo "caseScope Bug Fixes Script v7.0.39"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.38..."
+log "Updating version to 7.0.39..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.38 "Fix file upload and drag-drop by resolving JavaScript function conflicts" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.39 "Simplify upload click handling by removing aggressive debouncing" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -207,6 +207,8 @@ echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
 echo "🎯 MAIN FIXES APPLIED:"
+echo "  ✅ Simplified upload click handling (removed debouncing)"
+echo "  ✅ Fixed aggressive click prevention"
 echo "  ✅ File upload JavaScript function conflict resolution"
 echo "  ✅ Drag-and-drop functionality fixes"
 echo "  ✅ Enhanced upload debugging and fallbacks"
@@ -227,4 +229,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.38 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.39 deployment complete!"
