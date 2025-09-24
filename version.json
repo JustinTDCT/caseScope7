@@ -1,6 +1,6 @@
 {
-  "version": "7.0.80",
+  "version": "7.0.81",
   "release_date": "2025-09-24",
-  "description": "FIX: Suppress OpenSearch connection error logs + cleaner worker output",
+  "description": "FIX: Search functionality - handle JSON parsing errors with '#' characters",
   "build": "production"
 }

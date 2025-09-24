@@ -79,6 +79,18 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
 app.config['UPLOAD_FOLDER'] = '/opt/casescope/data/uploads'
 
+# Custom Jinja2 filter for safe JSON conversion
+@app.template_filter('safe_json')
+def safe_json_filter(data):
+    """Safely convert data to JSON, handling problematic characters"""
+    try:
+        import json
+        # Clean the data first
+        cleaned_data = clean_json_data(data)
+        return json.dumps(cleaned_data, indent=2, ensure_ascii=False, default=str)
+    except Exception as e:
+        return f"JSON conversion error: {str(e)}"
+
 # CSRF configuration
 app.config['WTF_CSRF_ENABLED'] = True
 app.config['WTF_CSRF_TIME_LIMIT'] = None
@@ -662,6 +674,30 @@ def load_actual_sigma_rules(sigma_path):
     except Exception as e:
         logger.error(f"Error loading actual Sigma rules: {e}")
         return {}
+
+def clean_json_data(data):
+    """
+    Clean data to prevent JSON parsing issues in templates
+    Removes or replaces problematic characters that can cause JSON errors
+    """
+    if isinstance(data, dict):
+        cleaned = {}
+        for key, value in data.items():
+            # Clean the key
+            clean_key = str(key).replace('#', '_hash_').replace('\x00', '').replace('\n', '_newline_')
+            cleaned[clean_key] = clean_json_data(value)
+        return cleaned
+    elif isinstance(data, list):
+        return [clean_json_data(item) for item in data[:100]]  # Limit list size
+    elif isinstance(data, str):
+        # Remove or replace problematic characters
+        cleaned_str = data.replace('#', '_hash_').replace('\x00', '').replace('\r', '').replace('\n', ' ')
+        # Limit string length
+        if len(cleaned_str) > 1000:
+            cleaned_str = cleaned_str[:997] + "..."
+        return cleaned_str
+    else:
+        return data
 
 def sanitize_for_opensearch(data, max_depth=10):
     """
@@ -1986,13 +2022,49 @@ def search():
                     })
                 
                 logger.info(f"Executing search with query: {clean_query}")
-                response = opensearch_client.search(
-                    index=f"casescope-case-{case.id}",
-                    body=search_body
-                )
                 
-                results = response.get('hits', {}).get('hits', [])
-                logger.info(f"Search returned {len(results)} results")
+                # Temporarily suppress OpenSearch logging for search calls too
+                opensearch_logger = logging.getLogger('opensearch')
+                urllib3_logger = logging.getLogger('urllib3')
+                old_opensearch_level = opensearch_logger.level
+                old_urllib3_level = urllib3_logger.level
+                
+                try:
+                    opensearch_logger.setLevel(logging.CRITICAL)
+                    urllib3_logger.setLevel(logging.CRITICAL)
+                    
+                    response = opensearch_client.search(
+                        index=f"casescope-case-{case.id}",
+                        body=search_body
+                    )
+                finally:
+                    opensearch_logger.setLevel(old_opensearch_level)
+                    urllib3_logger.setLevel(old_urllib3_level)
+                
+                # Safely extract results with better error handling
+                hits = response.get('hits', {})
+                if isinstance(hits, dict):
+                    results = hits.get('hits', [])
+                else:
+                    results = []
+                
+                # Clean results to prevent JSON issues in template rendering
+                cleaned_results = []
+                for result in results:
+                    try:
+                        # Ensure _source is clean JSON
+                        source = result.get('_source', {})
+                        if isinstance(source, dict):
+                            # Clean any problematic characters from string fields
+                            cleaned_source = clean_json_data(source)
+                            result['_source'] = cleaned_source
+                            cleaned_results.append(result)
+                    except Exception as clean_error:
+                        logger.debug(f"Skipping result due to data cleaning error: {clean_error}")
+                        continue
+                
+                results = cleaned_results
+                logger.info(f"Search returned {len(results)} cleaned results")
                 
             except Exception as e:
                 logger.error(f"Search error: {e}")
@@ -2000,11 +2072,36 @@ def search():
                 flash('Search error occurred. Please try a simpler search term.', 'error')
                 results = []
         
-        return render_template('search.html', case=case, query=query, results=results)
+        # Safe template rendering with additional error handling
+        try:
+            return render_template('search.html', case=case, query=query, results=results)
+        except Exception as template_error:
+            logger.error(f"Template rendering error in search: {template_error}")
+            # Fall back to simplified results
+            simple_results = []
+            for result in results[:10]:  # Limit to first 10 for safety
+                try:
+                    simple_result = {
+                        '_id': result.get('_id', 'unknown'),
+                        '_source': {
+                            'timestamp': result.get('_source', {}).get('timestamp', 'unknown'),
+                            'source_file': result.get('_source', {}).get('source_file', 'unknown'),
+                            'simplified': 'Complex data filtered for display'
+                        }
+                    }
+                    simple_results.append(simple_result)
+                except:
+                    continue
+            return render_template('search.html', case=case, query=query, results=simple_results)
     
     except Exception as e:
-        logger.error(f"Error in search route: {e}")
-        flash('Error accessing search functionality.', 'error')
+        error_msg = str(e)
+        if 'unexpected char' in error_msg and '#' in error_msg:
+            logger.error(f"JSON parsing error in search route (likely malformed data): {e}")
+            flash('Search encountered malformed data. Try a different search term or contact administrator.', 'error')
+        else:
+            logger.error(f"Error in search route: {e}")
+            flash('Error accessing search functionality.', 'error')
         # Try to return to case dashboard if we have a valid case, otherwise system dashboard
         try:
             selected_case_id = session.get('selected_case_id')
