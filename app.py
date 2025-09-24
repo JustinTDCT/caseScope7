@@ -963,6 +963,9 @@ def run_chainsaw_directly(case_file):
         except Exception as rule_debug_error:
             logger.warning(f"Error checking rule files: {rule_debug_error}")
             
+        # Get the original EVTX file path early for debugging
+        evtx_file_path = case_file.file_path
+        
         # Also check what we know about this specific file type
         logger.info(f"Processing Windows Defender Operational log: {evtx_file_path}")
         logger.info(f"File size: {os.path.getsize(evtx_file_path)} bytes")
@@ -975,9 +978,6 @@ def run_chainsaw_directly(case_file):
         logger.info(f"Running Chainsaw directly on EVTX file (fast method)")
         logger.info(f"Chainsaw binary: {chainsaw_path}")
         logger.info(f"Chainsaw rules: {chainsaw_rules_path}")
-        
-        # Get the original EVTX file path
-        evtx_file_path = case_file.file_path
         
         if not os.path.exists(evtx_file_path):
             logger.error(f"EVTX file not found: {evtx_file_path}")
