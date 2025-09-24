@@ -37,13 +37,13 @@
                 <form method="POST" enctype="multipart/form-data" class="upload-form" id="upload-form">
                     {{ form.hidden_tag() }}
                     
+                    {{ form.files(style="display: none;", id="file-input") }}
                     <div class="upload-area" id="upload-area">
                         <div class="upload-content">
                             <i class="fas fa-cloud-upload-alt upload-icon"></i>
                             <div class="upload-text">Drop EVTX files here or click to browse</div>
                             <div class="upload-subtext">Maximum 5 files, up to 500MB each</div>
                         </div>
-                        {{ form.files(style="display: none;", id="file-input") }}
                     </div>
                     
                     {% if form.files.errors %}

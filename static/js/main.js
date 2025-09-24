@@ -141,7 +141,7 @@ function closeAllDropdowns() {
 let uploadInitialized = false;
 
 function initializeFileUpload() {
-    console.log('Initializing file upload v7.0.30');
+    console.log('Initializing file upload v7.0.40');
     
     // Only initialize once
     if (uploadInitialized) {
@@ -159,12 +159,19 @@ function initializeFileUpload() {
     const uploadArea = document.querySelector('.upload-area');
     const fileInput = document.querySelector('#file-input');
     
+    console.log('Looking for upload elements...');
+    console.log('Upload area found:', !!uploadArea);
+    console.log('File input found:', !!fileInput);
+    
     if (!uploadArea || !fileInput) {
-        console.log('No upload elements found on this page');
+        console.log('No upload elements found on this page - skipping upload initialization');
         return;
     }
     
     console.log('Upload elements found, setting up handlers...');
+    console.log('Upload area:', uploadArea);
+    console.log('File input:', fileInput);
+    
     setupUploadHandlers(uploadArea, fileInput);
     uploadInitialized = true;
 }
@@ -180,10 +187,23 @@ function setupUploadHandlers(uploadArea, fileInput) {
     
     // Simple click handler without aggressive debouncing
     function handleUploadClick(event) {
-        console.log('Upload click detected - opening file dialog');
+        console.log('Upload click detected - attempting to open file dialog');
+        console.log('Click event target:', event.target);
+        console.log('File input element:', fileInput);
+        console.log('File input style display:', fileInput.style.display);
+        console.log('File input disabled:', fileInput.disabled);
+        
         event.preventDefault();
         event.stopPropagation();
-        fileInput.click();
+        
+        try {
+            console.log('Calling fileInput.click()...');
+            fileInput.click();
+            console.log('fileInput.click() called successfully');
+        } catch (error) {
+            console.error('Error calling fileInput.click():', error);
+        }
+        
         return false;
     }
     
@@ -258,11 +278,18 @@ function setupUploadHandlers(uploadArea, fileInput) {
         }
     });
     
-    // Single click handler for upload area
-    uploadArea.addEventListener('click', handleUploadClick);
+    // Remove any existing event listeners by cloning the element
+    const newUploadArea = uploadArea.cloneNode(true);
+    uploadArea.parentNode.replaceChild(newUploadArea, uploadArea);
+    
+    // Get fresh reference and add single click handler
+    const freshUploadArea = document.querySelector('.upload-area');
+    freshUploadArea.addEventListener('click', handleUploadClick);
     
     // Mark as initialized
-    uploadArea.dataset.handlersAttached = 'true';
+    freshUploadArea.dataset.handlersAttached = 'true';
+    
+    console.log('Click handler attached to fresh upload area (after cloning to remove existing handlers)');
     
     console.log('Upload handlers attached');
     console.log('Upload area element:', uploadArea);

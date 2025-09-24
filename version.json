@@ -1,6 +1,6 @@
 {
-  "version": "7.0.40",
+  "version": "7.0.41",
   "release_date": "2025-09-24",
-  "description": "Fix duplicate upload handlers and add comprehensive debugging",
+  "description": "Comprehensive upload fix: move file input outside upload area and eliminate event conflicts",
   "build": "production"
 }
