@@ -6,8 +6,9 @@
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   min-width: 50px;
+  min-height: 40px;
   z-index: 10;
 }
 
@@ -19,17 +20,18 @@
   background: #2a3441;
   border: none;
   color: #9ca3af;
-  padding: 8px;
+  padding: 10px;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   transition: all 0.2s;
-  font-size: 14px;
+  font-size: 16px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  position: relative;
 }
 
 .file-actions .dropdown-btn:hover {
@@ -83,45 +85,43 @@
   display: block;
 }
 
-/* Ensure file item layout accommodates the menu */
+/* File item layout - simplified and reliable */
 .file-item {
-  display: grid;
-  grid-template-columns: 2fr auto 1fr auto;
-  gap: 1rem;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 1rem;
   margin-bottom: 0.5rem;
   background: var(--card-bg);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   min-height: 80px;
+  gap: 1rem;
 }
 
 .file-item .file-info {
-  grid-column: 1 / 2;
+  flex: 1;
   min-width: 0; /* Allow text overflow */
 }
 
 .file-item .file-status {
-  grid-column: 2 / 3;
-  justify-self: center;
+  flex-shrink: 0;
   white-space: nowrap;
 }
 
 .file-item .file-stats {
-  grid-column: 3 / 4;
-  justify-self: end;
+  flex-shrink: 0;
   display: flex;
   gap: 0.5rem;
   align-items: center;
 }
 
 .file-item .file-actions {
-  grid-column: 4 / 5;
-  justify-self: end;
+  flex-shrink: 0;
   width: 40px;
   display: flex;
   justify-content: flex-end;
+  margin-left: auto;
 }
 
 .action-btn {

@@ -1,6 +1,6 @@
 {
-  "version": "7.0.47",
+  "version": "7.0.48",
   "release_date": "2025-09-24",
-  "description": "UI polish: fix 3-dot alignment, dark theme, button symmetry, dropdown debugging",
+  "description": "Final fixes: 3-dot menu positioning and clicks, Sigma patterns for actual EVTX data",
   "build": "production"
 }

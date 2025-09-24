@@ -160,8 +160,8 @@
                         </div>
 
                         <div class="file-actions">
-                            <div class="dropdown">
-                                <button class="dropdown-btn">
+                            <div class="dropdown" id="dropdown-{{ file.id }}">
+                                <button class="dropdown-btn" onclick="toggleDropdownDirect('dropdown-{{ file.id }}')">
                                     <i class="fas fa-ellipsis-v"></i>
                                 </button>
                                 <div class="dropdown-content">
@@ -866,6 +866,26 @@ function closeAllDropdowns() {
     });
 }
 
+function toggleDropdownDirect(dropdownId) {
+    console.log('Direct toggle called for:', dropdownId);
+    const dropdown = document.getElementById(dropdownId);
+    if (dropdown) {
+        const isActive = dropdown.classList.contains('active');
+        console.log('Dropdown active state:', isActive);
+        
+        // Close all other dropdowns first
+        closeAllDropdowns();
+        
+        // Toggle this dropdown if it wasn't active
+        if (!isActive) {
+            console.log('Activating dropdown');
+            dropdown.classList.add('active');
+        }
+    } else {
+        console.error('Dropdown not found:', dropdownId);
+    }
+}
+
 // Cleanup on page unload
 window.addEventListener('beforeunload', function() {
     if (refreshInterval) {
@@ -905,6 +925,7 @@ window.rerunRulesFile = rerunRulesFile;
 window.reprocessFile = reprocessFile;
 window.deleteFile = deleteFile;
 window.refreshFileList = refreshFileList;
+window.toggleDropdownDirect = toggleDropdownDirect;
 </script>
 {% endblock %}
 

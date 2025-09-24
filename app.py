@@ -491,17 +491,19 @@ def apply_sigma_rules(events, case_file):
         logger.info(f"Analyzing {len(events)} events for Sigma patterns")
         
         for event in events:
-            event_data_str = str(event.get('event_data', {})).lower()
+            # Convert entire event to string for pattern matching
+            event_str = str(event).lower()
             
             # Log first few events for debugging
             if violations < 3:
-                logger.info(f"Checking event data sample: {event_data_str[:200]}...")
+                logger.info(f"Checking event sample: {event_str[:300]}...")
             
             # Check for common malicious patterns (broader matching)
+            # Look for patterns that would indicate suspicious activity
             malicious_patterns = [
+                # Process execution patterns
                 'powershell',
                 'cmd.exe',
-                'cmd /c',
                 'wscript',
                 'cscript',
                 'regsvr32',
@@ -509,6 +511,7 @@ def apply_sigma_rules(events, case_file):
                 'mshta',
                 'certutil',
                 'bitsadmin',
+                # Command line indicators
                 'base64',
                 'invoke-expression',
                 'iex',
@@ -523,11 +526,46 @@ def apply_sigma_rules(events, case_file):
                 'frombase64string',
                 'system.convert',
                 'reflection.assembly',
-                'net.webclient'
+                'net.webclient',
+                # Suspicious file operations
+                'temp',
+                'tmp',
+                'appdata',
+                'programdata',
+                # Network activity
+                'http://',
+                'https://',
+                'ftp://',
+                # Registry modifications
+                'registry',
+                'hklm',
+                'hkcu',
+                'run',
+                'startup',
+                # Remote desktop / lateral movement
+                'remote',
+                'rdp',
+                'terminal',
+                'session',
+                'logon',
+                'authentication',
+                # Windows Defender alerts (these should definitely trigger)
+                'threat',
+                'malware',
+                'virus',
+                'suspicious',
+                'blocked',
+                'quarantine',
+                'defender',
+                'windows-windows defender',
+                'security',
+                'antimalware',
+                'scan',
+                'detection'
             ]
             
             for pattern in malicious_patterns:
-                if pattern in event_data_str:
+                if pattern in event_str:
                     violations += 1
                     logger.info(f"Sigma violation found: '{pattern}' in event")
                     # Tag event in OpenSearch

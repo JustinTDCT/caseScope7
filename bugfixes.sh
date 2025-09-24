@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.47"
+echo "caseScope Bug Fixes Script v7.0.48"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.47..."
+log "Updating version to 7.0.48..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.47 "UI polish: fix 3-dot alignment, dark theme, button symmetry, dropdown debugging" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.48 "Final fixes: 3-dot menu positioning and clicks, Sigma patterns for actual EVTX data" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -207,6 +207,10 @@ echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
 echo "🎯 MAIN FIXES APPLIED:"
+echo "  ✅ FINAL: Simplified 3-dot menu layout using flexbox instead of grid"
+echo "  ✅ FINAL: Added direct onclick handlers for reliable menu functionality"
+echo "  ✅ FINAL: Fixed Sigma patterns to match actual EVTX data structure"
+echo "  ✅ FINAL: Added Windows Defender specific patterns (defender, threat, etc.)"
 echo "  ✅ Fixed dialog text to say 'all files' instead of 'completed files'"
 echo "  ✅ Improved 3-dot menu grid layout with consistent alignment"
 echo "  ✅ Applied darker theme to 3-dot menu with better contrast"
@@ -261,4 +265,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.47 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.48 deployment complete!"
