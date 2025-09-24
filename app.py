@@ -272,53 +272,49 @@ def get_system_info():
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
         
-        # Service status - simplified and more reliable detection
+        # Service status - enhanced detection with better error handling
         services = {}
         
-        # Check OpenSearch - look for Java process and port 9200
-        services['opensearch'] = False
-        try:
-            # Check if port 9200 is listening (most reliable)
-            port_check = subprocess.run(['ss', '-tln'], capture_output=True, text=True)
-            if ':9200' in port_check.stdout:
-                services['opensearch'] = True
-            else:
-                # Fallback to process check
-                proc_check = subprocess.run(['pgrep', '-f', 'opensearch'], capture_output=True, text=True)
-                if proc_check.stdout.strip():
-                    services['opensearch'] = True
-        except:
-            services['opensearch'] = False
+        def check_service_port(port, service_name):
+            """Check if a service is running by port and process"""
+            try:
+                # Method 1: Check with netstat (more reliable on some systems)
+                netstat_result = subprocess.run(['netstat', '-tlnp'], capture_output=True, text=True, timeout=5)
+                if f':{port}' in netstat_result.stdout:
+                    return True
+            except:
+                pass
+            
+            try:
+                # Method 2: Check with ss
+                ss_result = subprocess.run(['ss', '-tlnp'], capture_output=True, text=True, timeout=5)
+                if f':{port}' in ss_result.stdout:
+                    return True
+            except:
+                pass
+            
+            try:
+                # Method 3: Check with lsof
+                lsof_result = subprocess.run(['lsof', '-i', f':{port}'], capture_output=True, text=True, timeout=5)
+                if lsof_result.stdout.strip():
+                    return True
+            except:
+                pass
+            
+            try:
+                # Method 4: Process check
+                pgrep_result = subprocess.run(['pgrep', '-f', service_name], capture_output=True, text=True, timeout=5)
+                if pgrep_result.stdout.strip():
+                    return True
+            except:
+                pass
+            
+            return False
         
-        # Check Redis - look for process and port 6379
-        services['redis-server'] = False
-        try:
-            # Check if port 6379 is listening
-            port_check = subprocess.run(['ss', '-tln'], capture_output=True, text=True)
-            if ':6379' in port_check.stdout:
-                services['redis-server'] = True
-            else:
-                # Fallback to process check
-                proc_check = subprocess.run(['pgrep', '-f', 'redis'], capture_output=True, text=True)
-                if proc_check.stdout.strip():
-                    services['redis-server'] = True
-        except:
-            services['redis-server'] = False
-        
-        # Check Nginx - look for process and port 80
-        services['nginx'] = False
-        try:
-            # Check if port 80 is listening
-            port_check = subprocess.run(['ss', '-tln'], capture_output=True, text=True)
-            if ':80' in port_check.stdout:
-                services['nginx'] = True
-            else:
-                # Fallback to process check
-                proc_check = subprocess.run(['pgrep', '-f', 'nginx'], capture_output=True, text=True)
-                if proc_check.stdout.strip():
-                    services['nginx'] = True
-        except:
-            services['nginx'] = False
+        # Check each service
+        services['opensearch'] = check_service_port(9200, 'opensearch')
+        services['redis-server'] = check_service_port(6379, 'redis')
+        services['nginx'] = check_service_port(80, 'nginx')
         
         # Rule counts and last updated
         sigma_count = 0
