@@ -19,7 +19,11 @@ cleanup_on_failure() {
     rm -f /tmp/opensearch-2.11.1-linux-x64.tar.gz 2>/dev/null || true
     rm -rf /tmp/opensearch-2.11.1 2>/dev/null || true
     rm -f /tmp/chainsaw.zip 2>/dev/null || true
+    rm -f /tmp/chainsaw.tar.gz 2>/dev/null || true
     rm -rf /tmp/chainsaw* 2>/dev/null || true
+    
+    # Clean up working directory temp files
+    rm -f chainsaw.zip chainsaw.tar.gz 2>/dev/null || true
     
     log_error "Cleanup completed. Check /opt/casescope/logs/install.log for details."
     exit 1
@@ -92,7 +96,21 @@ log "Cleaning up temporary files..."
 rm -f /tmp/opensearch-2.11.1-linux-x64.tar.gz 2>/dev/null || true
 rm -rf /tmp/opensearch-2.11.1 2>/dev/null || true
 rm -f /tmp/chainsaw.zip 2>/dev/null || true
+rm -f /tmp/chainsaw.tar.gz 2>/dev/null || true
 rm -rf /tmp/chainsaw* 2>/dev/null || true
+
+# Clean up any existing rule directories
+if [ -d "/opt/casescope/rules/sigma-rules" ]; then
+    log "Removing existing Sigma rules..."
+    rm -rf /opt/casescope/rules/sigma-rules
+fi
+
+if [ -d "/opt/casescope/rules/chainsaw-rules" ]; then
+    log "Removing existing Chainsaw rules..."
+    rm -rf /opt/casescope/rules/chainsaw-rules
+fi
+
+rm -f /opt/casescope/rules/chainsaw 2>/dev/null || true
 
 # Remove any existing caseScope installation (but preserve logs)
 if [ -d "/opt/casescope/app" ]; then
@@ -235,6 +253,12 @@ chown -R casescope:casescope /opt/opensearch
 
 # Configure OpenSearch
 log "Configuring OpenSearch..."
+
+# Create data and logs directories
+mkdir -p /opt/opensearch/data /opt/opensearch/logs /opt/opensearch/tmp
+chown -R casescope:casescope /opt/opensearch/data /opt/opensearch/logs /opt/opensearch/tmp
+
+# Configure OpenSearch with more conservative settings
 cat > /opt/opensearch/config/opensearch.yml << 'EOF'
 cluster.name: casescope-cluster
 node.name: casescope-node-1
@@ -244,18 +268,41 @@ network.host: 127.0.0.1
 http.port: 9200
 discovery.type: single-node
 plugins.security.disabled: true
-bootstrap.memory_lock: true
+bootstrap.memory_lock: false
+action.auto_create_index: true
+cluster.routing.allocation.disk.threshold_enabled: false
 EOF
 
-# Set OpenSearch heap size
-cat > /opt/opensearch/config/jvm.options << 'EOF'
--Xms1g
--Xmx1g
+# Set OpenSearch heap size based on available memory
+TOTAL_MEM=$(free -m | awk 'NR==2{printf "%.0f", $2}')
+if [ $TOTAL_MEM -gt 4096 ]; then
+    HEAP_SIZE="2g"
+elif [ $TOTAL_MEM -gt 2048 ]; then
+    HEAP_SIZE="1g"
+else
+    HEAP_SIZE="512m"
+fi
+
+log "Setting OpenSearch heap size to $HEAP_SIZE (Total RAM: ${TOTAL_MEM}MB)"
+
+cat > /opt/opensearch/config/jvm.options << EOF
+-Xms${HEAP_SIZE}
+-Xmx${HEAP_SIZE}
 -XX:+UseG1GC
 -XX:G1HeapRegionSize=16m
--XX:+UseLargePages
--XX:+UnlockExperimentalVMOptions
--XX:+UseZGC
+-XX:+DisableExplicitGC
+-XX:+AlwaysPreTouch
+-Xss1m
+-Djava.awt.headless=true
+-Dfile.encoding=UTF-8
+-Djna.nosys=true
+-Djdk.io.permissionsUseCanonicalPath=true
+-Dio.netty.noUnsafe=true
+-Dio.netty.noKeySetOptimization=true
+-Dlog4j.shutdownHookEnabled=false
+-Dlog4j2.disable.jmx=true
+-Djava.locale.providers=SPI,COMPAT
+-Djna.tmpdir=/opt/opensearch/tmp
 EOF
 
 # Create OpenSearch systemd service
@@ -314,49 +361,101 @@ chown -R casescope:casescope /opt/opensearch
 # Download and setup Sigma rules
 log "Setting up Sigma rules..."
 cd /opt/casescope/rules
+
+# Remove existing sigma-rules directory if it exists
+if [ -d "sigma-rules" ]; then
+    log "Removing existing Sigma rules directory..."
+    rm -rf sigma-rules
+fi
+
 git clone https://github.com/SigmaHQ/sigma.git sigma-rules 2>&1 | tee -a /opt/casescope/logs/install.log
 if [ $? -ne 0 ]; then
     log_warning "Failed to clone Sigma rules repository"
+    # Create placeholder if git clone fails
+    mkdir -p sigma-rules/rules
+    echo "# Sigma rules placeholder" > sigma-rules/rules/placeholder.yml
 fi
 
 # Download and setup Chainsaw rules
 log "Setting up Chainsaw rules..."
-# Try multiple versions of Chainsaw
+
+# Remove existing chainsaw-rules directory if it exists
+if [ -d "chainsaw-rules" ]; then
+    log "Removing existing Chainsaw rules directory..."
+    rm -rf chainsaw-rules
+fi
+
+# Clean up any existing chainsaw files
+rm -f chainsaw.zip chainsaw_* /opt/casescope/rules/chainsaw 2>/dev/null || true
+
+# Try to download Chainsaw binary - check what's actually available
 CHAINSAW_DOWNLOADED=false
-for version in "v2.9.1" "v2.8.0" "v2.7.0"; do
-    log "Trying Chainsaw version $version..."
-    wget -O chainsaw.zip "https://github.com/WithSecureLabs/chainsaw/releases/download/$version/chainsaw_all_linux.zip" 2>&1 | tee -a /opt/casescope/logs/install.log
+
+# First, let's try the newer release format
+log "Trying Chainsaw latest release..."
+wget -O chainsaw.zip "https://github.com/WithSecureLabs/chainsaw/releases/latest/download/chainsaw_x86_64-unknown-linux-gnu.tar.gz" 2>&1 | tee -a /opt/casescope/logs/install.log
+if [ $? -eq 0 ] && [ -s chainsaw.zip ]; then
+    log "Downloaded chainsaw archive, extracting..."
+    tar -xzf chainsaw.zip 2>&1 | tee -a /opt/casescope/logs/install.log
     if [ $? -eq 0 ]; then
-        unzip -q chainsaw.zip 2>&1 | tee -a /opt/casescope/logs/install.log
-        # Find and move the chainsaw binary
-        find . -name "*chainsaw*" -type f -executable | head -1 | while read file; do
+        # Find the chainsaw binary
+        find . -name "chainsaw" -type f -executable | head -1 | while read file; do
             if [ -f "$file" ]; then
-                mv "$file" /opt/casescope/rules/chainsaw
+                cp "$file" /opt/casescope/rules/chainsaw
                 chmod +x /opt/casescope/rules/chainsaw
+                log "Chainsaw binary installed successfully"
             fi
         done
         if [ -f /opt/casescope/rules/chainsaw ]; then
             CHAINSAW_DOWNLOADED=true
-            log "Chainsaw $version downloaded successfully"
-            break
         fi
     fi
-    rm -f chainsaw.zip 2>/dev/null
-done
+    rm -f chainsaw.zip 2>/dev/null || true
+fi
 
-if [ "$CHAINSAW_DOWNLOADED" = "true" ] || [ -f /opt/casescope/rules/chainsaw ]; then
-    # Download Chainsaw rules
-    git clone https://github.com/WithSecureLabs/chainsaw.git chainsaw-rules 2>&1 | tee -a /opt/casescope/logs/install.log
-    log "Chainsaw setup completed"
-else
-    log_warning "Failed to download Chainsaw - will continue without it"
+# If that didn't work, try specific versions with different naming
+if [ "$CHAINSAW_DOWNLOADED" = "false" ]; then
+    for version in "v2.9.1" "v2.8.0" "v2.7.0"; do
+        log "Trying Chainsaw version $version with tar.gz format..."
+        wget -O chainsaw.tar.gz "https://github.com/WithSecureLabs/chainsaw/releases/download/$version/chainsaw_x86_64-unknown-linux-gnu.tar.gz" 2>&1 | tee -a /opt/casescope/logs/install.log
+        if [ $? -eq 0 ] && [ -s chainsaw.tar.gz ]; then
+            tar -xzf chainsaw.tar.gz 2>&1 | tee -a /opt/casescope/logs/install.log
+            if [ $? -eq 0 ]; then
+                find . -name "chainsaw" -type f -executable | head -1 | while read file; do
+                    if [ -f "$file" ]; then
+                        cp "$file" /opt/casescope/rules/chainsaw
+                        chmod +x /opt/casescope/rules/chainsaw
+                        log "Chainsaw $version installed successfully"
+                    fi
+                done
+                if [ -f /opt/casescope/rules/chainsaw ]; then
+                    CHAINSAW_DOWNLOADED=true
+                    break
+                fi
+            fi
+        fi
+        rm -f chainsaw.tar.gz 2>/dev/null || true
+    done
+fi
+
+# Download Chainsaw rules repository regardless of binary success
+log "Downloading Chainsaw rules repository..."
+git clone https://github.com/WithSecureLabs/chainsaw.git chainsaw-rules 2>&1 | tee -a /opt/casescope/logs/install.log
+if [ $? -ne 0 ]; then
+    log_warning "Failed to clone Chainsaw rules repository"
     # Create placeholder for chainsaw rules
     mkdir -p chainsaw-rules/rules
     echo "# Chainsaw rules placeholder" > chainsaw-rules/rules/placeholder.yml
 fi
 
+if [ "$CHAINSAW_DOWNLOADED" = "true" ]; then
+    log "Chainsaw setup completed successfully"
+else
+    log_warning "Failed to download Chainsaw binary - rules repository downloaded but binary not available"
+fi
+
 # Clean up any temporary files
-rm -f chainsaw.zip chainsaw_* 2>/dev/null || true
+rm -f chainsaw.zip chainsaw.tar.gz chainsaw_* 2>/dev/null || true
 
 # Create systemd services
 log "Creating systemd services..."
@@ -448,24 +547,105 @@ systemctl enable nginx
 systemctl enable casescope-web
 systemctl enable casescope-worker
 
-# Start services
+# Configure system limits for OpenSearch before starting
+log "Configuring system for OpenSearch..."
+echo 'vm.max_map_count=262144' >> /etc/sysctl.conf
+sysctl -p
+
+# Ensure Java is properly configured
+log "Checking Java installation..."
+if ! java -version 2>&1 | grep -q "11\|17\|21"; then
+    log_warning "Java version may not be optimal for OpenSearch"
+fi
+
+# Start Redis service first
+log "Starting Redis service..."
 systemctl start redis-server
+
+# Start OpenSearch service
+log "Starting OpenSearch service..."
 systemctl start opensearch
 
-# Wait for OpenSearch to start
+# Wait for OpenSearch to start with better diagnostics
 log "Waiting for OpenSearch to start..."
-sleep 30
-for i in {1..30}; do
-    if curl -s http://localhost:9200 > /dev/null; then
-        log "OpenSearch is running"
-        break
+OPENSEARCH_STARTED=false
+
+for i in {1..60}; do
+    # Check if service is running
+    if systemctl is-active --quiet opensearch; then
+        log "OpenSearch service is active, checking connectivity..."
+        
+        # Check if port is listening
+        if netstat -tlnp | grep -q ":9200"; then
+            log "OpenSearch port 9200 is listening, testing HTTP response..."
+            
+            # Test HTTP connectivity
+            if curl -s -m 5 http://localhost:9200 > /dev/null 2>&1; then
+                log "OpenSearch is responding to HTTP requests"
+                OPENSEARCH_STARTED=true
+                break
+            else
+                log "OpenSearch port is open but not responding to HTTP yet (attempt $i/60)..."
+            fi
+        else
+            log "OpenSearch port 9200 not yet listening (attempt $i/60)..."
+        fi
+    else
+        log "OpenSearch service not yet active (attempt $i/60)..."
+        
+        # Check for common startup issues
+        if [ $i -eq 10 ]; then
+            log "Checking OpenSearch logs for startup issues..."
+            if [ -f /opt/opensearch/logs/opensearch.log ]; then
+                tail -20 /opt/opensearch/logs/opensearch.log | tee -a /opt/casescope/logs/install.log
+            fi
+        fi
+        
+        if [ $i -eq 20 ]; then
+            log "Checking system resources..."
+            free -h | tee -a /opt/casescope/logs/install.log
+            df -h | tee -a /opt/casescope/logs/install.log
+        fi
+        
+        if [ $i -eq 30 ]; then
+            log "Checking OpenSearch service status..."
+            systemctl status opensearch --no-pager | tee -a /opt/casescope/logs/install.log
+        fi
     fi
-    if [ $i -eq 30 ]; then
-        log_error "OpenSearch failed to start within timeout"
-        exit 1
-    fi
+    
     sleep 2
 done
+
+if [ "$OPENSEARCH_STARTED" = "false" ]; then
+    log_error "OpenSearch failed to start within 2 minutes"
+    log_error "Checking final diagnostics..."
+    
+    # Final diagnostic information
+    log "=== OpenSearch Service Status ==="
+    systemctl status opensearch --no-pager | tee -a /opt/casescope/logs/install.log
+    
+    log "=== OpenSearch Logs ==="
+    if [ -f /opt/opensearch/logs/opensearch.log ]; then
+        tail -50 /opt/opensearch/logs/opensearch.log | tee -a /opt/casescope/logs/install.log
+    else
+        log "No OpenSearch log file found"
+    fi
+    
+    log "=== System Resources ==="
+    free -h | tee -a /opt/casescope/logs/install.log
+    df -h /opt/opensearch | tee -a /opt/casescope/logs/install.log
+    
+    log "=== Java Version ==="
+    java -version 2>&1 | tee -a /opt/casescope/logs/install.log
+    
+    log "=== Network Ports ==="
+    netstat -tlnp | grep -E "(9200|9300)" | tee -a /opt/casescope/logs/install.log
+    
+    log_error "OpenSearch startup failed. Check the logs above for details."
+    exit 1
+else
+    log "OpenSearch started successfully!"
+fi
 
 # Create application files (will be created in next steps)
 log "Installation framework complete. Application files will be created next."
