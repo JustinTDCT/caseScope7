@@ -1,6 +1,6 @@
 {
-  "version": "7.0.70",
+  "version": "7.0.71",
   "release_date": "2025-09-24",
-  "description": "CRITICAL: Fix incompatible Sigma rules - get proper Chainsaw format rules (500 rejected)",
+  "description": "BREAKTHROUGH: Use --sigma with mapping file instead of --rule (based on working script)",
   "build": "production"
 }

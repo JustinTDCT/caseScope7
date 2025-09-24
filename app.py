@@ -998,7 +998,8 @@ def run_chainsaw_directly(case_file):
                 str(chainsaw_path),
                 'hunt', 
                 str(evtx_file_path),
-                '--rule', str(chainsaw_rules_path),
+                '--sigma', '/opt/casescope/rules/sigma-rules',
+                '--mapping', '/usr/local/bin/mappings/sigma-event-logs-all.yml',
                 '--output', temp_output,
                 '--json'
             ]
@@ -1192,7 +1193,8 @@ def apply_chainsaw_rules(events, case_file):
                 str(chainsaw_path),
                 'hunt', 
                 str(evtx_file_path),
-                '--rule', str(chainsaw_rules_path),
+                '--sigma', '/opt/casescope/rules/sigma-rules',
+                '--mapping', '/usr/local/bin/mappings/sigma-event-logs-all.yml',
                 '--output', temp_output,
                 '--json'
             ]
