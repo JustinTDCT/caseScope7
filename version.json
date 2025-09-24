@@ -1,6 +1,6 @@
 {
-  "version": "7.0.66",
+  "version": "7.0.68",
   "release_date": "2025-09-24",
-  "description": "DEBUG: Enhanced Chainsaw output analysis to find why only 1/150+ violations detected",
+  "description": "FIX: Investigate and repair Chainsaw rules installation - only 100 rules loaded vs expected 500+",
   "build": "production"
 }

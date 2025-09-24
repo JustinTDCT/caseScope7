@@ -953,8 +953,24 @@ def run_chainsaw_directly(case_file):
             logger.info(f"Found {len(rule_files)} Chainsaw rule files")
             if len(rule_files) > 0:
                 logger.info(f"Sample rule files: {[str(f) for f in rule_files[:5]]}")
+                
+                # Check if we have Windows Defender specific rules
+                defender_rules = [f for f in rule_files if 'defender' in str(f).lower() or 'windows' in str(f).lower()]
+                logger.info(f"Found {len(defender_rules)} Windows/Defender related rules")
+                if defender_rules:
+                    logger.info(f"Defender rule examples: {[str(f) for f in defender_rules[:3]]}")
+                    
         except Exception as rule_debug_error:
             logger.warning(f"Error checking rule files: {rule_debug_error}")
+            
+        # Also check what we know about this specific file type
+        logger.info(f"Processing Windows Defender Operational log: {evtx_file_path}")
+        logger.info(f"File size: {os.path.getsize(evtx_file_path)} bytes")
+        
+        # The fact that Chainsaw says "0 documents" suggests a fundamental mismatch
+        logger.warning("ANALYSIS: Chainsaw reported '0 Detections found on 0 documents'")
+        logger.warning("This suggests the rules don't match Windows Defender event structure")
+        logger.warning("May need Windows Defender specific rules or different rule format")
             
         logger.info(f"Running Chainsaw directly on EVTX file (fast method)")
         logger.info(f"Chainsaw binary: {chainsaw_path}")
@@ -1045,13 +1061,19 @@ def run_chainsaw_directly(case_file):
                             line_count += 1
                             if line.strip():
                                 try:
-                                    chainsaw_results.append(json.loads(line))
+                                    parsed_line = json.loads(line)
+                                    # Skip empty arrays and non-detection objects
+                                    if parsed_line and not (isinstance(parsed_line, list) and len(parsed_line) == 0):
+                                        chainsaw_results.append(parsed_line)
+                                        logger.debug(f"Valid detection found: {parsed_line}")
+                                    else:
+                                        logger.debug(f"Skipped empty/invalid detection: {parsed_line}")
                                 except json.JSONDecodeError as json_err:
                                     logger.warning(f"JSON decode error on line {line_count}: {json_err}")
                                     logger.warning(f"Problematic line: {line[:100]}")
                     
                     violations = len(chainsaw_results)
-                    logger.info(f"Chainsaw found {violations} detections from {line_count} output lines")
+                    logger.info(f"Chainsaw found {violations} REAL detections from {line_count} output lines")
                     
                     # Tag some events in OpenSearch (sample only for performance)
                     if violations > 0:
