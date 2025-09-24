@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope v7.0.0 Deployment Script
+# caseScope v7.0.86 Deployment Script
 # Deploys application files after installation
 # Copyright 2025 Justin Dube
 
@@ -38,7 +38,7 @@ if [ ! -f /opt/casescope/logs/install.log ]; then
     exit 1
 fi
 
-log "Starting caseScope v7.0.0 application deployment..."
+log "Starting caseScope v7.0.86 application deployment..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -772,8 +772,16 @@ WantedBy=multi-user.target
 EOF
 
 # Reload systemd and start services
-log "Starting services..."
+log "Enabling and starting services..."
 systemctl daemon-reload
+
+# Enable services to start on boot
+systemctl enable opensearch
+systemctl enable nginx
+systemctl enable casescope-web
+systemctl enable casescope-worker
+
+# Start services
 systemctl restart opensearch
 systemctl restart nginx
 systemctl start casescope-web
@@ -781,6 +789,27 @@ systemctl start casescope-worker
 
 # Wait a moment for services to start
 sleep 5
+
+# Copy utility scripts
+log "Installing utility scripts..."
+if [ -f "$SCRIPT_DIR/nightly_update.sh" ]; then
+    cp "$SCRIPT_DIR/nightly_update.sh" /opt/casescope/
+    chmod +x /opt/casescope/nightly_update.sh
+    chown casescope:casescope /opt/casescope/nightly_update.sh
+    
+    # Add cron job for nightly updates
+    (crontab -u casescope -l 2>/dev/null; echo "0 2 * * * /opt/casescope/nightly_update.sh >> /opt/casescope/logs/nightly_update.log 2>&1") | crontab -u casescope -
+    log "Nightly updates scheduled for 2:00 AM daily"
+else
+    log_warning "nightly_update.sh not found - nightly updates not configured"
+fi
+
+if [ -f "$SCRIPT_DIR/bugfixes.sh" ]; then
+    cp "$SCRIPT_DIR/bugfixes.sh" /opt/casescope/
+    chmod +x /opt/casescope/bugfixes.sh
+    chown casescope:casescope /opt/casescope/bugfixes.sh
+    log "Bug fixes script installed"
+fi
 
 # Check service status
 log "Checking service status..."
@@ -854,7 +883,7 @@ else
     log_error "Nginx is not running"
 fi
 
-log "caseScope v7.0.0 deployment completed successfully!"
+log "caseScope v7.0.86 deployment completed successfully!"
 echo ""
 echo -e "${GREEN}=== Deployment Summary ===${NC}"
 echo -e "${GREEN}Web Interface:${NC} http://$(hostname -I | awk '{print $1}')"
@@ -862,9 +891,26 @@ echo -e "${GREEN}Default Login:${NC} Admin / ChangeMe!"
 echo -e "${GREEN}Log Files:${NC} /opt/casescope/logs/"
 echo -e "${GREEN}Data Directory:${NC} /opt/casescope/data/"
 echo -e "${GREEN}Configuration:${NC} /opt/casescope/config/"
+echo -e "${GREEN}Utility Scripts:${NC} /opt/casescope/"
+echo ""
+echo -e "${GREEN}=== Features Included ===${NC}"
+echo "- Enhanced file processing with detailed status tracking"
+echo "- Robust error handling and data sanitization"
+echo "- Search functionality with JSON parsing protection"
+echo "- Automatic nightly updates for Sigma/Chainsaw rules"
+echo "- Complete OpenSearch index management"
+echo "- Improved UI with better alignment and status display"
 echo ""
 echo -e "${YELLOW}IMPORTANT:${NC} Change the default admin password immediately after first login!"
-echo -e "${YELLOW}NOTE:${NC} The system is now ready for use. Check service status with:"
-echo "  sudo systemctl status casescope-web"
-echo "  sudo systemctl status casescope-worker"
+echo -e "${YELLOW}NOTE:${NC} The system is now ready for use with enhanced stability and features."
+echo ""
+echo -e "${BLUE}Monitoring Commands:${NC}"
+echo "  sudo systemctl status casescope-web casescope-worker"
+echo "  tail -f /opt/casescope/logs/application.log"
+echo "  curl http://localhost:9200/_cluster/health"
+echo "  journalctl -u casescope-worker -f"
+echo ""
+echo -e "${BLUE}Available Scripts:${NC}"
+echo "  /opt/casescope/bugfixes.sh - Apply latest bug fixes"
+echo "  /opt/casescope/nightly_update.sh - Manual rule updates"
 

@@ -1,0 +1,49 @@
+# caseScope v7.0.86 Python Dependencies
+# Core Flask Framework
+Flask==3.0.0
+Werkzeug==3.0.1
+
+# Database and ORM
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.23
+
+# Authentication and Security
+Flask-Login==0.6.3
+Flask-WTF==1.2.1
+WTForms==3.1.1
+
+# OpenSearch Client
+opensearch-py==2.4.2
+
+# Redis Client
+redis==5.0.1
+
+# Celery for Background Tasks
+celery==5.3.4
+
+# EVTX Parsing
+pyevtx==20231118
+
+# XML Processing
+xmltodict==0.13.0
+
+# System Information
+psutil==5.9.6
+
+# YAML Processing (for Sigma rules)
+PyYAML==6.0.1
+
+# HTTP Requests
+requests==2.31.0
+
+# Date/Time Utilities
+python-dateutil==2.8.2
+
+# JSON Processing
+simplejson==3.19.2
+
+# File Handling
+pathlib2==2.3.7
+
+# Logging Utilities
+colorlog==6.8.0

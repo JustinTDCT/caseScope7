@@ -1,6 +1,6 @@
 {
-  "version": "7.0.86",
+  "version": "7.0.87",
   "release_date": "2025-09-24",
-  "description": "EMERGENCY: Complete search disable - redirect all search access to prevent JSON errors",
+  "description": "DEPLOY: Updated install/deploy scripts with requirements.txt and latest features",
   "build": "production"
 }
