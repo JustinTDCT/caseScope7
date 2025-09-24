@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.72"
+echo "caseScope Bug Fixes Script v7.0.73"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -18,8 +18,8 @@ log() {
 
 # Function to check if service exists and is running
 check_service() {
-    if systemctl list-units --type=service | grep -q "$1"; then
-        if systemctl is-active --quiet "$1"; then
+    if systemctl list-units --type=service 2>/dev/null | grep -q "$1" 2>/dev/null; then
+        if systemctl is-active --quiet "$1" 2>/dev/null; then
             log "✅ $1 is running"
             return 0
         else
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.72..."
+log "Updating version to 7.0.73..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.72 "FIX: Correct Chainsaw mapping file format - add required 'groups' field structure" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.73 "FIX: Bash script syntax - fix grep errors, add error suppression with 2>/dev/null" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -118,7 +118,7 @@ redis-cli flushdb 2>/dev/null || log "Redis flush failed, continuing..."
 log "Fixing Chainsaw binary location (noexec bypass)..."
 if [ -f "/opt/casescope/rules/chainsaw/chainsaw" ]; then
     log "Chainsaw binary found in directory, checking mount restrictions..."
-    mount | grep /opt || log "No specific /opt mount found"
+    mount | grep /opt 2>/dev/null || log "No specific /opt mount found"
     
     log "Moving Chainsaw binary to /usr/local/bin to bypass noexec..."
     cp /opt/casescope/rules/chainsaw/chainsaw /usr/local/bin/chainsaw
@@ -219,10 +219,10 @@ fi
 log "Cleaning up any invalid/incompatible rule files..."
 if [ -d "chainsaw-rules/rules" ]; then
     # Remove any rules that have Sigma-specific syntax that Chainsaw doesn't understand
-    find chainsaw-rules/rules -name "*.yml" -exec grep -l "selection:" {} \; | head -5 | xargs rm -f 2>/dev/null || true
-    find chainsaw-rules/rules -name "*.yml" -exec grep -l "condition:" {} \; | head -5 | xargs rm -f 2>/dev/null || true
+    find chainsaw-rules/rules -name "*.yml" -exec grep -l "selection:" {} \; 2>/dev/null | head -5 | while read -r file; do rm -f "$file"; done || true
+    find chainsaw-rules/rules -name "*.yml" -exec grep -l "condition:" {} \; 2>/dev/null | head -5 | while read -r file; do rm -f "$file"; done || true
     
-    final_count=$(find chainsaw-rules/rules -name "*.yml" | wc -l)
+    final_count=$(find chainsaw-rules/rules -name "*.yml" 2>/dev/null | wc -l)
     log "Final cleaned rule count: $final_count"
 fi
 
@@ -234,7 +234,7 @@ MAPPING_FILE="/usr/local/bin/mappings/sigma-event-logs-all.yml"
 log "Creating/fixing Chainsaw mapping file with proper format..."
 rm -f "$MAPPING_FILE"
 mkdir -p "$(dirname "$MAPPING_FILE")"
-    cat > "$MAPPING_FILE" << 'EOF'
+cat > "$MAPPING_FILE" << 'EOF'
 # Chainsaw mapping for Sigma rules - proper format with groups
 name: "Windows Event Log Mapping"
 author: "caseScope"
@@ -373,13 +373,13 @@ echo "  Worker Logs:   journalctl -u casescope-worker -f"
 echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
-echo "🔧 MAPPING FILE FORMAT FIX:"
-echo "  ✅ PROGRESS: 3,435 Sigma rules loaded successfully!"
-echo "  ✅ ISSUE: Mapping file missing required 'groups' field"
-echo "  ✅ FIXED: Created proper Chainsaw mapping file format"
-echo "  ✅ STRUCTURE: Added groups with timestamp and data mappings"
-echo "  ✅ READY: Chainsaw should now process rules with mapping!"
-echo "  ✅ EXPECTS: 150+ violations with fixed mapping structure"
+echo "🔧 BASH SCRIPT SYNTAX FIXES:"
+echo "  ✅ FIXED: grep error suppression with 2>/dev/null"
+echo "  ✅ FIXED: systemctl service check grep errors"
+echo "  ✅ FIXED: mount command grep error handling"
+echo "  ✅ FIXED: find/grep/xargs pipeline to avoid empty input errors"
+echo "  ✅ FIXED: Indentation issue in mapping file creation"
+echo "  ✅ READY: Script should run without grep/bash errors"
 echo "  ✅ FIXED: Single file re-run rules now actually works (requeues processing)"
 echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
@@ -438,4 +438,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.72 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.73 deployment complete!"

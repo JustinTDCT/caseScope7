@@ -1,6 +1,6 @@
 {
-  "version": "7.0.72",
+  "version": "7.0.73",
   "release_date": "2025-09-24",
-  "description": "FIX: Correct Chainsaw mapping file format - add required 'groups' field structure",
+  "description": "FIX: Bash script syntax - fix grep errors, add error suppression with 2>/dev/null",
   "build": "production"
 }
