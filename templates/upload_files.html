@@ -837,6 +837,18 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         console.log('Form submit handler attached');
     }
+    
+    // Auto-refresh when on upload page to show processing updates
+    if (window.location.pathname.includes('/upload_files')) {
+        setInterval(function() {
+            // Check if there are any processing files and refresh if needed
+            const processingElements = document.querySelectorAll('.status-processing, .status-pending');
+            if (processingElements.length > 0) {
+                console.log('Refreshing page to show processing updates...');
+                window.location.reload();
+            }
+        }, 10000); // Refresh every 10 seconds if files are processing
+    }
 });
 
 // Expose functions globally

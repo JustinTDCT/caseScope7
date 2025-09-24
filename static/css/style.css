@@ -7,17 +7,48 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  z-index: 10;
 }
 
 .file-actions .dropdown {
   position: relative;
 }
 
+.file-actions .dropdown-btn {
+  background: var(--primary-color);
+  border: none;
+  color: white;
+  padding: 0.5rem;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  transition: background-color 0.2s;
+}
+
+.file-actions .dropdown-btn:hover {
+  background: var(--primary-hover);
+}
+
 .file-actions .dropdown-content {
+  position: absolute;
   right: 0;
   left: auto;
   min-width: 180px;
   top: calc(100% + 0.25rem);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  display: none;
+}
+
+.file-actions .dropdown.active .dropdown-content {
+  display: block;
 }
 
 .action-btn {

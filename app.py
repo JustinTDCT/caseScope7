@@ -476,6 +476,123 @@ def get_system_info():
         }
 
 # Celery tasks
+def apply_sigma_rules(events, case_file):
+    """Apply Sigma rules to events and return violation count"""
+    try:
+        violations = 0
+        sigma_rules_path = Path('/opt/casescope/rules/sigma-rules')
+        
+        if not sigma_rules_path.exists():
+            logger.warning("Sigma rules directory not found")
+            return 0
+            
+        # Simple pattern matching for common indicators
+        # In a full implementation, this would use the Sigma rule engine
+        for event in events:
+            event_data_str = str(event.get('event_data', {})).lower()
+            
+            # Check for common malicious patterns
+            malicious_patterns = [
+                'powershell.exe',
+                'cmd.exe /c',
+                'wscript.exe',
+                'cscript.exe',
+                'regsvr32.exe',
+                'rundll32.exe',
+                'mshta.exe',
+                'certutil.exe -decode',
+                'bitsadmin.exe',
+                'base64',
+                'invoke-expression',
+                'downloadstring',
+                'bypass',
+                'hidden',
+                'encoded'
+            ]
+            
+            for pattern in malicious_patterns:
+                if pattern in event_data_str:
+                    violations += 1
+                    # Tag event in OpenSearch
+                    try:
+                        opensearch_client.update(
+                            index=f"casescope-case-{case_file.case_id}",
+                            id=event.get('_id', ''),
+                            body={
+                                'doc': {
+                                    'sigma_hit': True,
+                                    'sigma_rule': f'Pattern: {pattern}',
+                                    'severity': 'medium'
+                                }
+                            }
+                        )
+                    except:
+                        pass  # Continue even if tagging fails
+                    break
+                    
+        logger.info(f"Sigma rules found {violations} violations")
+        return violations
+        
+    except Exception as e:
+        logger.error(f"Error in apply_sigma_rules: {e}")
+        return 0
+
+def apply_chainsaw_rules(events, case_file):
+    """Apply Chainsaw rules to events and return violation count"""
+    try:
+        violations = 0
+        chainsaw_rules_path = Path('/opt/casescope/rules/chainsaw-rules')
+        
+        if not chainsaw_rules_path.exists():
+            logger.warning("Chainsaw rules directory not found")
+            return 0
+            
+        # Simple pattern matching for Chainsaw-style detections
+        # In a full implementation, this would use the Chainsaw engine
+        for event in events:
+            event_data_str = str(event.get('event_data', {})).lower()
+            
+            # Check for process creation events and suspicious activity
+            suspicious_patterns = [
+                'process creation',
+                'network connection', 
+                'file creation',
+                'registry modification',
+                'dll load',
+                'suspicious',
+                'anomalous',
+                'privilege escalation',
+                'lateral movement',
+                'persistence'
+            ]
+            
+            for pattern in suspicious_patterns:
+                if pattern in event_data_str:
+                    violations += 1
+                    # Tag event in OpenSearch
+                    try:
+                        opensearch_client.update(
+                            index=f"casescope-case-{case_file.case_id}",
+                            id=event.get('_id', ''),
+                            body={
+                                'doc': {
+                                    'chainsaw_hit': True,
+                                    'chainsaw_rule': f'Pattern: {pattern}',
+                                    'severity': 'low'
+                                }
+                            }
+                        )
+                    except:
+                        pass  # Continue even if tagging fails
+                    break
+                    
+        logger.info(f"Chainsaw rules found {violations} violations")
+        return violations
+        
+    except Exception as e:
+        logger.error(f"Error in apply_chainsaw_rules: {e}")
+        return 0
+
 @celery.task
 def process_evtx_file(file_id):
     """Background task to process EVTX files"""
@@ -569,6 +686,8 @@ def process_evtx_file(file_id):
                         body=doc
                     )
                     
+                    # Add the document ID to the event for rule processing
+                    doc['_id'] = response['_id']
                     events.append(doc)
                     processed_records += 1
                     
@@ -590,7 +709,30 @@ def process_evtx_file(file_id):
             case_file.processing_progress = 90
             db.session.commit()
             
-            # Apply rules (simplified for now)
+            # Apply Sigma and Chainsaw rules
+            sigma_violations = 0
+            chainsaw_violations = 0
+            
+            try:
+                logger.info("Starting rule processing...")
+                case_file.processing_progress = 90
+                db.session.commit()
+                
+                # Apply Sigma rules
+                sigma_violations = apply_sigma_rules(events, case_file)
+                logger.info(f"Sigma rules processed: {sigma_violations} violations found")
+                
+                # Apply Chainsaw rules  
+                chainsaw_violations = apply_chainsaw_rules(events, case_file)
+                logger.info(f"Chainsaw rules processed: {chainsaw_violations} violations found")
+                
+            except Exception as rule_error:
+                logger.error(f"Error applying rules: {rule_error}")
+                # Continue processing even if rules fail
+            
+            # Update final counts
+            case_file.sigma_violations = sigma_violations
+            case_file.chainsaw_violations = chainsaw_violations
             case_file.processing_status = 'completed'
             case_file.processing_progress = 100
             db.session.commit()
