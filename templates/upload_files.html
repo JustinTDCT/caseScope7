@@ -614,11 +614,41 @@ window.handleFileSelection = function(files) {
         updateFileList();
         updateUploadButton();
         debugLog(`Selected ${validFiles.length} valid files`);
+        
+        // Set files on the actual form input for submission
+        setFilesOnFormInput();
     }
+}
 
-    // Clear the file input
+function setFilesOnFormInput() {
     const fileInput = document.getElementById('file-input');
-    fileInput.value = '';
+    
+    if (selectedFiles.length === 0) {
+        fileInput.value = '';
+        debugLog('Cleared form input - no files selected');
+        return;
+    }
+    
+    try {
+        // Create a new DataTransfer object to set files
+        const dataTransfer = new DataTransfer();
+        
+        // Add all selected files to the DataTransfer
+        selectedFiles.forEach(file => {
+            dataTransfer.items.add(file);
+        });
+        
+        // Set the files on the form input
+        fileInput.files = dataTransfer.files;
+        
+        debugLog(`Set ${fileInput.files.length} files on form input for submission`);
+        console.log('Form input files:', Array.from(fileInput.files).map(f => f.name));
+        
+    } catch (error) {
+        console.error('Error setting files on form input:', error);
+        // Fallback: log what we tried to set
+        debugLog(`Failed to set files on form input. Selected files: ${selectedFiles.map(f => f.name).join(', ')}`);
+    }
 }
 
 function updateFileList() {
@@ -660,6 +690,7 @@ function removeFile(index) {
     selectedFiles.splice(index, 1);
     updateFileList();
     updateUploadButton();
+    setFilesOnFormInput();  // Update form input after removing file
     debugLog(`Removed file at index ${index}`);
 }
 
@@ -667,6 +698,7 @@ function clearFiles() {
     selectedFiles = [];
     updateFileList();
     updateUploadButton();
+    setFilesOnFormInput();  // Update form input after clearing files
     debugLog('Cleared all selected files');
 }
 
@@ -791,6 +823,21 @@ function simulateProgress(index) {
         progressPercent.textContent = Math.round(progress) + '%';
     }, 200);
 }
+
+// Prevent default form submission and use custom upload
+document.addEventListener('DOMContentLoaded', function() {
+    const uploadForm = document.getElementById('upload-form');
+    if (uploadForm) {
+        uploadForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            console.log('Form submit intercepted - calling startUpload()');
+            console.log('Selected files for upload:', selectedFiles.length);
+            startUpload();
+            return false;
+        });
+        console.log('Form submit handler attached');
+    }
+});
 
 // Expose functions globally
 window.removeFile = removeFile;

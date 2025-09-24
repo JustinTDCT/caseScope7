@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.41"
+echo "caseScope Bug Fixes Script v7.0.42"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.41..."
+log "Updating version to 7.0.42..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.41 "Comprehensive upload fix: move file input outside upload area and eliminate event conflicts" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.42 "Fix upload form submission: connect files to form input and use custom upload handler" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -207,6 +207,9 @@ echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
 echo "🎯 MAIN FIXES APPLIED:"
+echo "  ✅ Fixed upload form submission using custom upload handler"
+echo "  ✅ Connected selectedFiles array to form input element"  
+echo "  ✅ Prevented default form submission in favor of fetch API"
 echo "  ✅ Moved file input outside upload area (eliminates conflicts)"
 echo "  ✅ Element cloning to remove duplicate event handlers"
 echo "  ✅ Comprehensive debugging for file dialog issues"
@@ -235,4 +238,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.41 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.42 deployment complete!"

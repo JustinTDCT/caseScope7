@@ -1,6 +1,6 @@
 {
-  "version": "7.0.41",
+  "version": "7.0.42",
   "release_date": "2025-09-24",
-  "description": "Comprehensive upload fix: move file input outside upload area and eliminate event conflicts",
+  "description": "Fix upload form submission: connect files to form input and use custom upload handler",
   "build": "production"
 }
