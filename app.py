@@ -240,10 +240,25 @@ def require_role(role):
 def get_system_info():
     """Get system information for dashboard"""
     try:
-        # OS info
+        # OS info - handle missing lsb_release command
+        try:
+            os_version = subprocess.check_output(['lsb_release', '-r', '-s'], text=True).strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # Fallback if lsb_release is not available
+            try:
+                with open('/etc/os-release') as f:
+                    for line in f:
+                        if line.startswith('VERSION_ID='):
+                            os_version = line.split('=')[1].strip().strip('"')
+                            break
+                    else:
+                        os_version = 'Unknown'
+            except:
+                os_version = 'Unknown'
+        
         os_info = {
             'name': 'Ubuntu',
-            'version': subprocess.check_output(['lsb_release', '-r', '-s'], text=True).strip()
+            'version': os_version
         }
         
         # System resources
@@ -308,7 +323,39 @@ def get_system_info():
         }
     except Exception as e:
         logger.error(f"Error getting system info: {e}")
-        return {}
+        # Return a default structure to prevent template errors
+        return {
+            'os': {
+                'name': 'Unknown',
+                'version': 'Unknown'
+            },
+            'memory': {
+                'total': 0,
+                'used': 0,
+                'percent': 0
+            },
+            'disk': {
+                'total': 0,
+                'used': 0,
+                'percent': 0
+            },
+            'services': {
+                'opensearch': False,
+                'redis-server': False,
+                'nginx': False
+            },
+            'rules': {
+                'sigma_count': 0,
+                'sigma_updated': None,
+                'chainsaw_count': 0,
+                'chainsaw_updated': None
+            },
+            'statistics': {
+                'case_count': 0,
+                'file_count': 0,
+                'total_size': 0
+            }
+        }
 
 # Celery tasks
 @celery.task
