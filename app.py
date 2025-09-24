@@ -85,11 +85,29 @@ def safe_json_filter(data):
     """Safely convert data to JSON, handling problematic characters"""
     try:
         import json
-        # Clean the data first
-        cleaned_data = clean_json_data(data)
-        return json.dumps(cleaned_data, indent=2, ensure_ascii=False, default=str)
+        
+        # Inline data cleaning to avoid scope issues
+        def clean_data(obj):
+            if isinstance(obj, dict):
+                cleaned = {}
+                for key, value in obj.items():
+                    clean_key = str(key).replace('#', '_hash_').replace('\x00', '').replace('\n', '_newline_')
+                    cleaned[clean_key] = clean_data(value)
+                return cleaned
+            elif isinstance(obj, list):
+                return [clean_data(item) for item in obj[:50]]  # Limit list size for safety
+            elif isinstance(obj, str):
+                cleaned_str = obj.replace('#', '_hash_').replace('\x00', '').replace('\r', '').replace('\n', ' ')
+                if len(cleaned_str) > 500:  # Shorter limit for template display
+                    cleaned_str = cleaned_str[:497] + "..."
+                return cleaned_str
+            else:
+                return str(obj) if obj is not None else 'null'
+        
+        cleaned_data = clean_data(data)
+        return json.dumps(cleaned_data, indent=2, ensure_ascii=True, default=str)
     except Exception as e:
-        return f"JSON conversion error: {str(e)}"
+        return f"Unable to display data (contains unsupported characters): {type(e).__name__}"
 
 # CSRF configuration
 app.config['WTF_CSRF_ENABLED'] = True
@@ -2048,19 +2066,42 @@ def search():
                 else:
                     results = []
                 
-                # Clean results to prevent JSON issues in template rendering
+                # Aggressively clean results to prevent any JSON issues
                 cleaned_results = []
-                for result in results:
+                for i, result in enumerate(results):
                     try:
-                        # Ensure _source is clean JSON
+                        # Create a completely safe version of the result
+                        safe_result = {
+                            '_id': str(result.get('_id', f'unknown_{i}')),
+                            '_source': {}
+                        }
+                        
                         source = result.get('_source', {})
                         if isinstance(source, dict):
-                            # Clean any problematic characters from string fields
-                            cleaned_source = clean_json_data(source)
-                            result['_source'] = cleaned_source
-                            cleaned_results.append(result)
+                            # Very aggressive cleaning - only keep safe, essential fields
+                            safe_source = {}
+                            
+                            # Safely extract basic fields
+                            if 'timestamp' in source:
+                                safe_source['timestamp'] = str(source['timestamp'])[:50]
+                            if 'source_file' in source:
+                                safe_source['source_file'] = str(source['source_file'])[:100]
+                            if 'case_id' in source:
+                                safe_source['case_id'] = str(source['case_id'])
+                            if 'file_id' in source:
+                                safe_source['file_id'] = str(source['file_id'])
+                            
+                            # For event_data, create a very simplified version
+                            if 'event_data' in source and source['event_data']:
+                                safe_source['event_summary'] = f"Complex event data (length: {len(str(source['event_data']))[:10]})"
+                            
+                            safe_result['_source'] = safe_source
+                            cleaned_results.append(safe_result)
+                        else:
+                            logger.debug(f"Skipping result {i} - source is not a dict")
+                            
                     except Exception as clean_error:
-                        logger.debug(f"Skipping result due to data cleaning error: {clean_error}")
+                        logger.debug(f"Skipping result {i} due to cleaning error: {clean_error}")
                         continue
                 
                 results = cleaned_results

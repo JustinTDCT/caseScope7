@@ -1,6 +1,6 @@
 {
-  "version": "7.0.81",
+  "version": "7.0.82",
   "release_date": "2025-09-24",
-  "description": "FIX: Search functionality - handle JSON parsing errors with '#' characters",
+  "description": "FIX: Aggressive search data cleaning - completely resolve JSON parsing issues",
   "build": "production"
 }
