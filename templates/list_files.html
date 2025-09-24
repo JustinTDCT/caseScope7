@@ -160,46 +160,32 @@
                         </div>
 
                         <div class="file-actions">
-                            <div class="dropdown" id="dropdown-{{ file.id }}">
-                                <button class="dropdown-btn" onclick="toggleDropdownDirect('dropdown-{{ file.id }}')">
-                                    <i class="fas fa-ellipsis-v"></i>
-                                </button>
-                                <div class="dropdown-content">
-                                    {% if file.processing_status == 'completed' and current_user.can_write() %}
-                                    <a href="#" onclick="reindexFile({{ file.id }})" class="dropdown-item">
-                                        <i class="fas fa-database"></i>
-                                        Re-index File
-                                    </a>
-                                    <a href="#" onclick="rerunRulesFile({{ file.id }})" class="dropdown-item">
-                                        <i class="fas fa-sync"></i>
-                                        Re-run Rules
-                                    </a>
-                                    {% endif %}
-                                    {% if file.processing_status == 'error' and current_user.can_write() %}
-                                    <a href="#" onclick="reprocessFile({{ file.id }})" class="dropdown-item">
-                                        <i class="fas fa-redo"></i>
-                                        Reprocess File
-                                    </a>
-                                    {% endif %}
-                                    {% if file.sigma_violations > 0 or file.chainsaw_violations > 0 %}
-                                    <a href="{{ url_for('search', rule_violations=true, file_id=file.id) }}" class="dropdown-item">
-                                        <i class="fas fa-search"></i>
-                                        View Violations
-                                    </a>
-                                    {% endif %}
-                                    <a href="#" onclick="showFileDetails({{ file.id }})" class="dropdown-item">
-                                        <i class="fas fa-info"></i>
-                                        File Details
-                                    </a>
-                                    {% if current_user.can_admin() %}
-                                    <div class="dropdown-divider"></div>
-                                    <a href="#" onclick="deleteFile({{ file.id }})" class="dropdown-item danger">
-                                        <i class="fas fa-trash"></i>
-                                        Delete File
-                                    </a>
-                                    {% endif %}
-                                </div>
-                            </div>
+                            {% if file.processing_status == 'completed' and current_user.can_write() %}
+                            <button class="action-btn" onclick="rerunRulesFile({{ file.id }})" title="Re-run Rules">
+                                <i class="fas fa-sync"></i>
+                            </button>
+                            <button class="action-btn" onclick="reindexFile({{ file.id }})" title="Re-index File">
+                                <i class="fas fa-database"></i>
+                            </button>
+                            {% endif %}
+                            {% if file.processing_status == 'error' and current_user.can_write() %}
+                            <button class="action-btn" onclick="reprocessFile({{ file.id }})" title="Reprocess File">
+                                <i class="fas fa-redo"></i>
+                            </button>
+                            {% endif %}
+                            {% if file.sigma_violations > 0 or file.chainsaw_violations > 0 %}
+                            <a href="{{ url_for('search', rule_violations=true, file_id=file.id) }}" class="action-btn" title="View Violations">
+                                <i class="fas fa-search"></i>
+                            </a>
+                            {% endif %}
+                            <button class="action-btn" onclick="showFileDetails({{ file.id }})" title="File Details">
+                                <i class="fas fa-info"></i>
+                            </button>
+                            {% if current_user.can_admin() %}
+                            <button class="action-btn action-btn-danger" onclick="deleteFile({{ file.id }})" title="Delete File">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            {% endif %}
                         </div>
                     </div>
 
@@ -667,7 +653,6 @@
 let refreshInterval;
 
 document.addEventListener('DOMContentLoaded', function() {
-    initializeFileList();
     startProgressMonitoring();
 });
 

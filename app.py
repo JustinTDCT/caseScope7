@@ -486,104 +486,44 @@ def apply_sigma_rules(events, case_file):
             logger.warning("Sigma rules directory not found")
             return 0
             
-        # Simple pattern matching for common indicators
-        # In a full implementation, this would use the Sigma rule engine
-        logger.info(f"Analyzing {len(events)} events for Sigma patterns")
+        logger.info(f"Analyzing {len(events)} events with Sigma rules")
+        
+        # Load Sigma rules (basic implementation)
+        # In a full implementation, this would use the sigmac compiler
+        sigma_rules = load_sigma_rules(sigma_rules_path)
+        logger.info(f"Loaded {len(sigma_rules)} Sigma rules")
         
         for event in events:
-            # Convert entire event to string for pattern matching
-            event_str = str(event).lower()
-            
-            # Log first few events for debugging
-            if violations < 3:
-                logger.info(f"Checking event sample: {event_str[:300]}...")
-            
-            # Check for common malicious patterns (broader matching)
-            # Look for patterns that would indicate suspicious activity
-            malicious_patterns = [
-                # Process execution patterns
-                'powershell',
-                'cmd.exe',
-                'wscript',
-                'cscript',
-                'regsvr32',
-                'rundll32',
-                'mshta',
-                'certutil',
-                'bitsadmin',
-                # Command line indicators
-                'base64',
-                'invoke-expression',
-                'iex',
-                'downloadstring',
-                'bypass',
-                'hidden',
-                'encoded',
-                'executionpolicy',
-                'noprofile',
-                '-e ',
-                '-enc',
-                'frombase64string',
-                'system.convert',
-                'reflection.assembly',
-                'net.webclient',
-                # Suspicious file operations
-                'temp',
-                'tmp',
-                'appdata',
-                'programdata',
-                # Network activity
-                'http://',
-                'https://',
-                'ftp://',
-                # Registry modifications
-                'registry',
-                'hklm',
-                'hkcu',
-                'run',
-                'startup',
-                # Remote desktop / lateral movement
-                'remote',
-                'rdp',
-                'terminal',
-                'session',
-                'logon',
-                'authentication',
-                # Windows Defender alerts (these should definitely trigger)
-                'threat',
-                'malware',
-                'virus',
-                'suspicious',
-                'blocked',
-                'quarantine',
-                'defender',
-                'windows-windows defender',
-                'security',
-                'antimalware',
-                'scan',
-                'detection'
-            ]
-            
-            for pattern in malicious_patterns:
-                if pattern in event_str:
-                    violations += 1
-                    logger.info(f"Sigma violation found: '{pattern}' in event")
-                    # Tag event in OpenSearch
-                    try:
-                        opensearch_client.update(
-                            index=f"casescope-case-{case_file.case_id}",
-                            id=event.get('_id', ''),
-                            body={
-                                'doc': {
-                                    'sigma_hit': True,
-                                    'sigma_rule': f'Pattern: {pattern}',
-                                    'severity': 'medium'
+            try:
+                # Convert event to a format suitable for Sigma analysis
+                event_data = prepare_event_for_sigma(event)
+                
+                # Apply each Sigma rule
+                for rule_name, rule_patterns in sigma_rules.items():
+                    if check_sigma_rule_match(event_data, rule_patterns):
+                        violations += 1
+                        logger.info(f"Sigma rule triggered: {rule_name}")
+                        
+                        # Tag event in OpenSearch
+                        try:
+                            opensearch_client.update(
+                                index=f"casescope-case-{case_file.case_id}",
+                                id=event.get('_id', ''),
+                                body={
+                                    'doc': {
+                                        'sigma_hit': True,
+                                        'sigma_rule': rule_name,
+                                        'severity': 'high'
+                                    }
                                 }
-                            }
-                        )
-                    except:
-                        pass  # Continue even if tagging fails
-                    break
+                            )
+                        except:
+                            pass  # Continue even if tagging fails
+                        break  # Only count one rule per event
+                        
+            except Exception as e:
+                logger.error(f"Error processing event for Sigma: {e}")
+                continue
                     
         logger.info(f"Sigma rules found {violations} violations")
         return violations
@@ -591,6 +531,100 @@ def apply_sigma_rules(events, case_file):
     except Exception as e:
         logger.error(f"Error in apply_sigma_rules: {e}")
         return 0
+
+def load_sigma_rules(sigma_path):
+    """Load and parse Sigma rules from YAML files"""
+    rules = {}
+    try:
+        # For now, implement a basic pattern-based system
+        # This is a simplified version - real Sigma would parse YAML and compile conditions
+        rules = {
+            "Suspicious PowerShell": {
+                "process": ["powershell.exe"],
+                "command_line": ["bypass", "hidden", "encoded", "downloadstring", "invoke-expression"]
+            },
+            "Living Off The Land Binaries": {
+                "process": ["regsvr32.exe", "rundll32.exe", "mshta.exe", "certutil.exe", "bitsadmin.exe"]
+            },
+            "Credential Access": {
+                "command_line": ["sekurlsa", "logonpasswords", "mimikatz", "procdump", "lsass"]
+            },
+            "Persistence Registry": {
+                "registry": ["\\run\\", "\\runonce\\", "\\startup\\"]
+            },
+            "Network Activity": {
+                "network": ["http://", "https://", "ftp://"],
+                "command_line": ["wget", "curl", "invoke-webrequest"]
+            },
+            "Windows Defender Detection": {
+                "provider": ["windows defender", "antimalware"],
+                "keywords": ["threat", "malware", "virus", "suspicious", "blocked", "quarantine"]
+            }
+        }
+        
+        logger.info(f"Loaded {len(rules)} basic Sigma-style rules")
+        return rules
+        
+    except Exception as e:
+        logger.error(f"Error loading Sigma rules: {e}")
+        return {}
+
+def prepare_event_for_sigma(event):
+    """Prepare event data for Sigma rule matching"""
+    try:
+        event_str = str(event).lower()
+        
+        # Extract key fields for Sigma analysis
+        prepared = {
+            "full_text": event_str,
+            "process": "",
+            "command_line": "",
+            "registry": "",
+            "network": "",
+            "provider": "",
+            "keywords": event_str
+        }
+        
+        # Try to extract specific fields if they exist in the event structure
+        if 'event_data' in event:
+            event_data = event.get('event_data', {})
+            if isinstance(event_data, dict):
+                # Look for common Windows event fields
+                for key, value in event_data.items():
+                    if isinstance(value, str):
+                        value_lower = value.lower()
+                        if 'process' in key.lower() or 'image' in key.lower():
+                            prepared["process"] += " " + value_lower
+                        elif 'command' in key.lower() or 'params' in key.lower():
+                            prepared["command_line"] += " " + value_lower
+                        elif 'registry' in key.lower() or 'key' in key.lower():
+                            prepared["registry"] += " " + value_lower
+                        elif 'network' in key.lower() or 'url' in key.lower():
+                            prepared["network"] += " " + value_lower
+                        elif 'provider' in key.lower() or 'source' in key.lower():
+                            prepared["provider"] += " " + value_lower
+        
+        return prepared
+        
+    except Exception as e:
+        logger.error(f"Error preparing event for Sigma: {e}")
+        return {"full_text": str(event).lower(), "process": "", "command_line": "", "registry": "", "network": "", "provider": "", "keywords": str(event).lower()}
+
+def check_sigma_rule_match(event_data, rule_patterns):
+    """Check if event data matches Sigma rule patterns"""
+    try:
+        # For each category in the rule, check if any pattern matches
+        for category, patterns in rule_patterns.items():
+            if category in event_data:
+                event_field = event_data[category]
+                for pattern in patterns:
+                    if pattern.lower() in event_field:
+                        return True
+        return False
+        
+    except Exception as e:
+        logger.error(f"Error checking Sigma rule match: {e}")
+        return False
 
 def apply_chainsaw_rules(events, case_file):
     """Apply Chainsaw rules to events and return violation count"""
@@ -1045,7 +1079,7 @@ def upload_files():
                 
                 if existing_file:
                     logger.warning(f"Duplicate file detected: {original_filename}")
-                    flash(f'File "{original_filename}" already exists in this case. Skipping upload.', 'warning')
+                    flash(f'⚠️ Duplicate: File "{original_filename}" already exists in this case. Skipped upload.', 'warning')
                     continue
                 
                 file_hash = hashlib.sha256(file.read()).hexdigest()

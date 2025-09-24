@@ -1,89 +1,7 @@
 /* caseScope Stylesheet */
 /* Copyright 2025 Justin Dube */
 
-/* File actions dropdown (3-dot menu) fix */
-.file-actions {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 50px;
-  min-height: 40px;
-  z-index: 10;
-}
-
-.file-actions .dropdown {
-  position: relative;
-}
-
-.file-actions .dropdown-btn {
-  background: #2a3441;
-  border: none;
-  color: #9ca3af;
-  padding: 10px;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  transition: all 0.2s;
-  font-size: 16px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  position: relative;
-}
-
-.file-actions .dropdown-btn:hover {
-  background: #374151;
-  color: white;
-  transform: scale(1.05);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-}
-
-.file-actions .dropdown-content {
-  position: absolute;
-  right: 0;
-  left: auto;
-  min-width: 180px;
-  top: calc(100% + 8px);
-  background: #1f2937;
-  border: 1px solid #374151;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  z-index: 1000;
-  display: none;
-  overflow: hidden;
-}
-
-.file-actions .dropdown-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  color: #d1d5db;
-  text-decoration: none;
-  transition: background-color 0.2s;
-  border: none;
-  background: none;
-  width: 100%;
-  text-align: left;
-  font-size: 14px;
-}
-
-.file-actions .dropdown-item:hover {
-  background: #374151;
-  color: white;
-}
-
-.file-actions .dropdown-item i {
-  width: 16px;
-  text-align: center;
-}
-
-.file-actions .dropdown.active .dropdown-content {
-  display: block;
-}
+/* File actions using simple buttons - much more reliable */
 
 /* File item layout - simplified and reliable */
 .file-item {
@@ -118,8 +36,9 @@
 
 .file-item .file-actions {
   flex-shrink: 0;
-  width: 40px;
   display: flex;
+  gap: 0.5rem;
+  align-items: center;
   justify-content: flex-end;
   margin-left: auto;
 }
@@ -1095,6 +1014,43 @@ body {
 }
 
 /* file-actions styling moved to top of file */
+
+/* Action button styling for file operations */
+.action-btn {
+  background: #2a3441;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  font-size: 14px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.action-btn:hover {
+  background: #374151;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  text-decoration: none;
+}
+
+.action-btn-danger {
+  background: #dc2626;
+  color: white;
+}
+
+.action-btn-danger:hover {
+  background: #b91c1c;
+  color: white;
+}
 
 /* Button consistency fixes */
 .card-actions {
