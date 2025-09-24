@@ -1,5 +1,5 @@
 /**
- * caseScope v7.0.26 - Main JavaScript
+ * caseScope v7.0.27 - Main JavaScript
  * Copyright 2025 Justin Dube
  */
 
@@ -18,6 +18,32 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeDebugConsole();
     initializeProgressBars();
 });
+
+// Reinitialize upload system on page changes
+window.addEventListener('beforeunload', function() {
+    if (observer) {
+        observer.disconnect();
+        observer = null;
+    }
+});
+
+// Reset upload initialization on navigation
+window.addEventListener('popstate', function() {
+    console.log('Page navigation detected via popstate, resetting upload system');
+    uploadInitialized = false;
+    globalClickBlocked = false;
+    setTimeout(() => {
+        initializeFileUpload();
+    }, 100);
+});
+
+// Continuous monitoring for upload pages
+setInterval(() => {
+    if ((document.location.pathname.includes('upload') || document.querySelector('.upload-area')) && !uploadInitialized) {
+        console.log('Periodic upload check triggered - found upload elements');
+        initializeFileUpload();
+    }
+}, 2000);
 
 // Theme Management
 function initializeTheme() {
@@ -111,44 +137,73 @@ function closeAllDropdowns() {
     });
 }
 
-// File Upload - v7.0.26 Final fix
+// File Upload - v7.0.27 Universal observer approach
 let uploadInitialized = false;
 let globalClickBlocked = false;
+let observer = null;
 
 function initializeFileUpload() {
-    console.log('Attempting to initialize file upload v7.0.26');
-    console.log('Current pathname:', document.location.pathname);
+    console.log('Starting universal upload initialization v7.0.27');
     
     if (uploadInitialized) {
         console.log('Upload already initialized');
         return;
     }
     
-    // Always try to find upload elements regardless of path
-    const waitForElements = () => {
-        const uploadArea = document.querySelector('.upload-area');
-        const fileInput = document.querySelector('#file-input');
-        
-        console.log('Looking for upload elements...');
-        console.log('Upload area found:', !!uploadArea);
-        console.log('File input found:', !!fileInput);
-        
-        if (!uploadArea || !fileInput) {
-            // Only retry if we're likely on an upload page
-            if (document.querySelector('.upload-form') || document.location.pathname.includes('upload_files')) {
-                console.log('Upload form detected, retrying element search...');
-                setTimeout(waitForElements, 200);
-            } else {
-                console.log('No upload form found, stopping search');
-            }
-            return;
-        }
-        
-        console.log('Upload elements found, initializing...');
-        initializeUploadHandlers(uploadArea, fileInput);
-    };
+    // Try immediate initialization
+    tryInitializeUpload();
     
-    waitForElements();
+    // Set up a MutationObserver to watch for upload elements
+    if (!observer) {
+        observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                    // Check if any added nodes contain upload elements
+                    for (let node of mutation.addedNodes) {
+                        if (node.nodeType === Node.ELEMENT_NODE) {
+                            if (node.querySelector && (node.querySelector('.upload-area') || node.classList.contains('upload-area'))) {
+                                console.log('Upload elements detected via observer');
+                                tryInitializeUpload();
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        });
+        
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        
+        console.log('Upload observer started');
+    }
+}
+
+function tryInitializeUpload() {
+    if (uploadInitialized) return;
+    
+    const uploadArea = document.querySelector('.upload-area');
+    const fileInput = document.querySelector('#file-input');
+    
+    console.log('Checking for upload elements:', {
+        uploadArea: !!uploadArea,
+        fileInput: !!fileInput,
+        pathname: document.location.pathname
+    });
+    
+    if (uploadArea && fileInput) {
+        console.log('Upload elements found, initializing handlers...');
+        initializeUploadHandlers(uploadArea, fileInput);
+        
+        // Stop observing once initialized
+        if (observer) {
+            observer.disconnect();
+            observer = null;
+            console.log('Upload observer stopped');
+        }
+    }
 }
 
 function initializeUploadHandlers(uploadArea, fileInput) {

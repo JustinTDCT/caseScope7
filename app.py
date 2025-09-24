@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-caseScope v7.0.26 - Main Application
+caseScope v7.0.27 - Main Application
 Copyright 2025 Justin Dube
 mailto:casescope@thedubes.net
 """
