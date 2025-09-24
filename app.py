@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-caseScope v7.0.23 - Main Application
+caseScope v7.0.24 - Main Application
 Copyright 2025 Justin Dube
 mailto:casescope@thedubes.net
 """
@@ -180,7 +180,6 @@ class UserForm(FlaskForm):
 
 class FileUploadForm(FlaskForm):
     files = FileField('EVTX Files', validators=[
-        FileRequired(),
         FileAllowed(['evtx'], 'Only EVTX files are allowed!')
     ], render_kw={'multiple': True, 'accept': '.evtx'})
 
@@ -650,6 +649,12 @@ def upload_files():
     form = FileUploadForm()
     if form.validate_on_submit():
         files = request.files.getlist('files')
+        
+        # Check if files were provided (since we removed FileRequired validator)
+        if not files or not any(file.filename for file in files):
+            flash('Please select at least one EVTX file to upload.', 'error')
+            return render_template('upload_files.html', form=form, case=case)
+        
         uploaded_files = []
         
         for file in files[:5]:  # Limit to 5 files
