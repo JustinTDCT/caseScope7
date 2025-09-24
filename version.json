@@ -1,6 +1,6 @@
 {
-  "version": "7.0.62",
+  "version": "7.0.63",
   "release_date": "2025-09-24",
-  "description": "SMART FIX: Auto-move Chainsaw binary to bypass noexec with fallback detection",
+  "description": "CRITICAL FIX: Correct Chainsaw path - binary is inside chainsaw directory",
   "build": "production"
 }

@@ -861,7 +861,7 @@ def run_chainsaw_directly(case_file):
         if not chainsaw_path.exists():
             logger.warning(f"Chainsaw binary not found at {chainsaw_path}")
             # Fall back to original location and try to move it
-            fallback_path = Path('/opt/casescope/rules/chainsaw')
+            fallback_path = Path('/opt/casescope/rules/chainsaw/chainsaw')  # FIXED: chainsaw is a directory, binary is inside
             if fallback_path.exists():
                 logger.info("Found Chainsaw in original location, attempting to move to executable location...")
                 try:
@@ -1100,7 +1100,13 @@ def apply_chainsaw_rules(events, case_file):
         
         if not chainsaw_path.exists():
             logger.warning("Chainsaw binary not found")
-            return 0
+            # Try original location (inside chainsaw directory)
+            fallback_path = Path('/opt/casescope/rules/chainsaw/chainsaw')
+            if fallback_path.exists():
+                chainsaw_path = fallback_path
+                logger.info("Using Chainsaw from original location")
+            else:
+                return 0
         
         if not chainsaw_rules_path.exists():
             logger.warning("Chainsaw rules directory not found")
