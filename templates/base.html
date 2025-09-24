@@ -64,7 +64,12 @@
                                 <i class="fas fa-home"></i> System Dashboard
                             </a>
                             <div class="case-list">
-                                <!-- Recent cases will be populated here -->
+                                {% for case in g.get('recent_cases', []) %}
+                                <a href="{{ url_for('select_case', case_id=case.id) }}" class="nav-item">
+                                    <i class="fas fa-folder-open"></i>
+                                    {{ case.name }}
+                                </a>
+                                {% endfor %}
                             </div>
                         </div>
                     </div>

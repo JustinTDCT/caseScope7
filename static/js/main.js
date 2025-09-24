@@ -138,7 +138,9 @@ function initializeFileUpload() {
             }
         });
 
-        uploadArea.addEventListener('click', function() {
+        uploadArea.addEventListener('click', function(e) {
+            // Prevent form submission if clicked
+            e.preventDefault();
             fileInput.click();
         });
 
@@ -168,9 +170,32 @@ function handleFileSelection(files) {
         }
     }
     
-    // Show upload progress
+    // Set the files on the input element
+    const fileInput = document.querySelector('input[type="file"]');
+    if (fileInput) {
+        // Create a new FileList with the dropped files
+        const dt = new DataTransfer();
+        for (let file of files) {
+            dt.items.add(file);
+        }
+        fileInput.files = dt.files;
+    }
+    
+    // Show upload progress and start upload
     showUploadProgress(files);
+    startFileUpload(files);
     debugLog(`Selected ${files.length} files for upload`);
+}
+
+function startFileUpload(files) {
+    const form = document.getElementById('upload-form');
+    if (!form) {
+        showAlert('error', 'Upload form not found.');
+        return;
+    }
+    
+    // Submit the form
+    form.submit();
 }
 
 function showUploadProgress(files) {
@@ -409,26 +434,9 @@ function getAlertIcon(type) {
 
 // API Functions
 function loadRecentCases() {
-    // This would typically make an AJAX call to fetch recent cases
-    debugLog('Loading recent cases...');
-    
-    // Simulate API call
-    setTimeout(() => {
-        const caseList = document.querySelector('.case-list');
-        if (caseList) {
-            // This would be populated with real data
-            caseList.innerHTML = `
-                <a href="/select_case/1" class="nav-item">
-                    <i class="fas fa-folder-open"></i>
-                    Investigation #001
-                </a>
-                <a href="/select_case/2" class="nav-item">
-                    <i class="fas fa-folder-open"></i>
-                    Security Incident
-                </a>
-            `;
-        }
-    }, 500);
+    // Cases are now loaded server-side in the template
+    // No need for client-side loading anymore
+    debugLog('Recent cases loaded from server');
 }
 
 function refreshSystemStats() {

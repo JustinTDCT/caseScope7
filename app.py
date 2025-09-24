@@ -187,6 +187,13 @@ class FileUploadForm(FlaskForm):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+@app.before_request
+def load_global_data():
+    """Load data that should be available in all templates"""
+    if current_user.is_authenticated:
+        # Load recent cases for the dropdown
+        g.recent_cases = Case.query.filter_by(is_active=True).order_by(Case.last_modified.desc()).limit(10).all()
+
 # CSRF Error Handler (commented out due to import issues)
 # @app.errorhandler(CSRFError)
 # def handle_csrf_error(e):
@@ -265,48 +272,53 @@ def get_system_info():
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
         
-        # Service status - check both systemctl and process status
+        # Service status - simplified and more reliable detection
         services = {}
-        service_map = {
-            'opensearch': {
-                'services': ['opensearch', 'opensearch.service'],
-                'processes': ['java.*opensearch', 'opensearch']
-            },
-            'redis-server': {
-                'services': ['redis-server', 'redis.service', 'redis'],
-                'processes': ['redis-server', 'redis']
-            },
-            'nginx': {
-                'services': ['nginx', 'nginx.service'],
-                'processes': ['nginx']
-            }
-        }
         
-        for service_key, check_data in service_map.items():
-            services[service_key] = False
-            
-            # First try systemctl
-            for service_name in check_data['services']:
-                try:
-                    result = subprocess.run(['systemctl', 'is-active', service_name], 
-                                          capture_output=True, text=True)
-                    if result.stdout.strip() == 'active':
-                        services[service_key] = True
-                        break
-                except:
-                    continue
-            
-            # If systemctl failed, check processes
-            if not services[service_key]:
-                for process_name in check_data['processes']:
-                    try:
-                        result = subprocess.run(['pgrep', '-f', process_name], 
-                                              capture_output=True, text=True)
-                        if result.stdout.strip():
-                            services[service_key] = True
-                            break
-                    except:
-                        continue
+        # Check OpenSearch - look for Java process and port 9200
+        services['opensearch'] = False
+        try:
+            # Check if port 9200 is listening (most reliable)
+            port_check = subprocess.run(['ss', '-tln'], capture_output=True, text=True)
+            if ':9200' in port_check.stdout:
+                services['opensearch'] = True
+            else:
+                # Fallback to process check
+                proc_check = subprocess.run(['pgrep', '-f', 'opensearch'], capture_output=True, text=True)
+                if proc_check.stdout.strip():
+                    services['opensearch'] = True
+        except:
+            services['opensearch'] = False
+        
+        # Check Redis - look for process and port 6379
+        services['redis-server'] = False
+        try:
+            # Check if port 6379 is listening
+            port_check = subprocess.run(['ss', '-tln'], capture_output=True, text=True)
+            if ':6379' in port_check.stdout:
+                services['redis-server'] = True
+            else:
+                # Fallback to process check
+                proc_check = subprocess.run(['pgrep', '-f', 'redis'], capture_output=True, text=True)
+                if proc_check.stdout.strip():
+                    services['redis-server'] = True
+        except:
+            services['redis-server'] = False
+        
+        # Check Nginx - look for process and port 80
+        services['nginx'] = False
+        try:
+            # Check if port 80 is listening
+            port_check = subprocess.run(['ss', '-tln'], capture_output=True, text=True)
+            if ':80' in port_check.stdout:
+                services['nginx'] = True
+            else:
+                # Fallback to process check
+                proc_check = subprocess.run(['pgrep', '-f', 'nginx'], capture_output=True, text=True)
+                if proc_check.stdout.strip():
+                    services['nginx'] = True
+        except:
+            services['nginx'] = False
         
         # Rule counts and last updated
         sigma_count = 0
