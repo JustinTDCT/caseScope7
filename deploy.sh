@@ -694,18 +694,28 @@ chmod +x /opt/casescope/app/celery_worker.py
 log "Installing Python dependencies..."
 cd /opt/casescope
 source venv/bin/activate
-pip install -r app/requirements.txt
+pip install -r app/requirements.txt 2>&1 | tee -a /opt/casescope/logs/deploy.log
 
-# Initialize database
+if [ $? -ne 0 ]; then
+    log_error "Failed to install Python dependencies"
+    exit 1
+fi
+
+# Initialize database (using the virtual environment)
 log "Initializing database..."
 cd /opt/casescope/app
-python3 -c "
+/opt/casescope/venv/bin/python3 -c "
 import sys
 sys.path.insert(0, '/opt/casescope/app')
 from app import init_db
 init_db()
 print('Database initialized successfully')
-"
+" 2>&1 | tee -a /opt/casescope/logs/deploy.log
+
+if [ $? -ne 0 ]; then
+    log_error "Failed to initialize database"
+    exit 1
+fi
 
 # Update systemd service files to use correct paths
 log "Updating systemd service files..."
