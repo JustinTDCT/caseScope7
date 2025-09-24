@@ -5,36 +5,39 @@
 
 /* File item layout - simplified and reliable */
 .file-item {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  margin-bottom: 0.5rem;
+}
+
+.file-main {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 1rem;
-  margin-bottom: 0.5rem;
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
   min-height: 80px;
   gap: 1rem;
 }
 
-.file-item .file-info {
+.file-main .file-info {
   flex: 1;
   min-width: 0; /* Allow text overflow */
 }
 
-.file-item .file-status {
+.file-main .file-status {
   flex-shrink: 0;
   white-space: nowrap;
 }
 
-.file-item .file-stats {
+.file-main .file-stats {
   flex-shrink: 0;
   display: flex;
   gap: 0.5rem;
   align-items: center;
 }
 
-.file-item .file-actions {
+.file-main .file-actions {
   flex-shrink: 0;
   display: flex;
   gap: 0.5rem;

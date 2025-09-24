@@ -726,14 +726,20 @@ function updateFileStatus(fileId, status, progress) {
     const progressText = fileItem.querySelector('.progress-text');
 
     if (statusBadge) {
-        statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        // Use the same status text mapping as the server-side template
+        const statusText = getStatusText(status);
+        statusBadge.textContent = statusText;
         statusBadge.className = `badge badge-${getStatusClass(status)}`;
     }
 
-    if (progressBar && status === 'processing') {
+    if (progressBar && (status === 'ingesting' || status === 'analyzing')) {
         progressBar.style.width = progress + '%';
         if (progressText) {
             progressText.textContent = progress + '%';
+        }
+        progressBar.parentElement.style.display = 'block';
+        if (progressText) {
+            progressText.style.display = 'block';
         }
     } else if (progressBar && status === 'completed') {
         progressBar.parentElement.style.display = 'none';
@@ -743,9 +749,22 @@ function updateFileStatus(fileId, status, progress) {
     }
 }
 
+function getStatusText(status) {
+    const statusTexts = {
+        'completed': 'Complete',
+        'analyzing': 'Running Chainsaw',
+        'ingesting': 'Ingesting Events',
+        'error': 'Error',
+        'pending': 'Queued'
+    };
+    return statusTexts[status] || 'Unknown';
+}
+
 function getStatusClass(status) {
     const statusClasses = {
         'completed': 'success',
+        'analyzing': 'warning',
+        'ingesting': 'info',
         'processing': 'primary',
         'pending': 'secondary',
         'error': 'danger'

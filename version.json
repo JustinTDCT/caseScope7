@@ -1,6 +1,6 @@
 {
-  "version": "7.0.83",
+  "version": "7.0.84",
   "release_date": "2025-09-24",
-  "description": "FIX: Temporarily disable search + OpenSearch index cleanup to resolve JSON errors",
+  "description": "UI: Fix file list alignment + status consistency (Running Chainsaw vs Analyzing)",
   "build": "production"
 }
