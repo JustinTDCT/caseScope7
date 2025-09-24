@@ -64,6 +64,7 @@ fi
 # Create directory structure FIRST (before any logging)
 echo "Creating caseScope directory structure..."
 mkdir -p /opt/casescope/{app,config,logs,data,rules,venv,tmp}
+mkdir -p /opt/casescope/data/uploads
 chmod 755 /opt/casescope
 chmod 755 /opt/casescope/logs
 

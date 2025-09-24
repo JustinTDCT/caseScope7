@@ -43,15 +43,18 @@ log "Starting caseScope v7.0.0 application deployment..."
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Create application directories first
+log "Creating application directories..."
+mkdir -p /opt/casescope/app/templates/admin
+mkdir -p /opt/casescope/app/static/css
+mkdir -p /opt/casescope/app/static/js
+mkdir -p /opt/casescope/data/uploads
+
 # Copy application files
 log "Copying application files..."
-cp -r "$SCRIPT_DIR/app.py" /opt/casescope/app/
-cp -r "$SCRIPT_DIR/templates" /opt/casescope/app/
-cp -r "$SCRIPT_DIR/static" /opt/casescope/app/
-
-# Create missing directories
-mkdir -p /opt/casescope/app/templates/admin
-mkdir -p /opt/casescope/data/uploads
+cp "$SCRIPT_DIR/app.py" /opt/casescope/app/
+cp -r "$SCRIPT_DIR/templates"/* /opt/casescope/app/templates/
+cp -r "$SCRIPT_DIR/static"/* /opt/casescope/app/static/
 
 # Create requirements.txt in the app directory
 log "Creating requirements.txt..."
