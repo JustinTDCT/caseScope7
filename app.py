@@ -970,10 +970,9 @@ def run_chainsaw_directly(case_file):
         logger.info(f"Processing Windows Defender Operational log: {evtx_file_path}")
         logger.info(f"File size: {os.path.getsize(evtx_file_path)} bytes")
         
-        # The fact that Chainsaw says "0 documents" suggests a fundamental mismatch
-        logger.warning("ANALYSIS: Chainsaw reported '0 Detections found on 0 documents'")
-        logger.warning("This suggests the rules don't match Windows Defender event structure")
-        logger.warning("May need Windows Defender specific rules or different rule format")
+        # This is a Windows Defender Operational log - should have many detections
+        logger.info("ANALYSIS: Processing Windows Defender Operational log")
+        logger.info("Expected: Windows Defender specific events and possible malware/threat detections")
             
         logger.info(f"Running Chainsaw directly on EVTX file (fast method)")
         logger.info(f"Chainsaw binary: {chainsaw_path}")
@@ -1046,8 +1045,18 @@ def run_chainsaw_directly(case_file):
                     with open(temp_output, 'r') as f:
                         raw_content = f.read()
                         logger.info(f"Chainsaw raw output size: {len(raw_content)} bytes")
+                        
                         if len(raw_content) > 0:
                             logger.info(f"First 500 chars: {raw_content[:500]}")
+                            
+                            # Count lines to see if it's one big JSON object or multiple lines
+                            lines = raw_content.strip().split('\n')
+                            logger.info(f"Chainsaw output format analysis:")
+                            logger.info(f"  - Total lines in output: {len(lines)}")
+                            logger.info(f"  - First line starts with: {lines[0][:50] if lines else 'EMPTY'}")
+                            if len(lines) > 1:
+                                logger.info(f"  - Second line starts with: {lines[1][:50]}")
+                            logger.info(f"  - Last line starts with: {lines[-1][:50] if lines else 'EMPTY'}")
                         else:
                             logger.warning("Chainsaw output file is empty!")
                 except Exception as raw_read_error:
@@ -1058,23 +1067,41 @@ def run_chainsaw_directly(case_file):
                     with open(temp_output, 'r') as f:
                         chainsaw_results = []
                         line_count = 0
+                        total_detections = 0
+                        
                         for line in f:
                             line_count += 1
                             if line.strip():
                                 try:
                                     parsed_line = json.loads(line)
-                                    # Skip empty arrays and non-detection objects
-                                    if parsed_line and not (isinstance(parsed_line, list) and len(parsed_line) == 0):
-                                        chainsaw_results.append(parsed_line)
-                                        logger.debug(f"Valid detection found: {parsed_line}")
+                                    
+                                    # Count all valid detection objects (not empty arrays)
+                                    if parsed_line:
+                                        if isinstance(parsed_line, list):
+                                            # If it's a list, count non-empty lists
+                                            if len(parsed_line) > 0:
+                                                total_detections += len(parsed_line)
+                                                chainsaw_results.extend(parsed_line)
+                                                logger.debug(f"Found {len(parsed_line)} detections in array")
+                                        elif isinstance(parsed_line, dict):
+                                            # If it's a dict, it's a single detection
+                                            total_detections += 1
+                                            chainsaw_results.append(parsed_line)
+                                            logger.debug(f"Found single detection: {parsed_line.get('group', 'unknown')}")
+                                        else:
+                                            logger.debug(f"Skipped non-object detection: {type(parsed_line)}")
                                     else:
-                                        logger.debug(f"Skipped empty/invalid detection: {parsed_line}")
+                                        logger.debug(f"Skipped empty detection")
+                                        
                                 except json.JSONDecodeError as json_err:
                                     logger.warning(f"JSON decode error on line {line_count}: {json_err}")
                                     logger.warning(f"Problematic line: {line[:100]}")
                     
                     violations = len(chainsaw_results)
-                    logger.info(f"Chainsaw found {violations} REAL detections from {line_count} output lines")
+                    logger.info(f"Chainsaw parsing summary:")
+                    logger.info(f"  - Total output lines: {line_count}")
+                    logger.info(f"  - Total detections found: {total_detections}")
+                    logger.info(f"  - Valid detection objects: {violations}")
                     
                     # Tag some events in OpenSearch (sample only for performance)
                     if violations > 0:

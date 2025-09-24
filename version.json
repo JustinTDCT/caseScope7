@@ -1,6 +1,6 @@
 {
-  "version": "7.0.74",
+  "version": "7.0.75",
   "release_date": "2025-09-24",
-  "description": "MAJOR: Official Chainsaw mappings from WithSecure Labs + nightly updates",
+  "description": "FIX: Remove misleading debug messages, improve Chainsaw result parsing and counting",
   "build": "production"
 }
