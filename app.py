@@ -515,10 +515,43 @@ def process_evtx_file(file_id):
             parser = PyEvtxParser(case_file.file_path)
             
             # Second pass - process records
+            logger.info(f"Starting to process {total_records} records")
             for record in parser.records():
                 try:
-                    xml_data = record.xml()
-                    event_data = xmltodict.parse(xml_data)
+                    # Debug: Log the first few records to understand the format
+                    if processed_records < 3:
+                        logger.info(f"Record {processed_records + 1} type: {type(record)}")
+                        if hasattr(record, '__dict__'):
+                            logger.info(f"Record {processed_records + 1} attributes: {dir(record)}")
+                        elif isinstance(record, dict):
+                            logger.info(f"Record {processed_records + 1} keys: {list(record.keys())}")
+                    
+                    # Try different methods to get XML data based on evtx library version
+                    xml_data = None
+                    if hasattr(record, 'xml'):
+                        xml_data = record.xml()
+                    elif hasattr(record, 'data'):
+                        xml_data = record.data()
+                    elif isinstance(record, dict) and 'data' in record:
+                        xml_data = record['data']
+                    elif isinstance(record, dict) and 'xml' in record:
+                        xml_data = record['xml']
+                    else:
+                        # Try to convert record directly if it's already structured data
+                        if isinstance(record, dict):
+                            event_data = record
+                            xml_data = None
+                        else:
+                            logger.error(f"Unknown record format: {type(record)}, attributes: {dir(record)}")
+                            continue
+                    
+                    if xml_data:
+                        event_data = xmltodict.parse(xml_data)
+                    
+                    # Ensure event_data is set
+                    if not event_data:
+                        logger.error(f"Failed to extract event data from record")
+                        continue
                     
                     # Create OpenSearch document
                     doc = {
@@ -546,6 +579,11 @@ def process_evtx_file(file_id):
                     
                 except Exception as e:
                     logger.error(f"Error processing record: {e}")
+                    logger.error(f"Record type: {type(record)}")
+                    if hasattr(record, '__dict__'):
+                        logger.error(f"Record attributes: {record.__dict__}")
+                    elif isinstance(record, dict):
+                        logger.error(f"Record keys: {list(record.keys())}")
                     continue
             
             case_file.event_count = len(events)
