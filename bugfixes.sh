@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# caseScope Bug Fixes Script v7.0.34
+# caseScope Bug Fixes Script v7.0.35
 # Run this script on production server after 'git pull'
 # This script contains ALL steps needed to apply current bug fixes
 
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.34"
+echo "caseScope Bug Fixes Script v7.0.35"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -38,10 +38,10 @@ systemctl stop casescope-web 2>/dev/null || log "casescope-web not running"
 systemctl stop casescope-worker 2>/dev/null || log "casescope-worker not running"
 
 # 2. UPDATE VERSION
-log "Updating version to 7.0.34..."
+log "Updating version to 7.0.35..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.34 "Emergency fixes for case dashboard, search, upload, and file processing issues" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.35 "Critical fix for case dashboard database queries and API endpoints" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -202,8 +202,12 @@ echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
 echo "🎯 MAIN FIXES APPLIED:"
+echo "  ✅ Case dashboard database query fixes"
+echo "  ✅ Processing stats API endpoint fixes"
+echo "  ✅ Worker statistics calculation fixes"
+echo "  ✅ Template query syntax fixes"
+echo "  ✅ Enhanced error logging for debugging"
 echo "  ✅ Upload directory permissions and path validation"
-echo "  ✅ Case dashboard error handling"
 echo "  ✅ Search route error handling and template fixes"
 echo "  ✅ File processing path verification"
 echo "  ✅ Database migration for error tracking"
@@ -211,4 +215,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.34 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.35 deployment complete!"

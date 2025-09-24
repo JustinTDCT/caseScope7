@@ -1,6 +1,6 @@
 {
-  "version": "7.0.33",
+  "version": "7.0.35",
   "release_date": "2025-09-24",
-  "description": "Comprehensive fixes for dashboard, file management, search, and auto-versioning",
+  "description": "Critical fix for case dashboard database queries and API endpoints",
   "build": "production"
 }

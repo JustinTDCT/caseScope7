@@ -106,7 +106,7 @@
                         </div>
                         <div class="worker-stats">
                             <div class="stat">
-                                <span class="stat-number">{{ worker.uploaded_files.filter_by(case_id=case.id).count() }}</span>
+                                <span class="stat-number">{{ worker.file_count if worker.file_count is defined else 0 }}</span>
                                 <span class="stat-label">Files</span>
                             </div>
                         </div>

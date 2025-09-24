@@ -658,20 +658,47 @@ def case_dashboard():
         return redirect(url_for('system_dashboard'))
         
     try:
+        logger.info(f"Loading case dashboard for case ID: {selected_case_id}")
+        
         case = Case.query.get(selected_case_id)
         if not case or not case.is_active:
             session.pop('selected_case_id', None)
             flash('Selected case not found or inactive.', 'error')
             return redirect(url_for('system_dashboard'))
         
+        logger.info(f"Case found: {case.name} (ID: {case.id})")
+        
         # Get case statistics
-        file_count = CaseFile.query.filter_by(case_id=case.id).count()
-        total_sigma_violations = db.session.query(db.func.sum(CaseFile.sigma_violations)).filter_by(case_id=case.id).scalar() or 0
-        total_chainsaw_violations = db.session.query(db.func.sum(CaseFile.chainsaw_violations)).filter_by(case_id=case.id).scalar() or 0
+        try:
+            file_count = CaseFile.query.filter_by(case_id=case.id).count()
+            logger.info(f"File count: {file_count}")
+        except Exception as e:
+            logger.error(f"Error getting file count: {e}")
+            file_count = 0
+            
+        try:
+            total_sigma_violations = db.session.query(db.func.sum(CaseFile.sigma_violations)).filter_by(case_id=case.id).scalar() or 0
+            total_chainsaw_violations = db.session.query(db.func.sum(CaseFile.chainsaw_violations)).filter_by(case_id=case.id).scalar() or 0
+            logger.info(f"Violations - Sigma: {total_sigma_violations}, Chainsaw: {total_chainsaw_violations}")
+        except Exception as e:
+            logger.error(f"Error getting violation counts: {e}")
+            total_sigma_violations = 0
+            total_chainsaw_violations = 0
         
         # Get users who worked on this case
-        workers = db.session.query(User).join(CaseFile).filter(CaseFile.case_id == case.id).distinct().all()
+        try:
+            workers = db.session.query(User).join(CaseFile, User.id == CaseFile.uploaded_by).filter(CaseFile.case_id == case.id).distinct().all()
+            logger.info(f"Workers found: {len(workers)}")
+            
+            # Add file count for each worker
+            for worker in workers:
+                worker.file_count = CaseFile.query.filter_by(case_id=case.id, uploaded_by=worker.id).count()
+                logger.info(f"Worker {worker.username}: {worker.file_count} files")
+        except Exception as e:
+            logger.error(f"Error getting workers for case {case.id}: {e}")
+            workers = []
         
+        logger.info("Rendering case dashboard template")
         return render_template('case_dashboard.html', 
                              case=case, 
                              file_count=file_count,
@@ -1127,10 +1154,10 @@ def api_case_processing_stats(case_id):
     case = Case.query.get_or_404(case_id)
     
     stats = {
-        'completed': case.files.filter_by(processing_status='completed').count(),
-        'processing': case.files.filter_by(processing_status='processing').count(),
-        'pending': case.files.filter_by(processing_status='pending').count(),
-        'error': case.files.filter_by(processing_status='error').count()
+        'completed': CaseFile.query.filter_by(case_id=case.id, processing_status='completed').count(),
+        'processing': CaseFile.query.filter_by(case_id=case.id, processing_status='processing').count(),
+        'pending': CaseFile.query.filter_by(case_id=case.id, processing_status='pending').count(),
+        'error': CaseFile.query.filter_by(case_id=case.id, processing_status='error').count()
     }
     
     return jsonify(stats)
