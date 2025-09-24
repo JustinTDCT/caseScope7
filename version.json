@@ -1,6 +1,6 @@
 {
-  "version": "7.0.44",
+  "version": "7.0.45",
   "release_date": "2025-09-24",
-  "description": "Implement Sigma/Chainsaw rule processing, fix 3-dot menu, and add upload auto-refresh",
+  "description": "Fix 3-dot menu alignment, improve rule patterns, add duplicate check and error reprocessing",
   "build": "production"
 }

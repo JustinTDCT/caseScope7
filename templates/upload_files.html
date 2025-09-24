@@ -600,11 +600,13 @@ window.handleFileSelection = function(files) {
             continue;
         }
 
-        // Check for duplicates
+        // Check for duplicates in selected files
         if (selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
             showAlert('warning', `File already selected: ${file.name}`);
             continue;
         }
+        
+        // Note: Duplicate check against server files will be handled during upload
 
         validFiles.push(file);
     }

@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.44"
+echo "caseScope Bug Fixes Script v7.0.45"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.44..."
+log "Updating version to 7.0.45..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.44 "Implement Sigma/Chainsaw rule processing, fix 3-dot menu, and add upload auto-refresh" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.45 "Fix 3-dot menu alignment, improve rule patterns, add duplicate check and error reprocessing" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -207,6 +207,11 @@ echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
 echo "🎯 MAIN FIXES APPLIED:"
+echo "  ✅ Fixed 3-dot menu uniform alignment with CSS Grid layout"
+echo "  ✅ Improved rule pattern specificity (less false positives)"
+echo "  ✅ Added duplicate file upload check with skip notification"
+echo "  ✅ Added reprocess option for error files"
+echo "  ✅ Fixed search error handling to return to case dashboard"
 echo "  ✅ Implemented Sigma rule processing with pattern matching"
 echo "  ✅ Implemented Chainsaw rule processing with pattern matching"
 echo "  ✅ Added OpenSearch event tagging for rule violations"
@@ -246,4 +251,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.44 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.45 deployment complete!"

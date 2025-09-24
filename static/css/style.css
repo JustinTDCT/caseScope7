@@ -7,6 +7,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  min-width: 50px;
   z-index: 10;
 }
 
@@ -15,10 +16,10 @@
 }
 
 .file-actions .dropdown-btn {
-  background: var(--primary-color);
+  background: var(--text-secondary);
   border: none;
   color: white;
-  padding: 0.5rem;
+  padding: 8px;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
@@ -26,11 +27,13 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
+  font-size: 14px;
 }
 
 .file-actions .dropdown-btn:hover {
-  background: var(--primary-hover);
+  background: var(--primary-color);
+  transform: scale(1.1);
 }
 
 .file-actions .dropdown-content {
@@ -38,17 +41,50 @@
   right: 0;
   left: auto;
   min-width: 180px;
-  top: calc(100% + 0.25rem);
+  top: calc(100% + 8px);
   background: var(--card-bg);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
   z-index: 1000;
   display: none;
+  overflow: hidden;
 }
 
 .file-actions .dropdown.active .dropdown-content {
   display: block;
+}
+
+/* Ensure file item layout accommodates the menu */
+.file-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+  margin-bottom: 0.5rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+}
+
+.file-item .file-info {
+  grid-column: 1 / 2;
+}
+
+.file-item .file-status {
+  grid-column: 2 / 3;
+  justify-self: center;
+}
+
+.file-item .file-stats {
+  grid-column: 3 / 4;
+  justify-self: end;
+}
+
+.file-item .file-actions {
+  grid-column: 4 / 5;
+  justify-self: end;
 }
 
 .action-btn {

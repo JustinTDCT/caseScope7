@@ -161,7 +161,7 @@
 
                         <div class="file-actions">
                             <div class="dropdown">
-                                <button class="dropdown-btn action-btn">
+                                <button class="dropdown-btn">
                                     <i class="fas fa-ellipsis-v"></i>
                                 </button>
                                 <div class="dropdown-content">
@@ -173,6 +173,12 @@
                                     <a href="#" onclick="rerunRulesFile({{ file.id }})" class="dropdown-item">
                                         <i class="fas fa-sync"></i>
                                         Re-run Rules
+                                    </a>
+                                    {% endif %}
+                                    {% if file.processing_status == 'error' and current_user.can_write() %}
+                                    <a href="#" onclick="reprocessFile({{ file.id }})" class="dropdown-item">
+                                        <i class="fas fa-redo"></i>
+                                        Reprocess File
                                     </a>
                                     {% endif %}
                                     {% if file.sigma_violations > 0 or file.chainsaw_violations > 0 %}
@@ -843,10 +849,36 @@ window.addEventListener('beforeunload', function() {
     }
 });
 
+function reprocessFile(fileId) {
+    if (confirm('Are you sure you want to reprocess this file? This will attempt to process the file again.')) {
+        fetch(`/api/file/${fileId}/reprocess`, { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('File queued for reprocessing.');
+                refreshFileList();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while reprocessing the file.');
+        });
+    }
+}
+
 // Expose functions globally
 window.showFileDetails = showFileDetails;
 window.reindexFile = reindexFile;
 window.rerunRulesFile = rerunRulesFile;
+window.reprocessFile = reprocessFile;
 window.deleteFile = deleteFile;
 window.refreshFileList = refreshFileList;
 </script>

@@ -552,18 +552,20 @@ def apply_chainsaw_rules(events, case_file):
         for event in events:
             event_data_str = str(event.get('event_data', {})).lower()
             
-            # Check for process creation events and suspicious activity
+            # Check for specific suspicious activities (more targeted)
             suspicious_patterns = [
-                'process creation',
-                'network connection', 
-                'file creation',
-                'registry modification',
-                'dll load',
-                'suspicious',
-                'anomalous',
-                'privilege escalation',
+                'remote desktop',
+                'remote connection',
+                'suspicious process',
+                'unusual network',
                 'lateral movement',
-                'persistence'
+                'privilege escalation',
+                'credential access',
+                'persistence mechanism',
+                'defense evasion',
+                'suspicious registry',
+                'malicious dll',
+                'injection detected'
             ]
             
             for pattern in suspicious_patterns:
@@ -979,6 +981,18 @@ def upload_files():
             if file and file.filename:
                 # Secure filename and create unique name
                 original_filename = secure_filename(file.filename)
+                
+                # Check for duplicate files in the case
+                existing_file = CaseFile.query.filter_by(
+                    case_id=case.id, 
+                    original_filename=original_filename
+                ).first()
+                
+                if existing_file:
+                    logger.warning(f"Duplicate file detected: {original_filename}")
+                    flash(f'File "{original_filename}" already exists in this case. Skipping upload.', 'warning')
+                    continue
+                
                 file_hash = hashlib.sha256(file.read()).hexdigest()
                 file.seek(0)  # Reset file pointer
                 
@@ -1099,6 +1113,15 @@ def search():
     except Exception as e:
         logger.error(f"Error in search route: {e}")
         flash('Error accessing search functionality.', 'error')
+        # Try to return to case dashboard if we have a valid case, otherwise system dashboard
+        try:
+            selected_case_id = session.get('selected_case_id')
+            if selected_case_id:
+                case = Case.query.get(selected_case_id)
+                if case and case.is_active:
+                    return redirect(url_for('case_dashboard'))
+        except:
+            pass
         return redirect(url_for('system_dashboard'))
 
 @app.route('/rerun_rules')
@@ -1528,6 +1551,32 @@ def api_rerun_rules_file(file_id):
         
     except Exception as e:
         logger.error(f"Error re-running rules for file {file_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/file/<int:file_id>/reprocess', methods=['POST'])
+@login_required
+@require_role('write')
+def api_reprocess_file(file_id):
+    try:
+        case_file = CaseFile.query.get_or_404(file_id)
+        
+        # Reset file status for reprocessing
+        case_file.processing_status = 'pending'
+        case_file.processing_progress = 0
+        case_file.event_count = 0
+        case_file.sigma_violations = 0
+        case_file.chainsaw_violations = 0
+        case_file.error_message = None
+        db.session.commit()
+        
+        # Queue for complete reprocessing
+        process_evtx_file.delay(case_file.id)
+        
+        log_audit('file_reprocessed', f'Reprocessing file: {case_file.original_filename}')
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logger.error(f"Error reprocessing file {file_id}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/case/<int:case_id>/file-status')
