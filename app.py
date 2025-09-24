@@ -1,12 +1,26 @@
 #!/usr/bin/env python3
 """
-caseScope v7.0.27 - Main Application
+caseScope - Main Application
 Copyright 2025 Justin Dube
 mailto:casescope@thedubes.net
 """
 
 import os
 import sys
+from pathlib import Path
+
+# Add the script directory to Python path for version imports
+script_dir = Path(__file__).parent
+sys.path.insert(0, str(script_dir))
+
+try:
+    from version_utils import get_version, get_version_info
+    APP_VERSION = get_version()
+    VERSION_INFO = get_version_info()
+except ImportError:
+    # Fallback if version_utils not available
+    APP_VERSION = "7.0.29"
+    VERSION_INFO = {"version": APP_VERSION, "description": "Fallback version"}
 import logging
 from datetime import datetime, timedelta
 from functools import wraps
@@ -138,6 +152,7 @@ class CaseFile(db.Model):
     event_count = db.Column(db.Integer, default=0)
     sigma_violations = db.Column(db.Integer, default=0)
     chainsaw_violations = db.Column(db.Integer, default=0)
+    error_message = db.Column(db.Text, nullable=True)
     
     # Relationships
     uploader = db.relationship('User', backref='uploaded_files')
@@ -191,6 +206,10 @@ def load_user(user_id):
 @app.before_request
 def load_global_data():
     """Load data that should be available in all templates"""
+    # Make version info available to all templates
+    g.app_version = APP_VERSION
+    g.version_info = VERSION_INFO
+    
     if current_user.is_authenticated:
         # Load recent cases for the dropdown
         g.recent_cases = Case.query.filter_by(is_active=True).order_by(Case.last_modified.desc()).limit(10).all()
@@ -429,79 +448,88 @@ def get_system_info():
 @celery.task
 def process_evtx_file(file_id):
     """Background task to process EVTX files"""
-    try:
-        case_file = CaseFile.query.get(file_id)
-        if not case_file:
+    with app.app_context():
+        case_file = None
+        try:
+            case_file = CaseFile.query.get(file_id)
+            if not case_file:
+                logger.error(f"Case file {file_id} not found")
+                return False
+            
+            case_file.processing_status = 'processing'
+            case_file.processing_progress = 10
+            db.session.commit()
+            
+            # Parse EVTX file
+            parser = PyEvtxParser(case_file.file_path)
+            events = []
+            
+            total_records = 0
+            processed_records = 0
+            
+            # First pass - count records
+            for record in parser.records():
+                total_records += 1
+            
+            # Reset parser
+            parser = PyEvtxParser(case_file.file_path)
+            
+            # Second pass - process records
+            for record in parser.records():
+                try:
+                    xml_data = record.xml()
+                    event_data = xmltodict.parse(xml_data)
+                    
+                    # Create OpenSearch document
+                    doc = {
+                        'case_id': case_file.case_id,
+                        'file_id': case_file.id,
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'event_data': event_data,
+                        'source_file': case_file.original_filename,
+                        'processed_at': datetime.utcnow().isoformat()
+                    }
+                    
+                    # Index in OpenSearch
+                    response = opensearch_client.index(
+                        index=f"casescope-case-{case_file.case_id}",
+                        body=doc
+                    )
+                    
+                    events.append(doc)
+                    processed_records += 1
+                    
+                    # Update progress
+                    progress = int((processed_records / total_records) * 80) + 10
+                    case_file.processing_progress = progress
+                    db.session.commit()
+                    
+                except Exception as e:
+                    logger.error(f"Error processing record: {e}")
+                    continue
+            
+            case_file.event_count = len(events)
+            case_file.processing_progress = 90
+            db.session.commit()
+            
+            # Apply rules (simplified for now)
+            case_file.processing_status = 'completed'
+            case_file.processing_progress = 100
+            db.session.commit()
+            
+            logger.info(f"Successfully processed file {file_id} with {len(events)} events")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error processing file {file_id}: {e}")
+            if case_file:
+                try:
+                    case_file.processing_status = 'error'
+                    case_file.error_message = str(e)
+                    db.session.commit()
+                except Exception as db_error:
+                    logger.error(f"Error updating case file status: {db_error}")
             return False
-        
-        case_file.processing_status = 'processing'
-        case_file.processing_progress = 10
-        db.session.commit()
-        
-        # Parse EVTX file
-        parser = PyEvtxParser(case_file.file_path)
-        events = []
-        
-        total_records = 0
-        processed_records = 0
-        
-        # First pass - count records
-        for record in parser.records():
-            total_records += 1
-        
-        # Reset parser
-        parser = PyEvtxParser(case_file.file_path)
-        
-        # Second pass - process records
-        for record in parser.records():
-            try:
-                xml_data = record.xml()
-                event_data = xmltodict.parse(xml_data)
-                
-                # Create OpenSearch document
-                doc = {
-                    'case_id': case_file.case_id,
-                    'file_id': case_file.id,
-                    'timestamp': datetime.utcnow().isoformat(),
-                    'event_data': event_data,
-                    'source_file': case_file.original_filename,
-                    'processed_at': datetime.utcnow().isoformat()
-                }
-                
-                # Index in OpenSearch
-                response = opensearch_client.index(
-                    index=f"casescope-case-{case_file.case_id}",
-                    body=doc
-                )
-                
-                events.append(doc)
-                processed_records += 1
-                
-                # Update progress
-                progress = int((processed_records / total_records) * 80) + 10
-                case_file.processing_progress = progress
-                db.session.commit()
-                
-            except Exception as e:
-                logger.error(f"Error processing record: {e}")
-                continue
-        
-        case_file.event_count = len(events)
-        case_file.processing_progress = 90
-        db.session.commit()
-        
-        # Apply rules (simplified for now)
-        case_file.processing_status = 'completed'
-        case_file.processing_progress = 100
-        db.session.commit()
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error processing file {file_id}: {e}")
-        case_file.processing_status = 'error'
-        db.session.commit()
-        return False
 
 # Routes
 @app.route('/')
@@ -894,6 +922,15 @@ def diagnostics():
 def api_system_stats():
     system_info = get_system_info()
     return jsonify(system_info['statistics'])
+
+@app.route('/api/version')
+def api_version():
+    """API endpoint to get version information"""
+    return jsonify({
+        'version': APP_VERSION,
+        'info': VERSION_INFO,
+        'server_time': datetime.utcnow().isoformat()
+    })
 
 @app.route('/api/debug/services')
 @login_required

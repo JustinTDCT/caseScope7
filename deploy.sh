@@ -53,6 +53,8 @@ mkdir -p /opt/casescope/data/uploads
 # Copy application files
 log "Copying application files..."
 cp "$SCRIPT_DIR/app.py" /opt/casescope/app/
+cp "$SCRIPT_DIR/version.json" /opt/casescope/app/
+cp "$SCRIPT_DIR/version_utils.py" /opt/casescope/app/
 cp -r "$SCRIPT_DIR/templates"/* /opt/casescope/app/templates/
 cp -r "$SCRIPT_DIR/static"/* /opt/casescope/app/static/
 
@@ -714,6 +716,15 @@ print('Database initialized successfully')
 
 if [ $? -ne 0 ]; then
     log_error "Failed to initialize database"
+    exit 1
+fi
+
+# Run database migration
+log "Running database migration..."
+/opt/casescope/venv/bin/python3 "$SCRIPT_DIR/migrate_db.py" 2>&1 | tee -a /opt/casescope/logs/deploy.log
+
+if [ $? -ne 0 ]; then
+    log_error "Database migration failed"
     exit 1
 fi
 

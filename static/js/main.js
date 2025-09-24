@@ -1,5 +1,5 @@
 /**
- * caseScope v7.0.27 - Main JavaScript
+ * caseScope - Main JavaScript
  * Copyright 2025 Justin Dube
  */
 

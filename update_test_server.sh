@@ -24,6 +24,10 @@ chmod +x *.sh
 echo "Running deployment..."
 sudo ./deploy.sh
 
+# Run database migration
+echo "Running database migration..."
+sudo /opt/casescope/venv/bin/python3 ./migrate_db.py
+
 # Start services
 echo "Starting caseScope services..."
 sudo systemctl start casescope-web casescope-worker
