@@ -572,55 +572,8 @@
 let selectedFiles = [];
 let isUploading = false;
 
-document.addEventListener('DOMContentLoaded', function() {
-    initializeFileUpload();
-});
-
-function initializeFileUpload() {
-    const uploadArea = document.getElementById('upload-area');
-    const fileInput = document.getElementById('file-input');
-    const uploadForm = document.getElementById('upload-form');
-    const uploadBtn = document.getElementById('upload-btn');
-    const clearBtn = document.getElementById('clear-btn');
-
-    // File input change event
-    fileInput.addEventListener('change', function(e) {
-        handleFileSelection(Array.from(e.target.files));
-    });
-
-    // Drag and drop events
-    uploadArea.addEventListener('dragover', function(e) {
-        e.preventDefault();
-        uploadArea.classList.add('dragover');
-    });
-
-    uploadArea.addEventListener('dragleave', function(e) {
-        e.preventDefault();
-        uploadArea.classList.remove('dragover');
-    });
-
-    uploadArea.addEventListener('drop', function(e) {
-        e.preventDefault();
-        uploadArea.classList.remove('dragover');
-        const files = Array.from(e.dataTransfer.files);
-        handleFileSelection(files);
-    });
-
-    // Click to browse
-    uploadArea.addEventListener('click', function() {
-        if (!isUploading) {
-            fileInput.click();
-        }
-    });
-
-    // Form submission
-    uploadForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        if (selectedFiles.length > 0 && !isUploading) {
-            startUpload();
-        }
-    });
-}
+// Upload functionality is now handled by main.js
+// This script only handles file selection and form processing
 
 function handleFileSelection(files) {
     const validFiles = [];

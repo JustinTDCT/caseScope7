@@ -37,9 +37,9 @@ window.addEventListener('popstate', function() {
     }, 100);
 });
 
-// Continuous monitoring for upload pages
+// Continuous monitoring for upload pages (only check if on upload page)
 setInterval(() => {
-    if ((document.location.pathname.includes('upload') || document.querySelector('.upload-area')) && !uploadInitialized) {
+    if (document.location.pathname.includes('upload_files') && !uploadInitialized) {
         console.log('Periodic upload check triggered - found upload elements');
         initializeFileUpload();
     }
@@ -172,70 +172,82 @@ function initializeFileUpload() {
 }
 
 function setupUploadHandlers(uploadArea, fileInput) {
-    console.log('Setting up upload handlers with aggressive Chrome prevention');
-    
-    // Remove any existing event listeners by cloning the element
-    const newUploadArea = uploadArea.cloneNode(true);
-    uploadArea.parentNode.replaceChild(newUploadArea, uploadArea);
-    
-    // Get the fresh element
-    const freshUploadArea = document.querySelector('.upload-area');
-    const freshFileInput = document.querySelector('#file-input');
+    console.log('Setting up upload handlers with Chrome prevention v7.0.31');
     
     let clickInProgress = false;
     
-    // Aggressive click handler
+    // Simple, direct click handler
     function handleUploadClick(event) {
         const now = Date.now();
-        
-        // Stop all propagation immediately
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
         
         console.log('Upload click detected, time since last:', now - lastUploadClick);
         
         // Prevent rapid successive clicks
         if (now - lastUploadClick < UPLOAD_CLICK_THRESHOLD) {
             console.log('Click ignored - too recent');
+            event.preventDefault();
             return false;
         }
         
         // Prevent multiple clicks in progress
         if (clickInProgress) {
             console.log('Click ignored - already in progress');
+            event.preventDefault();
             return false;
         }
         
         clickInProgress = true;
         lastUploadClick = now;
         
-        // Delay the file input click slightly
-        setTimeout(() => {
-            console.log('Opening file dialog');
-            freshFileInput.click();
-            
-            // Reset click progress after a delay
-            setTimeout(() => {
-                clickInProgress = false;
-            }, 500);
-        }, 100);
+        console.log('Opening file dialog');
+        fileInput.click();
         
+        // Reset click progress after a delay
+        setTimeout(() => {
+            clickInProgress = false;
+        }, 1000);
+        
+        event.preventDefault();
         return false;
     }
     
-    // Attach click handler with capture
-    freshUploadArea.addEventListener('click', handleUploadClick, { 
-        capture: true, 
-        passive: false 
+    // Add file input change handler
+    fileInput.addEventListener('change', function(e) {
+        console.log('Files selected:', e.target.files.length);
+        if (e.target.files.length > 0) {
+            // Call the page's handleFileSelection if it exists
+            if (typeof window.handleFileSelection === 'function') {
+                window.handleFileSelection(Array.from(e.target.files));
+            }
+        }
     });
     
-    // Also prevent any bubbling from child elements
-    freshUploadArea.addEventListener('mousedown', (e) => {
-        e.stopPropagation();
-    }, true);
+    // Add drag and drop handlers
+    uploadArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+    });
     
-    console.log('Upload click handler attached');
+    uploadArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+    });
+    
+    uploadArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        const files = Array.from(e.dataTransfer.files);
+        console.log('Files dropped:', files.length);
+        
+        if (typeof window.handleFileSelection === 'function') {
+            window.handleFileSelection(files);
+        }
+    });
+    
+    // Simple click handler - no cloning, no complex prevention
+    uploadArea.addEventListener('click', handleUploadClick);
+    
+    console.log('Upload handlers attached');
 }
 
 // Legacy upload handler - kept for compatibility

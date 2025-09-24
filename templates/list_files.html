@@ -90,7 +90,7 @@
             <div class="card-actions">
                 {% if current_user.can_write() %}
                 <form method="POST" action="{{ url_for('clear_pending_files') }}" style="display: inline;" onsubmit="return confirm('Clear all pending files? This cannot be undone.')">
-                    {{ csrf_token() }}
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <button type="submit" class="btn btn-danger">
                         <i class="fas fa-trash"></i>
                         Clear Pending

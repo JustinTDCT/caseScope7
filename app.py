@@ -203,6 +203,12 @@ class FileUploadForm(FlaskForm):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+@app.context_processor
+def inject_csrf_token():
+    """Make CSRF token available to all templates"""
+    from flask_wtf.csrf import generate_csrf
+    return dict(csrf_token=generate_csrf)
+
 @app.before_request
 def load_global_data():
     """Load data that should be available in all templates"""
@@ -625,7 +631,7 @@ def case_dashboard():
             return redirect(url_for('system_dashboard'))
         
         # Get case statistics
-        file_count = case.files.count()
+        file_count = CaseFile.query.filter_by(case_id=case.id).count()
         total_sigma_violations = db.session.query(db.func.sum(CaseFile.sigma_violations)).filter_by(case_id=case.id).scalar() or 0
         total_chainsaw_violations = db.session.query(db.func.sum(CaseFile.chainsaw_violations)).filter_by(case_id=case.id).scalar() or 0
         
