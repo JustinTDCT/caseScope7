@@ -1681,6 +1681,23 @@ def case_dashboard():
             logger.error(f"Error getting violation counts: {e}")
             total_sigma_violations = 0
             total_chainsaw_violations = 0
+            
+        # Get total events ingested from OpenSearch
+        try:
+            # Count total documents in the case index
+            index_name = f"casescope-case-{case.id}"
+            search_result = opensearch_client.count(index=index_name)
+            total_events = search_result.get('count', 0)
+            logger.info(f"Total events ingested: {total_events}")
+        except Exception as e:
+            logger.error(f"Error getting total events count: {e}")
+            # Fallback: sum event_count from case files
+            try:
+                total_events = db.session.query(db.func.sum(CaseFile.event_count)).filter_by(case_id=case.id).scalar() or 0
+                logger.info(f"Total events (fallback from case files): {total_events}")
+            except Exception as fallback_error:
+                logger.error(f"Error with fallback events count: {fallback_error}")
+                total_events = 0
         
         # Get users who worked on this case
         try:
@@ -1714,6 +1731,7 @@ def case_dashboard():
                              file_count=file_count,
                              sigma_violations=total_sigma_violations,
                              chainsaw_violations=total_chainsaw_violations,
+                             total_events=total_events,
                              workers=workers,
                              recent_files=recent_files)
     except Exception as e:

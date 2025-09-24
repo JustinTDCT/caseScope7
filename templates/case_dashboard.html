@@ -49,24 +49,24 @@
             </div>
         </div>
 
-        <div class="stat-card clickable" onclick="searchViolations('sigma')">
+        <div class="stat-card clickable" onclick="searchViolations('all')">
             <div class="stat-icon danger">
                 <i class="fas fa-shield-alt"></i>
             </div>
             <div class="stat-content">
-                <div class="stat-value">{{ sigma_violations }}</div>
-                <div class="stat-label">Sigma Rule Violations</div>
-                <div class="stat-subtitle">Click to search OpenSearch</div>
+                <div class="stat-value">{{ sigma_violations + chainsaw_violations }}</div>
+                <div class="stat-label">Rule Violations</div>
+                <div class="stat-subtitle">{{ sigma_violations }} Sigma + {{ chainsaw_violations }} Chainsaw</div>
             </div>
         </div>
 
-        <div class="stat-card clickable" onclick="searchViolations('chainsaw')">
-            <div class="stat-icon warning">
-                <i class="fas fa-link"></i>
+        <div class="stat-card clickable" onclick="searchEvents()">
+            <div class="stat-icon primary">
+                <i class="fas fa-database"></i>
             </div>
             <div class="stat-content">
-                <div class="stat-value">{{ chainsaw_violations }}</div>
-                <div class="stat-label">Chainsaw Rule Violations</div>
+                <div class="stat-value">{{ total_events }}</div>
+                <div class="stat-label">Total Events Ingested</div>
                 <div class="stat-subtitle">Click to search OpenSearch</div>
             </div>
         </div>
@@ -596,9 +596,23 @@
 <script>
 function searchViolations(ruleType) {
     const caseId = {{ case.id }};
-    const searchUrl = `{{ url_for('search') }}?rule_type=${ruleType}&case_id=${caseId}`;
+    let searchUrl;
+    
+    if (ruleType === 'all') {
+        searchUrl = `{{ url_for('search') }}?q=sigma_violation:true OR chainsaw_violation:true&case_id=${caseId}`;
+    } else {
+        searchUrl = `{{ url_for('search') }}?rule_type=${ruleType}&case_id=${caseId}`;
+    }
+    
     window.location.href = searchUrl;
     debugLog(`Searching ${ruleType} violations for case ${caseId}`);
+}
+
+function searchEvents() {
+    const caseId = {{ case.id }};
+    const searchUrl = `{{ url_for('search') }}?q=*&case_id=${caseId}`;
+    window.location.href = searchUrl;
+    debugLog(`Searching all events for case ${caseId}`);
 }
 
 function updateProcessingStats() {

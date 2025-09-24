@@ -1,6 +1,6 @@
 {
-  "version": "7.0.76",
+  "version": "7.0.77",
   "release_date": "2025-09-24",
-  "description": "FIX: OpenSearch mapper parsing exceptions - sanitize XML data before indexing",
+  "description": "UI: Reduce tile sizes 15%, combine rule violations, add total events ingested tile",
   "build": "production"
 }
