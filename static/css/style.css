@@ -1,6 +1,62 @@
 /* caseScope Stylesheet */
 /* Copyright 2025 Justin Dube */
 
+/* File actions dropdown (3-dot menu) fix */
+.file-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.file-actions .dropdown {
+  position: relative;
+}
+
+.file-actions .dropdown-content {
+  right: 0;
+  left: auto;
+  min-width: 180px;
+  top: calc(100% + 0.25rem);
+}
+
+.action-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.dropdown-item.danger {
+  color: var(--error-color);
+}
+
+.dropdown-item.danger:hover {
+  background: var(--error-color);
+  color: white;
+}
+
+/* Fix Chrome double click issue for upload */
+.upload-area {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
 :root {
   /* Enhanced Dark Theme Colors */
   --bg-primary: #0f172a;

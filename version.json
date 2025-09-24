@@ -1,6 +1,6 @@
 {
-  "version": "7.0.29",
+  "version": "7.0.30",
   "release_date": "2025-09-24",
-  "description": "Centralized version management system",
+  "description": "Multiple UI and functionality fixes",
   "build": "production"
 }

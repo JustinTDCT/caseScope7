@@ -588,15 +588,41 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # Check if a case is selected
+    # Default dashboard - redirect to system dashboard
+    return redirect(url_for('system_dashboard'))
+
+@app.route('/dashboard/system')
+@login_required
+def system_dashboard():
+    """System dashboard - shows system status and statistics"""
+    try:
+        system_info = get_system_info()
+        recent_cases = Case.query.filter_by(is_active=True).order_by(Case.last_modified.desc()).limit(5).all()
+        
+        return render_template('system_dashboard.html', 
+                             system_info=system_info, 
+                             recent_cases=recent_cases)
+    except Exception as e:
+        logger.error(f"Error loading system dashboard: {e}")
+        flash('Error loading system dashboard', 'error')
+        return redirect(url_for('index'))
+
+@app.route('/dashboard/case')
+@login_required
+def case_dashboard():
+    """Case dashboard - shows current case statistics"""
     selected_case_id = session.get('selected_case_id')
     
-    if selected_case_id:
-        # Case dashboard
+    if not selected_case_id:
+        flash('No case selected. Please select a case first.', 'warning')
+        return redirect(url_for('system_dashboard'))
+        
+    try:
         case = Case.query.get(selected_case_id)
         if not case or not case.is_active:
             session.pop('selected_case_id', None)
-            return redirect(url_for('dashboard'))
+            flash('Selected case not found or inactive.', 'error')
+            return redirect(url_for('system_dashboard'))
         
         # Get case statistics
         file_count = case.files.count()
@@ -612,14 +638,10 @@ def dashboard():
                              sigma_violations=total_sigma_violations,
                              chainsaw_violations=total_chainsaw_violations,
                              workers=workers)
-    else:
-        # System dashboard
-        system_info = get_system_info()
-        recent_cases = Case.query.filter_by(is_active=True).order_by(Case.last_modified.desc()).limit(5).all()
-        
-        return render_template('system_dashboard.html', 
-                             system_info=system_info, 
-                             recent_cases=recent_cases)
+    except Exception as e:
+        logger.error(f"Error loading case dashboard: {e}")
+        flash('Error loading case dashboard', 'error')
+        return redirect(url_for('system_dashboard'))
 
 @app.route('/select_case/<int:case_id>')
 @login_required
@@ -816,6 +838,55 @@ def rerun_rules():
     
     log_audit('rules_rerun', f'Re-running rules for case: {case.name}')
     flash(f'Re-running rules for {len(files)} file(s) in case.', 'info')
+    return redirect(url_for('list_files'))
+
+@app.route('/clear_pending_files', methods=['POST'])
+@login_required
+@require_role('write')
+def clear_pending_files():
+    """Clear all pending files from the current case"""
+    selected_case_id = session.get('selected_case_id')
+    if not selected_case_id:
+        flash('No case selected.', 'error')
+        return redirect(url_for('dashboard'))
+    
+    case = Case.query.get(selected_case_id)
+    if not case or not case.is_active:
+        flash('Case not found or inactive.', 'error')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        # Find pending files
+        pending_files = case.files.filter_by(processing_status='pending').all()
+        
+        if not pending_files:
+            flash('No pending files found.', 'info')
+            return redirect(url_for('list_files'))
+        
+        # Remove pending files and their physical files
+        cleared_count = 0
+        for file in pending_files:
+            try:
+                # Remove physical file if it exists
+                if os.path.exists(file.file_path):
+                    os.remove(file.file_path)
+                
+                # Remove database record
+                db.session.delete(file)
+                cleared_count += 1
+                
+            except Exception as e:
+                logger.error(f"Error removing pending file {file.id}: {e}")
+        
+        db.session.commit()
+        log_audit('pending_files_cleared', f'Cleared {cleared_count} pending files from case: {case.name}')
+        flash(f'Successfully cleared {cleared_count} pending file(s).', 'success')
+        
+    except Exception as e:
+        logger.error(f"Error clearing pending files: {e}")
+        db.session.rollback()
+        flash('Error clearing pending files.', 'error')
+    
     return redirect(url_for('list_files'))
 
 @app.route('/update_rules', methods=['POST'])

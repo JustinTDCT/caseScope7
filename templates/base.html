@@ -41,11 +41,17 @@
             <!-- Sidebar Navigation -->
             <nav class="sidebar">
                 <div class="nav-section">
-                    <div class="nav-title">Navigation</div>
-                    <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
-                        <i class="fas fa-tachometer-alt"></i>
-                        Dashboard
+                    <div class="nav-title">Dashboard</div>
+                    <a href="{{ url_for('system_dashboard') }}" class="nav-item {% if request.endpoint == 'system_dashboard' %}active{% endif %}">
+                        <i class="fas fa-server"></i>
+                        System Dashboard
                     </a>
+                    {% if session.get('selected_case_id') %}
+                    <a href="{{ url_for('case_dashboard') }}" class="nav-item {% if request.endpoint == 'case_dashboard' %}active{% endif %}">
+                        <i class="fas fa-folder-open"></i>
+                        Case Dashboard
+                    </a>
+                    {% endif %}
                 </div>
 
                 <div class="nav-section">
