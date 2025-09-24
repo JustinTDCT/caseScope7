@@ -179,9 +179,9 @@
             </div>
         </div>
         <div class="card-content">
-            {% if case.files.count() > 0 %}
+            {% if recent_files %}
             <div class="file-list">
-                {% for file in case.files.order_by(case.files.property.mapper.class_.uploaded_at.desc()).limit(5) %}
+                {% for file in recent_files %}
                 <div class="file-item">
                     <div class="file-info">
                         <div class="file-icon">

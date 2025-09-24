@@ -703,13 +703,22 @@ def case_dashboard():
             logger.error(f"Error getting workers for case {case.id}: {e}")
             workers = []
         
+        # Get recent files for the case (last 5 uploaded)
+        try:
+            recent_files = CaseFile.query.filter_by(case_id=case.id).order_by(CaseFile.uploaded_at.desc()).limit(5).all()
+            logger.info(f"Recent files: {len(recent_files)}")
+        except Exception as e:
+            logger.error(f"Error getting recent files: {e}")
+            recent_files = []
+        
         logger.info("Rendering case dashboard template")
         return render_template('case_dashboard.html', 
                              case=case, 
                              file_count=file_count,
                              sigma_violations=total_sigma_violations,
                              chainsaw_violations=total_chainsaw_violations,
-                             workers=workers)
+                             workers=workers,
+                             recent_files=recent_files)
     except Exception as e:
         logger.error(f"Error loading case dashboard: {e}")
         flash('Error loading case dashboard', 'error')
