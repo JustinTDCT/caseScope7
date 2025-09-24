@@ -2012,23 +2012,95 @@ def search():
             try:
                 logger.info(f"Search requested with query: {query}")
                 
-                # TEMPORARY: Disable actual search due to JSON parsing issues in OpenSearch data
-                # Return mock results for now to prevent crashes
-                results = [
-                    {
-                        '_id': 'temp_1',
-                        '_source': {
-                            'timestamp': '2025-09-24T21:39:00',
-                            'source_file': 'Security.evtx',
-                            'case_id': str(case.id),
-                            'file_id': '1',
-                            'event_summary': 'Search temporarily disabled due to data parsing issues'
-                        }
-                    }
-                ]
+                # Clean query to remove problematic characters
+                clean_query = query.replace('#', '').replace('\x00', '').strip()
+                if not clean_query:
+                    clean_query = '*'
                 
-                logger.info(f"Returning {len(results)} mock results (search temporarily disabled)")
-                flash('Search is temporarily disabled while resolving data parsing issues. Showing sample result.', 'warning')
+                # Use simple search with robust error handling
+                try:
+                    # Temporarily suppress OpenSearch logging
+                    opensearch_logger = logging.getLogger('opensearch')
+                    urllib3_logger = logging.getLogger('urllib3')
+                    old_opensearch_level = opensearch_logger.level
+                    old_urllib3_level = urllib3_logger.level
+                    
+                    opensearch_logger.setLevel(logging.CRITICAL)
+                    urllib3_logger.setLevel(logging.CRITICAL)
+                    
+                    # Simple search body with robust structure
+                    search_body = {
+                        "query": {
+                            "bool": {
+                                "must": [
+                                    {"term": {"case_id": case.id}}
+                                ]
+                            }
+                        },
+                        "size": 50,
+                        "_source": ["timestamp", "source_file", "case_id", "file_id"],
+                        "sort": [{"timestamp": {"order": "desc"}}]
+                    }
+                    
+                    # Add query string if provided
+                    if clean_query and clean_query != '*':
+                        search_body["query"]["bool"]["must"].append({
+                            "simple_query_string": {
+                                "query": clean_query,
+                                "fields": ["source_file"],
+                                "default_operator": "and"
+                            }
+                        })
+                    
+                    response = opensearch_client.search(
+                        index=f"casescope-case-{case.id}",
+                        body=search_body
+                    )
+                    
+                    opensearch_logger.setLevel(old_opensearch_level)
+                    urllib3_logger.setLevel(old_urllib3_level)
+                    
+                    # Very safe response parsing
+                    if response and 'hits' in response:
+                        hits = response['hits']
+                        if 'hits' in hits:
+                            raw_results = hits['hits'][:20]  # Limit to 20 results
+                            
+                            # Clean and simplify results
+                            for i, result in enumerate(raw_results):
+                                try:
+                                    safe_result = {
+                                        '_id': str(result.get('_id', f'result_{i}')),
+                                        '_source': {
+                                            'timestamp': str(result.get('_source', {}).get('timestamp', 'Unknown'))[:50],
+                                            'source_file': str(result.get('_source', {}).get('source_file', 'Unknown'))[:100],
+                                            'case_id': str(case.id),
+                                            'file_id': str(result.get('_source', {}).get('file_id', 'Unknown')),
+                                            'event_summary': 'Event data available'
+                                        }
+                                    }
+                                    results.append(safe_result)
+                                except Exception as clean_error:
+                                    logger.debug(f"Skipping result {i} due to cleaning error: {clean_error}")
+                                    continue
+                        else:
+                            results = []
+                    else:
+                        results = []
+                        
+                except Exception as opensearch_error:
+                    logger.error(f"OpenSearch search error: {opensearch_error}")
+                    results = []
+                    flash('Search index may be empty or rebuilding. Try again after files finish processing.', 'info')
+                    
+                    # Try to restore logging levels
+                    try:
+                        opensearch_logger.setLevel(old_opensearch_level)
+                        urllib3_logger.setLevel(old_urllib3_level)
+                    except:
+                        pass
+                
+                logger.info(f"Search returned {len(results)} results")
                 
             except Exception as e:
                 logger.error(f"Search error: {e}")
