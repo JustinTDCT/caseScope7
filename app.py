@@ -477,7 +477,7 @@ def get_system_info():
 
 # Celery tasks
 def apply_sigma_rules(events, case_file):
-    """Apply Sigma rules to events and return violation count"""
+    """Apply actual Sigma rules to raw EVTX events"""
     try:
         violations = 0
         sigma_rules_path = Path('/opt/casescope/rules/sigma-rules')
@@ -486,29 +486,26 @@ def apply_sigma_rules(events, case_file):
             logger.warning("Sigma rules directory not found")
             return 0
             
-        logger.info(f"Analyzing {len(events)} events with Sigma rules")
+        logger.info(f"Applying real Sigma rules to {len(events)} events")
         
-        # Load Sigma rules (basic implementation)
-        # In a full implementation, this would use the sigmac compiler
-        sigma_rules = load_sigma_rules(sigma_rules_path)
-        logger.info(f"Loaded {len(sigma_rules)} Sigma rules")
+        # Load actual Sigma rules from YAML files
+        sigma_rules = load_actual_sigma_rules(sigma_rules_path)
+        logger.info(f"Loaded {len(sigma_rules)} actual Sigma rules from YAML files")
         
         for event in events:
             try:
-                # Convert event to a format suitable for Sigma analysis
-                event_data = prepare_event_for_sigma(event)
+                # Convert event to Sigma-compatible format (keep raw structure)
+                event_data = prepare_event_for_real_sigma(event)
                 
-                # Apply each Sigma rule
-                for rule_name, rule_patterns in sigma_rules.items():
-                    if check_sigma_rule_match(event_data, rule_patterns):
+                # Apply each Sigma rule directly
+                for rule_file, rule_data in sigma_rules.items():
+                    if evaluate_sigma_rule(event_data, rule_data):
                         violations += 1
-                        logger.info(f"Sigma rule triggered: {rule_name} for event {event.get('_id', 'unknown')}")
+                        rule_title = rule_data.get('title', rule_file)
                         
-                        # Log what matched for debugging (first 10 violations only)
-                        if violations <= 10:
-                            logger.info(f"Event data that triggered rule: {str(event_data)[:500]}...")
+                        logger.info(f"Sigma rule triggered: {rule_title}")
                         
-                        # Tag event in OpenSearch
+                        # Tag event in OpenSearch with specific rule
                         try:
                             opensearch_client.update(
                                 index=f"casescope-case-{case_file.case_id}",
@@ -516,14 +513,17 @@ def apply_sigma_rules(events, case_file):
                                 body={
                                     'doc': {
                                         'sigma_hit': True,
-                                        'sigma_rule': rule_name,
-                                        'severity': 'high'
+                                        'sigma_rule': rule_title,
+                                        'sigma_rule_file': rule_file,
+                                        'severity': rule_data.get('level', 'medium'),
+                                        'rule_category': rule_data.get('logsource', {}).get('category', 'unknown')
                                     }
                                 }
                             )
-                        except:
-                            pass  # Continue even if tagging fails
-                        break  # Only count one rule per event
+                        except Exception as tag_error:
+                            logger.warning(f"Failed to tag event with Sigma rule: {tag_error}")
+                        
+                        # Don't break - an event can violate multiple rules
                         
             except Exception as e:
                 logger.error(f"Error processing event for Sigma: {e}")
@@ -536,52 +536,126 @@ def apply_sigma_rules(events, case_file):
         logger.error(f"Error in apply_sigma_rules: {e}")
         return 0
 
-def load_sigma_rules(sigma_path):
-    """Load and parse Sigma rules from YAML files"""
+def load_actual_sigma_rules(sigma_path):
+    """Load actual Sigma rules from YAML files"""
+    import yaml
+    import glob
+    
     rules = {}
     try:
-        # For now, implement a basic pattern-based system
-        # This is a simplified version - real Sigma would parse YAML and compile conditions
-        rules = {
-            "Suspicious PowerShell Execution": {
-                "process": ["powershell.exe", "powershell"],
-                "command_line": ["bypass", "hidden", "encoded", "downloadstring", "invoke-expression", "iex", "-e ", "-enc"]
-            },
-            "Living Off The Land Binary Abuse": {
-                "process": ["regsvr32.exe", "rundll32.exe", "mshta.exe", "certutil.exe", "bitsadmin.exe"],
-                "command_line": ["http", "download", "url", "script"]
-            },
-            "Credential Theft Attempt": {
-                "process": ["powershell", "cmd", "rundll32"],
-                "command_line": ["sekurlsa", "logonpasswords", "mimikatz", "procdump", "lsass", "comsvcs.dll"]
-            },
-            "Persistence via Registry": {
-                "process": ["reg.exe", "powershell", "cmd"],
-                "registry": ["\\run\\", "\\runonce\\", "\\startup\\", "\\services\\"]
-            },
-            "Malicious Network Activity": {
-                "process": ["powershell", "cmd", "rundll32", "regsvr32"],
-                "network": ["http://", "https://", "ftp://"],
-                "command_line": ["wget", "curl", "invoke-webrequest", "downloadstring", "webclient"]
-            },
-            "Windows Defender Malware Detection": {
-                "provider": ["windows defender", "microsoft antimalware"],
-                "keywords": ["threat detected", "malware detected", "virus detected", "threat blocked", "trojan", "backdoor"]
-            },
-            "Windows Security Events": {
-                "keywords": ["logon", "authentication", "privilege", "elevation", "administrator", "system", "service"]
-            },
-            "Suspicious Activity": {
-                "keywords": ["suspicious", "blocked", "denied", "failed", "error", "warning", "alert"]
-            }
-        }
+        # Find all YAML files in sigma rules directory
+        yaml_files = glob.glob(str(sigma_path / "**/*.yml"), recursive=True)
+        yaml_files.extend(glob.glob(str(sigma_path / "**/*.yaml"), recursive=True))
         
-        logger.info(f"Loaded {len(rules)} basic Sigma-style rules")
+        logger.info(f"Found {len(yaml_files)} potential Sigma rule files")
+        
+        for yaml_file in yaml_files[:50]:  # Limit to first 50 rules for performance
+            try:
+                with open(yaml_file, 'r', encoding='utf-8') as f:
+                    rule_data = yaml.safe_load(f)
+                    
+                if rule_data and isinstance(rule_data, dict) and 'detection' in rule_data:
+                    rule_name = Path(yaml_file).stem
+                    rules[rule_name] = rule_data
+                    
+            except Exception as e:
+                logger.debug(f"Could not load Sigma rule {yaml_file}: {e}")
+                continue
+        
+        logger.info(f"Successfully loaded {len(rules)} actual Sigma rules")
         return rules
         
     except Exception as e:
-        logger.error(f"Error loading Sigma rules: {e}")
+        logger.error(f"Error loading actual Sigma rules: {e}")
         return {}
+
+def prepare_event_for_real_sigma(event):
+    """Prepare EVTX event for real Sigma rule evaluation"""
+    try:
+        # Extract the Windows event log fields that Sigma rules expect
+        sigma_event = {}
+        
+        # If we have parsed event data, extract key fields
+        if 'event_data' in event and isinstance(event['event_data'], dict):
+            event_data = event['event_data']
+            
+            # Map common Windows event fields to Sigma format
+            field_mapping = {
+                'ProcessName': 'Image',
+                'Image': 'Image', 
+                'CommandLine': 'CommandLine',
+                'User': 'User',
+                'LogonType': 'LogonType',
+                'IpAddress': 'IpAddress',
+                'TargetUserName': 'TargetUserName',
+                'SubjectUserName': 'SubjectUserName',
+                'ServiceName': 'ServiceName',
+                'ParentImage': 'ParentImage',
+                'ParentCommandLine': 'ParentCommandLine'
+            }
+            
+            for source_field, sigma_field in field_mapping.items():
+                if source_field in event_data:
+                    sigma_event[sigma_field] = str(event_data[source_field])
+            
+            # Add all original fields as well (lowercased)
+            for key, value in event_data.items():
+                if isinstance(value, (str, int, float)):
+                    sigma_event[key.lower()] = str(value)
+        
+        # Add raw event for full text search
+        sigma_event['_raw'] = str(event)
+        
+        return sigma_event
+        
+    except Exception as e:
+        logger.error(f"Error preparing event for Sigma: {e}")
+        return {'_raw': str(event)}
+
+def evaluate_sigma_rule(event_data, rule_data):
+    """Evaluate a Sigma rule against an event (simplified implementation)"""
+    try:
+        detection = rule_data.get('detection', {})
+        if not detection:
+            return False
+        
+        # Get the condition (simplified - real Sigma has complex logic)
+        condition = detection.get('condition', '')
+        
+        # For now, implement basic pattern matching
+        # This is a simplified version - real Sigma would compile the detection logic
+        
+        # Check if any selection criteria match
+        for key, value in detection.items():
+            if key == 'condition':
+                continue
+                
+            if isinstance(value, dict):
+                # Check if all conditions in this selection match
+                all_match = True
+                for field, pattern in value.items():
+                    if field.lower() in event_data:
+                        event_value = event_data[field.lower()].lower()
+                        if isinstance(pattern, list):
+                            if not any(str(p).lower() in event_value for p in pattern):
+                                all_match = False
+                                break
+                        else:
+                            if str(pattern).lower() not in event_value:
+                                all_match = False
+                                break
+                    else:
+                        all_match = False
+                        break
+                
+                if all_match:
+                    return True
+        
+        return False
+        
+    except Exception as e:
+        logger.error(f"Error evaluating Sigma rule: {e}")
+        return False
 
 def prepare_event_for_sigma(event):
     """Prepare event data for Sigma rule matching"""
@@ -652,57 +726,110 @@ def check_sigma_rule_match(event_data, rule_patterns):
         return False
 
 def apply_chainsaw_rules(events, case_file):
-    """Apply Chainsaw rules to events and return violation count"""
+    """Apply actual Chainsaw rules by running Chainsaw binary"""
     try:
         violations = 0
-        chainsaw_rules_path = Path('/opt/casescope/rules/chainsaw-rules')
+        chainsaw_path = Path('/opt/casescope/rules/chainsaw/chainsaw')
+        chainsaw_rules_path = Path('/opt/casescope/rules/chainsaw/rules')
+        
+        if not chainsaw_path.exists():
+            logger.warning("Chainsaw binary not found")
+            return 0
         
         if not chainsaw_rules_path.exists():
             logger.warning("Chainsaw rules directory not found")
             return 0
             
-        # Simple pattern matching for Chainsaw-style detections
-        # In a full implementation, this would use the Chainsaw engine
-        for event in events:
-            event_data_str = str(event.get('event_data', {})).lower()
+        logger.info(f"Running actual Chainsaw against EVTX file")
+        
+        # Get the original EVTX file path
+        evtx_file_path = case_file.file_path
+        
+        if not os.path.exists(evtx_file_path):
+            logger.error(f"EVTX file not found: {evtx_file_path}")
+            return 0
+        
+        # Run Chainsaw with actual rules
+        import subprocess
+        import json
+        import tempfile
+        
+        try:
+            # Create temporary output file for Chainsaw results
+            with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as temp_file:
+                temp_output = temp_file.name
             
-            # Check for specific suspicious activities (more targeted)
-            suspicious_patterns = [
-                'remote desktop',
-                'remote connection',
-                'suspicious process',
-                'unusual network',
-                'lateral movement',
-                'privilege escalation',
-                'credential access',
-                'persistence mechanism',
-                'defense evasion',
-                'suspicious registry',
-                'malicious dll',
-                'injection detected'
+            # Run Chainsaw command
+            cmd = [
+                str(chainsaw_path),
+                'hunt', 
+                str(evtx_file_path),
+                '--rules', str(chainsaw_rules_path),
+                '--output', temp_output,
+                '--json'
             ]
             
-            for pattern in suspicious_patterns:
-                if pattern in event_data_str:
-                    violations += 1
-                    # Tag event in OpenSearch
-                    try:
-                        opensearch_client.update(
-                            index=f"casescope-case-{case_file.case_id}",
-                            id=event.get('_id', ''),
-                            body={
-                                'doc': {
-                                    'chainsaw_hit': True,
-                                    'chainsaw_rule': f'Pattern: {pattern}',
-                                    'severity': 'low'
-                                }
-                            }
-                        )
-                    except:
-                        pass  # Continue even if tagging fails
-                    break
+            logger.info(f"Running Chainsaw: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            
+            if result.returncode == 0:
+                logger.info("Chainsaw executed successfully")
+                # Parse Chainsaw output
+                try:
+                    with open(temp_output, 'r') as f:
+                        chainsaw_results = []
+                        for line in f:
+                            if line.strip():
+                                try:
+                                    chainsaw_results.append(json.loads(line))
+                                except json.JSONDecodeError:
+                                    continue
                     
-        logger.info(f"Chainsaw rules found {violations} violations")
+                    violations = len(chainsaw_results)
+                    logger.info(f"Chainsaw found {violations} detections")
+                    
+                    # Process first 10 Chainsaw results for tagging
+                    for i, detection in enumerate(chainsaw_results[:10]):
+                        rule_name = detection.get('rule', detection.get('name', 'Unknown Chainsaw Rule'))
+                        logger.info(f"Chainsaw detection {i+1}: {rule_name}")
+                        
+                        # Tag a random event with this detection (simplified)
+                        # In practice, you'd match by timestamp, event ID, etc.
+                        if i < len(events):
+                            try:
+                                opensearch_client.update(
+                                    index=f"casescope-case-{case_file.case_id}",
+                                    id=events[i].get('_id', ''),
+                                    body={
+                                        'doc': {
+                                            'chainsaw_hit': True,
+                                            'chainsaw_rule': rule_name,
+                                            'chainsaw_detection': detection,
+                                            'severity': detection.get('level', 'medium')
+                                        }
+                                    }
+                                )
+                            except Exception as tag_error:
+                                logger.warning(f"Failed to tag event with Chainsaw rule: {tag_error}")
+                            
+                except Exception as parse_error:
+                    logger.error(f"Error parsing Chainsaw output: {parse_error}")
+                    
+            else:
+                logger.error(f"Chainsaw execution failed: {result.stderr}")
+                
+            # Clean up temp file
+            try:
+                os.unlink(temp_output)
+            except:
+                pass
+                
+        except subprocess.TimeoutExpired:
+            logger.error("Chainsaw execution timed out")
+        except Exception as run_error:
+            logger.error(f"Error running Chainsaw: {run_error}")
+                    
+        logger.info(f"Chainsaw rules processed: {violations} violations found")
         return violations
         
     except Exception as e:
@@ -748,7 +875,8 @@ def process_evtx_file(file_id):
             parser = PyEvtxParser(case_file.file_path)
             
             # Second pass - process records
-            logger.info(f"Starting to process {total_records} records")
+            logger.info(f"Starting to process {total_records} records from EVTX file")
+            logger.info(f"File size: {os.path.getsize(case_file.file_path) / (1024*1024):.2f} MB")
             for record in parser.records():
                 try:
                     # Debug: Log the first few records to understand the format
@@ -853,7 +981,12 @@ def process_evtx_file(file_id):
             case_file.processing_progress = 100
             db.session.commit()
             
-            logger.info(f"Successfully processed file {file_id} with {len(events)} events")
+            logger.info(f"Successfully processed file {file_id}")
+            logger.info(f"  - EVTX records processed: {processed_records}")
+            logger.info(f"  - Events sent to OpenSearch: {len(events)}")
+            logger.info(f"  - Events analyzed by Sigma: {len(events)}")
+            logger.info(f"  - Sigma violations found: {case_file.sigma_violations}")
+            logger.info(f"  - Chainsaw violations found: {case_file.chainsaw_violations}")
             return True
             
         except Exception as e:

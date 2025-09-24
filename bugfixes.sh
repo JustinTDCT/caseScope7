@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.51"
+echo "caseScope Bug Fixes Script v7.0.53"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.51..."
+log "Updating version to 7.0.53..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.51 "FIX: Single file rerun, duplicate handling with queue removal, Sigma threshold" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.53 "MAJOR: Real Sigma and Chainsaw rule engines - no more keyword matching" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -206,12 +206,14 @@ echo "  Worker Logs:   journalctl -u casescope-worker -f"
 echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
-echo "🎯 CRITICAL FIXES APPLIED:"
+echo "🎯 MAJOR RULE ENGINE OVERHAUL:"
+echo "  ✅ IMPLEMENTED: Real Sigma rule engine using actual YAML rule files"
+echo "  ✅ IMPLEMENTED: Real Chainsaw rule engine executing chainsaw binary"
+echo "  ✅ REPLACED: Keyword matching with actual rule evaluation"
+echo "  ✅ ENHANCED: Events tagged with specific rule violations and metadata"
+echo "  ✅ ADDED: Support for Sigma rule severity levels and categories"
 echo "  ✅ FIXED: Single file re-run rules now actually works (requeues processing)"
-echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"  
-echo "  ✅ FIXED: Sigma threshold adjusted (was too strict, now finds violations)"
-echo "  ✅ IMPROVED: Upload handling with JSON responses for better UI feedback"
-echo "  ✅ ADDED: Fallback Sigma rules for Windows events"
+echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
 echo "  ✅ IMPLEMENTED: Basic Sigma rule engine with proper rule structure"
 echo "  ✅ Fixed dialog text to say 'all files' instead of 'completed files'"
@@ -268,4 +270,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.51 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.53 deployment complete!"

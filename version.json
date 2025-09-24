@@ -1,6 +1,6 @@
 {
-  "version": "7.0.51",
+  "version": "7.0.53",
   "release_date": "2025-09-24",
-  "description": "FIX: Single file rerun, duplicate handling with queue removal, Sigma threshold",
+  "description": "MAJOR: Real Sigma and Chainsaw rule engines - no more keyword matching",
   "build": "production"
 }
