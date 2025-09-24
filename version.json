@@ -1,6 +1,6 @@
 {
-  "version": "7.0.71",
+  "version": "7.0.72",
   "release_date": "2025-09-24",
-  "description": "BREAKTHROUGH: Use --sigma with mapping file instead of --rule (based on working script)",
+  "description": "FIX: Correct Chainsaw mapping file format - add required 'groups' field structure",
   "build": "production"
 }

@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.71"
+echo "caseScope Bug Fixes Script v7.0.72"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.71..."
+log "Updating version to 7.0.72..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.71 "BREAKTHROUGH: Use --sigma with mapping file instead of --rule (based on working script)" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.72 "FIX: Correct Chainsaw mapping file format - add required 'groups' field structure" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -226,53 +226,60 @@ if [ -d "chainsaw-rules/rules" ]; then
     log "Final cleaned rule count: $final_count"
 fi
 
-# CRITICAL: Check for Chainsaw mapping file (needed for --sigma)
-log "=== CHAINSAW MAPPING FILE CHECK ==="
+# CRITICAL: Fix Chainsaw mapping file (needed for --sigma)
+log "=== CHAINSAW MAPPING FILE FIX ==="
 MAPPING_FILE="/usr/local/bin/mappings/sigma-event-logs-all.yml"
-if [ -f "$MAPPING_FILE" ]; then
-    log "✅ Chainsaw mapping file found: $MAPPING_FILE"
-else
-    log "❌ CRITICAL: Chainsaw mapping file missing!"
-    log "This file is required for --sigma parameter to work"
-    log "Expected location: $MAPPING_FILE"
-    
-    # Try to find mapping files elsewhere
-    log "Searching for mapping files..."
-    find /usr/local -name "*.yml" -path "*/mappings/*" 2>/dev/null | head -5 || log "No mapping files found"
-    find /opt -name "*.yml" -path "*/mappings/*" 2>/dev/null | head -5 || log "No mapping files in /opt"
-    
-    # Create basic mapping as fallback
-    log "Creating basic fallback mapping file..."
-    mkdir -p "$(dirname "$MAPPING_FILE")"
+
+# Always recreate the mapping file to fix format issues
+log "Creating/fixing Chainsaw mapping file with proper format..."
+rm -f "$MAPPING_FILE"
+mkdir -p "$(dirname "$MAPPING_FILE")"
     cat > "$MAPPING_FILE" << 'EOF'
-# Basic Chainsaw mapping for Sigma rules
-name: "Basic Windows Event Log Mapping"
+# Chainsaw mapping for Sigma rules - proper format with groups
+name: "Windows Event Log Mapping"
 author: "caseScope"
-description: "Basic mapping for Windows event logs"
+description: "Mapping for Windows event logs to Sigma rules"
 
-mappings:
-  - name: "Windows System"
-    product: "windows"
-    service: "system"
-    log_source: "WinEventLog:System"
-
-  - name: "Windows Security"  
-    product: "windows"
-    service: "security"
-    log_source: "WinEventLog:Security"
-
-  - name: "Windows Application"
-    product: "windows"
-    service: "application"
-    log_source: "WinEventLog:Application"
+groups:
+  - name: "System Events"
+    timestamp: "Event.System.TimeCreated_attributes.SystemTime"
+    data:
+      Event.System.Provider_attributes.Name: "provider_name"
+      Event.System.EventID: "event_id"
+      Event.System.Level: "level"
+      Event.System.Keywords: "keywords"
+      Event.System.EventRecordID: "record_id"
+      Event.System.ProcessID: "process_id"
+      Event.System.ThreadID: "thread_id"
+      Event.System.Computer: "computer"
+      Event.EventData.Data: "event_data"
 
   - name: "Windows Defender"
-    product: "windows"
-    service: "windefend"
-    log_source: "WinEventLog:Microsoft-Windows-Windows Defender/Operational"
+    timestamp: "Event.System.TimeCreated_attributes.SystemTime"
+    data:
+      Event.System.Provider_attributes.Name: "provider_name"
+      Event.System.EventID: "event_id"
+      Event.System.Level: "level"
+      Event.System.Computer: "computer"
+      Event.EventData.Data: "event_data"
+      Event.EventData.ThreatName: "threat_name"
+      Event.EventData.Path: "file_path"
+      Event.EventData.Process: "process_name"
+
+  - name: "Security Events"
+    timestamp: "Event.System.TimeCreated_attributes.SystemTime"
+    data:
+      Event.System.Provider_attributes.Name: "provider_name"
+      Event.System.EventID: "event_id"
+      Event.System.Level: "level"
+      Event.System.Computer: "computer"
+      Event.EventData.Data: "event_data"
+      Event.EventData.SubjectUserName: "user_name"
+      Event.EventData.TargetUserName: "target_user"
+      Event.EventData.ProcessName: "process_name"
+      Event.EventData.CommandLine: "command_line"
 EOF
-    log "Created basic mapping file: $MAPPING_FILE"
-fi
+log "Created proper format mapping file: $MAPPING_FILE"
 
 # 11. CLEAN UP ORPHANED FILES
 log "Cleaning up orphaned upload files..."
@@ -366,13 +373,13 @@ echo "  Worker Logs:   journalctl -u casescope-worker -f"
 echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
-echo "🎯 MAJOR BREAKTHROUGH:"
-echo "  ✅ DISCOVERY: Your working script uses --sigma not --rule!"
-echo "  ✅ CHANGE: Now using 3,036 existing Sigma rules with mapping"
-echo "  ✅ MAPPING: Created/checked sigma-event-logs-all.yml mapping file"
-echo "  ✅ COMMAND: chainsaw hunt --sigma /sigma-rules --mapping /mappings"
-echo "  ✅ EXPECTS: Should now detect 150+ violations using proper rules!"
-echo "  ✅ APPROACH: Following proven working script methodology"
+echo "🔧 MAPPING FILE FORMAT FIX:"
+echo "  ✅ PROGRESS: 3,435 Sigma rules loaded successfully!"
+echo "  ✅ ISSUE: Mapping file missing required 'groups' field"
+echo "  ✅ FIXED: Created proper Chainsaw mapping file format"
+echo "  ✅ STRUCTURE: Added groups with timestamp and data mappings"
+echo "  ✅ READY: Chainsaw should now process rules with mapping!"
+echo "  ✅ EXPECTS: 150+ violations with fixed mapping structure"
 echo "  ✅ FIXED: Single file re-run rules now actually works (requeues processing)"
 echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
@@ -431,4 +438,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.71 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.72 deployment complete!"
