@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.73"
+echo "caseScope Bug Fixes Script v7.0.74"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.73..."
+log "Updating version to 7.0.74..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.73 "FIX: Bash script syntax - fix grep errors, add error suppression with 2>/dev/null" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.74 "MAJOR: Official Chainsaw mappings from WithSecure Labs + nightly updates" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -210,8 +210,7 @@ else
     log "Chainsaw rules directory already exists with sufficient rules"
     # Still validate existing rules
     if command -v /usr/local/bin/chainsaw >/dev/null 2>&1; then
-        log "Validating existing rules with Chainsaw check..."
-        /usr/local/bin/chainsaw check -r chainsaw-rules/rules/ || log "Some existing rules failed validation"
+        log "Found $rule_count Chainsaw rules (validation skipped - 'chainsaw check' not available in current version)"
     fi
 fi
 
@@ -226,15 +225,26 @@ if [ -d "chainsaw-rules/rules" ]; then
     log "Final cleaned rule count: $final_count"
 fi
 
-# CRITICAL: Fix Chainsaw mapping file (needed for --sigma)
-log "=== CHAINSAW MAPPING FILE FIX ==="
-MAPPING_FILE="/usr/local/bin/mappings/sigma-event-logs-all.yml"
+# CRITICAL: Download official Chainsaw mappings from WithSecure Labs
+log "=== OFFICIAL CHAINSAW MAPPINGS DOWNLOAD ==="
+MAPPINGS_DIR="/usr/local/bin/mappings"
+MAPPING_FILE="$MAPPINGS_DIR/sigma-event-logs-all.yml"
 
-# Always recreate the mapping file to fix format issues
-log "Creating/fixing Chainsaw mapping file with proper format..."
-rm -f "$MAPPING_FILE"
-mkdir -p "$(dirname "$MAPPING_FILE")"
-cat > "$MAPPING_FILE" << 'EOF'
+log "Downloading official Chainsaw mappings from WithSecure Labs GitHub..."
+rm -rf "$MAPPINGS_DIR"
+mkdir -p "$MAPPINGS_DIR"
+
+# Download the official mappings directly from GitHub
+curl -L "https://raw.githubusercontent.com/WithSecureLabs/chainsaw/master/mappings/sigma-event-logs-all.yml" -o "$MAPPING_FILE" 2>/dev/null || {
+    log "⚠️ Direct download failed, trying alternative method..."
+    
+    # Fallback: Download entire mappings directory
+    cd /tmp
+    rm -rf chainsaw-mappings
+    git clone --depth 1 --filter=blob:none --sparse https://github.com/WithSecureLabs/chainsaw.git chainsaw-mappings 2>/dev/null || {
+        log "❌ Git clone failed, creating basic fallback mapping..."
+        mkdir -p "$MAPPINGS_DIR"
+        cat > "$MAPPING_FILE" << 'EOF'
 # Chainsaw mapping for Sigma rules - proper format with groups
 name: "Windows Event Log Mapping"
 author: "caseScope"
@@ -279,13 +289,59 @@ groups:
       Event.EventData.ProcessName: "process_name"
       Event.EventData.CommandLine: "command_line"
 EOF
-log "Created proper format mapping file: $MAPPING_FILE"
+        log "Created fallback mapping file: $MAPPING_FILE"
+        return
+    }
+    
+    # Extract mappings from the cloned repo
+    cd chainsaw-mappings
+    git sparse-checkout set mappings
+    git checkout
+    
+    if [ -f "mappings/sigma-event-logs-all.yml" ]; then
+        cp mappings/*.yml "$MAPPINGS_DIR/" 2>/dev/null || true
+        log "✅ Copied official mappings from git clone"
+    else
+        log "❌ Official mappings not found in git clone"
+    fi
+    
+    cd /opt/casescope/rules
+    rm -rf /tmp/chainsaw-mappings
+}
 
-# 11. CLEAN UP ORPHANED FILES
+# Verify the mapping file exists and is valid
+if [ -f "$MAPPING_FILE" ]; then
+    if grep -q "groups:" "$MAPPING_FILE" 2>/dev/null; then
+        log "✅ Official Chainsaw mapping file downloaded successfully"
+        log "✅ Mapping file contains required 'groups' structure"
+    else
+        log "⚠️ Downloaded mapping may be invalid format"
+    fi
+else
+    log "❌ Failed to create mapping file, Chainsaw --sigma may not work"
+fi
+
+# 11. SETUP NIGHTLY UPDATES (NEW!)
+log "=== SETTING UP NIGHTLY UPDATES ==="
+if [ -f "nightly_update.sh" ]; then
+    log "Installing nightly update script..."
+    cp nightly_update.sh /opt/casescope/
+    chmod +x /opt/casescope/nightly_update.sh
+    chown casescope:casescope /opt/casescope/nightly_update.sh
+    
+    # Add to crontab for nightly execution at 2 AM
+    log "Setting up nightly cron job..."
+    (crontab -u casescope -l 2>/dev/null | grep -v "nightly_update.sh"; echo "0 2 * * * /opt/casescope/nightly_update.sh >> /opt/casescope/logs/nightly_update.log 2>&1") | crontab -u casescope -
+    log "✅ Nightly updates scheduled for 2:00 AM daily"
+else
+    log "⚠️ nightly_update.sh not found - nightly updates not configured"
+fi
+
+# 12. CLEAN UP ORPHANED FILES
 log "Cleaning up orphaned upload files..."
 find /opt/casescope/data/uploads -type f -name "*.evtx" -mtime +1 -delete 2>/dev/null || true
 
-# 12. UPDATE SYSTEMD SERVICE FILES (if needed)
+# 13. UPDATE SYSTEMD SERVICE FILES (if needed)
 log "Updating systemd service files..."
 cat > /etc/systemd/system/casescope-web.service << 'EOF'
 [Unit]
@@ -373,13 +429,13 @@ echo "  Worker Logs:   journalctl -u casescope-worker -f"
 echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
-echo "🔧 BASH SCRIPT SYNTAX FIXES:"
-echo "  ✅ FIXED: grep error suppression with 2>/dev/null"
-echo "  ✅ FIXED: systemctl service check grep errors"
-echo "  ✅ FIXED: mount command grep error handling"
-echo "  ✅ FIXED: find/grep/xargs pipeline to avoid empty input errors"
-echo "  ✅ FIXED: Indentation issue in mapping file creation"
-echo "  ✅ READY: Script should run without grep/bash errors"
+echo "🎯 OFFICIAL CHAINSAW MAPPINGS + NIGHTLY UPDATES:"
+echo "  ✅ MAJOR: Download official mappings from WithSecure Labs GitHub"
+echo "  ✅ URL: https://github.com/WithSecureLabs/chainsaw/tree/master/mappings"
+echo "  ✅ FIXED: Removed invalid 'chainsaw check' command (not available)"
+echo "  ✅ NEW: Nightly update script with automatic rule/mapping updates"
+echo "  ✅ SCHEDULED: Daily updates at 2:00 AM via cron"
+echo "  ✅ EXPECTS: Official mappings should fix Sigma rule processing!"
 echo "  ✅ FIXED: Single file re-run rules now actually works (requeues processing)"
 echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
@@ -438,4 +494,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.73 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.74 deployment complete!"

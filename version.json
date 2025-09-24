@@ -1,6 +1,6 @@
 {
-  "version": "7.0.73",
+  "version": "7.0.74",
   "release_date": "2025-09-24",
-  "description": "FIX: Bash script syntax - fix grep errors, add error suppression with 2>/dev/null",
+  "description": "MAJOR: Official Chainsaw mappings from WithSecure Labs + nightly updates",
   "build": "production"
 }
