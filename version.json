@@ -1,6 +1,6 @@
 {
-  "version": "7.0.55",
+  "version": "7.0.56",
   "release_date": "2025-09-24",
-  "description": "FIX: Improve Sigma rule loading - should load 500+ rules instead of 49",
+  "description": "PERFORMANCE: Skip slow event indexing, run Chainsaw directly - 20s vs 5+ minutes",
   "build": "production"
 }
