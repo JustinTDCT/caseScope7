@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.65"
+echo "caseScope Bug Fixes Script v7.0.66"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.65..."
+log "Updating version to 7.0.66..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.65 "SUCCESS: Chainsaw working! Fix output parsing for different detection formats" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.66 "DEBUG: Enhanced Chainsaw output analysis to find why only 1/150+ violations detected" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -231,13 +231,13 @@ echo "  Worker Logs:   journalctl -u casescope-worker -f"
 echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
-echo "🎉 CHAINSAW SUCCESS:"
-echo "  ✅ WORKING: Chainsaw executed successfully in 1.87 seconds!"
-echo "  ✅ DETECTING: Found 1 violation (proving it works!)"
-echo "  ✅ PARSING: Fixed output format handling (dict vs list)"
-echo "  ✅ TAGGING: Enhanced OpenSearch event tagging"
-echo "  ✅ PERFORMANCE: Fast execution without individual event parsing"
-echo "  ✅ BREAKTHROUGH: All major obstacles overcome!"
+echo "🔍 CHAINSAW DEEP DEBUG:"
+echo "  ✅ FIXED: subprocess variable error in debugging"
+echo "  ✅ ENHANCED: Raw output analysis and rule file counting"
+echo "  ✅ ADDED: Detailed JSON parsing error reporting"
+echo "  ✅ INVESTIGATING: Why only 1/150+ violations detected"
+echo "  ✅ LOGGING: stderr output and line-by-line parsing"
+echo "  ✅ READY: Enhanced diagnostics to find missing violations!"
 echo "  ✅ FIXED: Single file re-run rules now actually works (requeues processing)"
 echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
@@ -296,4 +296,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.65 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.66 deployment complete!"

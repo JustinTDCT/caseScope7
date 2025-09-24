@@ -926,6 +926,7 @@ def run_chainsaw_directly(case_file):
                 logger.info(f"Chainsaw binary header: {header}")
                 
             # Check file system mount options
+            import subprocess
             mount_result = subprocess.run(['mount'], capture_output=True, text=True)
             for line in mount_result.stdout.split('\n'):
                 if '/opt' in line:
@@ -945,6 +946,15 @@ def run_chainsaw_directly(case_file):
             if chainsaw_base.exists():
                 logger.info(f"Contents of chainsaw-rules: {list(chainsaw_base.iterdir())}")
             return 0
+        
+        # Debug: Check what rules are actually available
+        try:
+            rule_files = list(chainsaw_rules_path.glob('**/*.yml'))
+            logger.info(f"Found {len(rule_files)} Chainsaw rule files")
+            if len(rule_files) > 0:
+                logger.info(f"Sample rule files: {[str(f) for f in rule_files[:5]]}")
+        except Exception as rule_debug_error:
+            logger.warning(f"Error checking rule files: {rule_debug_error}")
             
         logger.info(f"Running Chainsaw directly on EVTX file (fast method)")
         logger.info(f"Chainsaw binary: {chainsaw_path}")
@@ -1008,21 +1018,40 @@ def run_chainsaw_directly(case_file):
             
             logger.info(f"Chainsaw completed in {end_time - start_time:.2f} seconds")
             
+            # Always log stderr for debugging, even on success
+            if result.stderr:
+                logger.info(f"Chainsaw stderr: {result.stderr}")
+            
             if result.returncode == 0:
                 logger.info("Chainsaw executed successfully")
+                # Debug: Check raw output first
+                try:
+                    with open(temp_output, 'r') as f:
+                        raw_content = f.read()
+                        logger.info(f"Chainsaw raw output size: {len(raw_content)} bytes")
+                        if len(raw_content) > 0:
+                            logger.info(f"First 500 chars: {raw_content[:500]}")
+                        else:
+                            logger.warning("Chainsaw output file is empty!")
+                except Exception as raw_read_error:
+                    logger.error(f"Could not read raw output: {raw_read_error}")
+                
                 # Parse Chainsaw output
                 try:
                     with open(temp_output, 'r') as f:
                         chainsaw_results = []
+                        line_count = 0
                         for line in f:
+                            line_count += 1
                             if line.strip():
                                 try:
                                     chainsaw_results.append(json.loads(line))
-                                except json.JSONDecodeError:
-                                    continue
+                                except json.JSONDecodeError as json_err:
+                                    logger.warning(f"JSON decode error on line {line_count}: {json_err}")
+                                    logger.warning(f"Problematic line: {line[:100]}")
                     
                     violations = len(chainsaw_results)
-                    logger.info(f"Chainsaw found {violations} detections")
+                    logger.info(f"Chainsaw found {violations} detections from {line_count} output lines")
                     
                     # Tag some events in OpenSearch (sample only for performance)
                     if violations > 0:
