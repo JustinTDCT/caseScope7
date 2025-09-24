@@ -1,6 +1,6 @@
 {
-  "version": "7.0.39",
+  "version": "7.0.40",
   "release_date": "2025-09-24",
-  "description": "Simplify upload click handling by removing aggressive debouncing",
+  "description": "Fix duplicate upload handlers and add comprehensive debugging",
   "build": "production"
 }

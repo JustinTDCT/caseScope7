@@ -170,7 +170,13 @@ function initializeFileUpload() {
 }
 
 function setupUploadHandlers(uploadArea, fileInput) {
-    console.log('Setting up upload handlers - simplified v7.0.38');
+    console.log('Setting up upload handlers - simplified v7.0.39');
+    
+    // Check if already initialized to prevent double handlers
+    if (uploadArea.dataset.handlersAttached === 'true') {
+        console.log('Upload handlers already attached, skipping');
+        return;
+    }
     
     // Simple click handler without aggressive debouncing
     function handleUploadClick(event) {
@@ -181,14 +187,22 @@ function setupUploadHandlers(uploadArea, fileInput) {
         return false;
     }
     
-    // Add file input change handler
+    // Add file input change handler  
     fileInput.addEventListener('change', function(e) {
+        console.log('File input change event triggered');
         console.log('Files selected:', e.target.files.length);
+        console.log('Files array:', Array.from(e.target.files).map(f => f.name));
+        
         if (e.target.files.length > 0) {
             // Call the page's handleFileSelection if it exists
             if (typeof window.handleFileSelection === 'function') {
-                console.log('Calling window.handleFileSelection');
-                window.handleFileSelection(Array.from(e.target.files));
+                console.log('Calling window.handleFileSelection with files:', e.target.files.length);
+                try {
+                    window.handleFileSelection(Array.from(e.target.files));
+                    console.log('window.handleFileSelection called successfully');
+                } catch (error) {
+                    console.error('Error calling window.handleFileSelection:', error);
+                }
             } else {
                 console.error('window.handleFileSelection function not found!');
                 // Basic fallback - set files directly
@@ -203,6 +217,8 @@ function setupUploadHandlers(uploadArea, fileInput) {
                     }
                 }
             }
+        } else {
+            console.log('No files selected (user cancelled dialog)');
         }
     });
     
@@ -244,6 +260,9 @@ function setupUploadHandlers(uploadArea, fileInput) {
     
     // Single click handler for upload area
     uploadArea.addEventListener('click', handleUploadClick);
+    
+    // Mark as initialized
+    uploadArea.dataset.handlersAttached = 'true';
     
     console.log('Upload handlers attached');
     console.log('Upload area element:', uploadArea);
