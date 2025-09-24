@@ -1,5 +1,5 @@
 /**
- * caseScope v7.0.25 - Main JavaScript
+ * caseScope v7.0.26 - Main JavaScript
  * Copyright 2025 Justin Dube
  */
 
@@ -111,32 +111,36 @@ function closeAllDropdowns() {
     });
 }
 
-// File Upload - v7.0.25 Element detection + Processing fix
+// File Upload - v7.0.26 Final fix
 let uploadInitialized = false;
-let clickInProgress = false;
+let globalClickBlocked = false;
 
 function initializeFileUpload() {
-    console.log('Attempting to initialize file upload v7.0.25');
-    
-    // Only try to initialize if we're on the upload page
-    if (!document.location.pathname.includes('upload')) {
-        console.log('Not on upload page, skipping upload initialization');
-        return;
-    }
+    console.log('Attempting to initialize file upload v7.0.26');
+    console.log('Current pathname:', document.location.pathname);
     
     if (uploadInitialized) {
         console.log('Upload already initialized');
         return;
     }
     
-    // Wait for elements to be available
+    // Always try to find upload elements regardless of path
     const waitForElements = () => {
         const uploadArea = document.querySelector('.upload-area');
         const fileInput = document.querySelector('#file-input');
         
+        console.log('Looking for upload elements...');
+        console.log('Upload area found:', !!uploadArea);
+        console.log('File input found:', !!fileInput);
+        
         if (!uploadArea || !fileInput) {
-            console.log('Upload elements not ready yet, waiting...');
-            setTimeout(waitForElements, 100);
+            // Only retry if we're likely on an upload page
+            if (document.querySelector('.upload-form') || document.location.pathname.includes('upload_files')) {
+                console.log('Upload form detected, retrying element search...');
+                setTimeout(waitForElements, 200);
+            } else {
+                console.log('No upload form found, stopping search');
+            }
             return;
         }
         
@@ -149,48 +153,58 @@ function initializeFileUpload() {
 
 function initializeUploadHandlers(uploadArea, fileInput) {
     uploadInitialized = true;
+    console.log('Setting up upload handlers with nuclear Chrome fix');
     
-    // Ultra-aggressive Chrome double-click prevention
-    let lastClickTime = 0;
-    const CLICK_THRESHOLD = 1000; // 1 second between clicks
+    // Nuclear option: global click blocking
+    let isClickAllowed = true;
+    const BLOCK_DURATION = 2000; // 2 seconds
+    
+    // Completely remove all existing event listeners by cloning
+    const newUploadArea = uploadArea.cloneNode(true);
+    uploadArea.parentNode.replaceChild(newUploadArea, uploadArea);
+    
+    // Re-get the fresh element
+    const freshUploadArea = document.querySelector('.upload-area');
+    
+    const blockClicks = () => {
+        isClickAllowed = false;
+        globalClickBlocked = true;
+        console.log('Blocking all clicks for', BLOCK_DURATION, 'ms');
+        
+        setTimeout(() => {
+            isClickAllowed = true;
+            globalClickBlocked = false;
+            console.log('Click blocking released');
+        }, BLOCK_DURATION);
+    };
     
     const handleClick = (e) => {
-        const currentTime = Date.now();
-        console.log('Upload area clicked at:', currentTime, 'lastClick:', lastClickTime);
+        console.log('Click detected, allowed:', isClickAllowed, 'globalBlocked:', globalClickBlocked);
         
+        // Nuclear prevention
         e.preventDefault();
         e.stopImmediatePropagation();
         e.stopPropagation();
         
-        // Prevent rapid clicks
-        if (currentTime - lastClickTime < CLICK_THRESHOLD) {
-            console.log('Click too soon, ignoring (Chrome fix)');
+        if (!isClickAllowed || globalClickBlocked) {
+            console.log('Click blocked by nuclear prevention');
             return false;
         }
         
-        lastClickTime = currentTime;
-        console.log('Processing click, opening file dialog');
+        console.log('Allowing click and blocking future clicks');
+        blockClicks();
         
-        // Trigger file input with delay
+        // Trigger file input
         setTimeout(() => {
+            console.log('Opening file dialog');
             fileInput.click();
-        }, 100);
+        }, 50);
         
         return false;
     };
     
-    // Remove any existing listeners and add new one
-    uploadArea.onclick = null;
-    uploadArea.addEventListener('click', handleClick, { 
-        capture: true, 
-        passive: false, 
-        once: false 
-    });
-    
-    // Also handle any potential parent element clicks
-    uploadArea.addEventListener('mousedown', (e) => {
-        e.stopImmediatePropagation();
-    }, true);
+    // Use onclick for maximum compatibility
+    freshUploadArea.onclick = handleClick;
     
     // File selection handler
     fileInput.addEventListener('change', function(e) {
