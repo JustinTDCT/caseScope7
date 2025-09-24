@@ -1,6 +1,6 @@
 {
-  "version": "7.0.46",
+  "version": "7.0.47",
   "release_date": "2025-09-24",
-  "description": "Critical fixes: 3-dot menu CSS conflicts, rerun includes errors, Sigma patterns, search encoding",
+  "description": "UI polish: fix 3-dot alignment, dark theme, button symmetry, dropdown debugging",
   "build": "production"
 }

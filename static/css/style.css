@@ -16,9 +16,9 @@
 }
 
 .file-actions .dropdown-btn {
-  background: var(--text-secondary);
+  background: #2a3441;
   border: none;
-  color: white;
+  color: #9ca3af;
   padding: 8px;
   border-radius: 50%;
   cursor: pointer;
@@ -29,11 +29,14 @@
   height: 32px;
   transition: all 0.2s;
   font-size: 14px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .file-actions .dropdown-btn:hover {
-  background: var(--primary-color);
-  transform: scale(1.1);
+  background: #374151;
+  color: white;
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .file-actions .dropdown-content {
@@ -42,13 +45,38 @@
   left: auto;
   min-width: 180px;
   top: calc(100% + 8px);
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
+  background: #1f2937;
+  border: 1px solid #374151;
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   z-index: 1000;
   display: none;
   overflow: hidden;
+}
+
+.file-actions .dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  color: #d1d5db;
+  text-decoration: none;
+  transition: background-color 0.2s;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-size: 14px;
+}
+
+.file-actions .dropdown-item:hover {
+  background: #374151;
+  color: white;
+}
+
+.file-actions .dropdown-item i {
+  width: 16px;
+  text-align: center;
 }
 
 .file-actions .dropdown.active .dropdown-content {
@@ -58,7 +86,7 @@
 /* Ensure file item layout accommodates the menu */
 .file-item {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: 2fr auto 1fr auto;
   gap: 1rem;
   align-items: center;
   padding: 1rem;
@@ -66,25 +94,34 @@
   background: var(--card-bg);
   border: 1px solid var(--border-color);
   border-radius: 12px;
+  min-height: 80px;
 }
 
 .file-item .file-info {
   grid-column: 1 / 2;
+  min-width: 0; /* Allow text overflow */
 }
 
 .file-item .file-status {
   grid-column: 2 / 3;
   justify-self: center;
+  white-space: nowrap;
 }
 
 .file-item .file-stats {
   grid-column: 3 / 4;
   justify-self: end;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
 
 .file-item .file-actions {
   grid-column: 4 / 5;
   justify-self: end;
+  width: 40px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .action-btn {
@@ -1058,6 +1095,34 @@ body {
 }
 
 /* file-actions styling moved to top of file */
+
+/* Button consistency fixes */
+.card-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.card-actions .btn {
+  min-width: 160px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  border-radius: 8px;
+  transition: all 0.2s;
+  border: none;
+  cursor: pointer;
+}
+
+.card-actions .btn i {
+  font-size: 14px;
+}
 
 /* Search Interface */
 .search-container {

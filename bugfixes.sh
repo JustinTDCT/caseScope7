@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.46"
+echo "caseScope Bug Fixes Script v7.0.47"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.46..."
+log "Updating version to 7.0.47..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.46 "Critical fixes: 3-dot menu CSS conflicts, rerun includes errors, Sigma patterns, search encoding" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.47 "UI polish: fix 3-dot alignment, dark theme, button symmetry, dropdown debugging" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -207,6 +207,11 @@ echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
 echo "🎯 MAIN FIXES APPLIED:"
+echo "  ✅ Fixed dialog text to say 'all files' instead of 'completed files'"
+echo "  ✅ Improved 3-dot menu grid layout with consistent alignment"
+echo "  ✅ Applied darker theme to 3-dot menu with better contrast"
+echo "  ✅ Added button symmetry and consistent sizing"
+echo "  ✅ Enhanced dropdown debugging with console logging"
 echo "  ✅ CRITICAL: Removed conflicting CSS causing 3-dot menu misalignment"
 echo "  ✅ CRITICAL: Fixed rerun processing to include error files"
 echo "  ✅ CRITICAL: Added violation count reset during reprocessing"
@@ -256,4 +261,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.46 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.47 deployment complete!"

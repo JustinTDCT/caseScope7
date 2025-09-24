@@ -96,7 +96,7 @@
                         Clear Pending
                     </button>
                 </form>
-                <a href="{{ url_for('rerun_rules') }}" class="btn btn-warning" onclick="return confirm('Re-run rules on all completed files?')">
+                <a href="{{ url_for('rerun_rules') }}" class="btn btn-warning" onclick="return confirm('Re-run rules on all files (including error files)?')">
                     <i class="fas fa-sync"></i>
                     Re-run All Rules
                 </a>
@@ -672,15 +672,29 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeFileList() {
+    console.log('Initializing file list dropdowns...');
+    
     // Initialize dropdowns
     const dropdowns = document.querySelectorAll('.dropdown');
-    dropdowns.forEach(dropdown => {
+    console.log(`Found ${dropdowns.length} dropdowns`);
+    
+    dropdowns.forEach((dropdown, index) => {
         const btn = dropdown.querySelector('.dropdown-btn');
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            toggleDropdown(dropdown);
-        });
+        if (btn) {
+            console.log(`Attaching click handler to dropdown ${index + 1}`);
+            
+            // Remove any existing handlers
+            btn.onclick = null;
+            
+            btn.addEventListener('click', function(e) {
+                console.log(`Dropdown ${index + 1} clicked`);
+                e.preventDefault();
+                e.stopPropagation();
+                toggleDropdown(dropdown);
+            });
+        } else {
+            console.error(`No dropdown button found in dropdown ${index + 1}`);
+        }
     });
 
     // Close dropdowns when clicking outside
@@ -827,11 +841,21 @@ function deleteFile(fileId) {
 }
 
 function toggleDropdown(dropdown) {
+    console.log('toggleDropdown called');
     const isActive = dropdown.classList.contains('active');
+    console.log('Dropdown was active:', isActive);
+    
     closeAllDropdowns();
     
     if (!isActive) {
+        console.log('Activating dropdown');
         dropdown.classList.add('active');
+        
+        // Verify the dropdown is visible
+        const content = dropdown.querySelector('.dropdown-content');
+        if (content) {
+            console.log('Dropdown content visibility:', window.getComputedStyle(content).display);
+        }
     }
 }
 
