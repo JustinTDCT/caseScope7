@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.59"
+echo "caseScope Bug Fixes Script v7.0.60"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.59..."
+log "Updating version to 7.0.60..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.59 "ENHANCED: Comprehensive Chainsaw permission debugging and validation" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.60 "DEEP DEBUG: File system, binary validity, and execution context analysis for Chainsaw" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -230,13 +230,13 @@ echo "  Worker Logs:   journalctl -u casescope-worker -f"
 echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
-echo "🎯 COMPREHENSIVE CHAINSAW DEBUGGING:"
-echo "  ✅ ENHANCED: Detailed permission logging (before/after)"
-echo "  ✅ ENHANCED: Multiple permission validation points"
-echo "  ✅ ENHANCED: User-specific executable testing"
-echo "  ✅ ENHANCED: File listing and diagnostic output"
-echo "  ✅ FIXED: More thorough chmod 755 permissions"
-echo "  ✅ READY: Comprehensive debugging to identify exact issue"
+echo "🔬 DEEP CHAINSAW DIAGNOSTICS:"
+echo "  ✅ ENHANCED: File system mount analysis (noexec detection)"
+echo "  ✅ ENHANCED: Binary validity checking (ELF header inspection)"
+echo "  ✅ ENHANCED: Process context analysis (UID/GID checking)"
+echo "  ✅ ENHANCED: Test execution with --help before main run"
+echo "  ✅ ENHANCED: Specific PermissionError handling"
+echo "  ✅ READY: Full diagnostic suite to identify root cause"
 echo "  ✅ FIXED: Single file re-run rules now actually works (requeues processing)"
 echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
@@ -295,4 +295,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.59 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.60 deployment complete!"

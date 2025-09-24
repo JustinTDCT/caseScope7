@@ -891,6 +891,37 @@ def run_chainsaw_directly(case_file):
         else:
             logger.info(f"Chainsaw binary is executable (permissions: {current_perms})")
         
+        # Additional debugging - check file system and binary validity
+        try:
+            import pwd
+            import grp
+            file_stat = os.stat(chainsaw_path)
+            owner_name = pwd.getpwuid(file_stat.st_uid).pw_name
+            group_name = grp.getgrgid(file_stat.st_gid).gr_name
+            logger.info(f"Chainsaw file owner: {owner_name}:{group_name}")
+            
+            # Check current process user
+            current_user = pwd.getpwuid(os.getuid()).pw_name
+            logger.info(f"Current process running as: {current_user}")
+            
+            # Check if binary is actually a valid executable
+            with open(chainsaw_path, 'rb') as f:
+                header = f.read(4)
+                logger.info(f"Chainsaw binary header: {header}")
+                
+            # Check file system mount options
+            mount_result = subprocess.run(['mount'], capture_output=True, text=True)
+            for line in mount_result.stdout.split('\n'):
+                if '/opt' in line:
+                    logger.info(f"Mount info for /opt: {line}")
+            
+            # Check binary type using file command
+            file_result = subprocess.run(['file', str(chainsaw_path)], capture_output=True, text=True)
+            logger.info(f"Chainsaw binary type: {file_result.stdout.strip()}")
+                    
+        except Exception as debug_error:
+            logger.warning(f"Additional debugging failed: {debug_error}")
+        
         if not chainsaw_rules_path.exists():
             logger.warning(f"Chainsaw rules directory not found at {chainsaw_rules_path}")
             # Check what's actually in the chainsaw-rules directory
@@ -938,6 +969,21 @@ def run_chainsaw_directly(case_file):
                 current_perms = oct(os.stat(chainsaw_path).st_mode)[-3:]
                 logger.error(f"Current permissions: {current_perms}")
                 return 0
+            
+            # Test execution with just --help to see if the binary works at all
+            try:
+                logger.info("Testing Chainsaw binary with --help...")
+                test_result = subprocess.run([str(chainsaw_path), '--help'], 
+                                           capture_output=True, text=True, timeout=10)
+                logger.info(f"Chainsaw test exit code: {test_result.returncode}")
+                if test_result.returncode != 0:
+                    logger.error(f"Chainsaw test stderr: {test_result.stderr}")
+                    logger.error(f"Chainsaw test stdout: {test_result.stdout}")
+                else:
+                    logger.info("Chainsaw binary responds to --help correctly")
+            except Exception as test_error:
+                logger.error(f"Chainsaw test execution failed: {test_error}")
+                # Continue anyway to see the main error
             
             import time
             start_time = time.time()
@@ -1008,8 +1054,18 @@ def run_chainsaw_directly(case_file):
                 
         except subprocess.TimeoutExpired:
             logger.error("Chainsaw execution timed out")
+        except PermissionError as perm_error:
+            logger.error(f"Permission error running Chainsaw: {perm_error}")
+            logger.error(f"This suggests a file system or security restriction")
+            # Try to diagnose the issue
+            try:
+                logger.error(f"Process UID: {os.getuid()}, GID: {os.getgid()}")
+                logger.error(f"Process effective UID: {os.geteuid()}, GID: {os.getegid()}")
+            except:
+                pass
         except Exception as run_error:
             logger.error(f"Error running Chainsaw: {run_error}")
+            logger.error(f"Error type: {type(run_error)}")
                     
         logger.info(f"Chainsaw direct execution: {violations} violations found")
         return violations

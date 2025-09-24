@@ -1,6 +1,6 @@
 {
-  "version": "7.0.59",
+  "version": "7.0.60",
   "release_date": "2025-09-24",
-  "description": "ENHANCED: Comprehensive Chainsaw permission debugging and validation",
+  "description": "DEEP DEBUG: File system, binary validity, and execution context analysis for Chainsaw",
   "build": "production"
 }
