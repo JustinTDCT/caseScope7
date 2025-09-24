@@ -1028,7 +1028,12 @@ def run_chainsaw_directly(case_file):
                     if violations > 0:
                         logger.info(f"Tagging sample violations in OpenSearch...")
                         for i, detection in enumerate(chainsaw_results[:10]):  # Only tag first 10
-                            rule_name = detection.get('rule', detection.get('name', 'Unknown Chainsaw Rule'))
+                            # Handle both dict and list formats
+                            if isinstance(detection, dict):
+                                rule_name = detection.get('rule', detection.get('name', 'Unknown Chainsaw Rule'))
+                            else:
+                                rule_name = f'Chainsaw Detection #{i+1}'
+                                logger.debug(f"Detection {i+1} format: {type(detection)} - {detection}")
                             
                             # Create a simple search to find any event to tag
                             try:
@@ -1049,7 +1054,7 @@ def run_chainsaw_directly(case_file):
                                                 'chainsaw_hit': True,
                                                 'chainsaw_rule': rule_name,
                                                 'chainsaw_detection': detection,
-                                                'severity': detection.get('level', 'medium')
+                                                'severity': detection.get('level', 'medium') if isinstance(detection, dict) else 'medium'
                                             }
                                         }
                                     )
