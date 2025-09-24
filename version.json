@@ -1,6 +1,6 @@
 {
-  "version": "7.0.37",
+  "version": "7.0.38",
   "release_date": "2025-09-24",
-  "description": "Fix template SQLAlchemy relationship queries causing AppenderQuery error",
+  "description": "Fix file upload and drag-drop by resolving JavaScript function conflicts",
   "build": "production"
 }

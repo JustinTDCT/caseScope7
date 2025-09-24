@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.37"
+echo "caseScope Bug Fixes Script v7.0.38"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.37..."
+log "Updating version to 7.0.38..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.37 "Fix template SQLAlchemy relationship queries causing AppenderQuery error" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.38 "Fix file upload and drag-drop by resolving JavaScript function conflicts" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -207,6 +207,9 @@ echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
 echo "🎯 MAIN FIXES APPLIED:"
+echo "  ✅ File upload JavaScript function conflict resolution"
+echo "  ✅ Drag-and-drop functionality fixes"
+echo "  ✅ Enhanced upload debugging and fallbacks"
 echo "  ✅ Template SQLAlchemy relationship query fixes"
 echo "  ✅ Backend recent files query implementation"
 echo "  ✅ SQLAlchemy AppenderQuery error fix"
@@ -224,4 +227,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.37 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.38 deployment complete!"

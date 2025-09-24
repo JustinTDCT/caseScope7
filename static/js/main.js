@@ -217,7 +217,21 @@ function setupUploadHandlers(uploadArea, fileInput) {
         if (e.target.files.length > 0) {
             // Call the page's handleFileSelection if it exists
             if (typeof window.handleFileSelection === 'function') {
+                console.log('Calling window.handleFileSelection');
                 window.handleFileSelection(Array.from(e.target.files));
+            } else {
+                console.error('window.handleFileSelection function not found!');
+                // Basic fallback - set files directly
+                const selectedFilesDiv = document.getElementById('selected-files');
+                if (selectedFilesDiv) {
+                    selectedFilesDiv.style.display = 'block';
+                    const fileList = document.getElementById('file-list');
+                    if (fileList) {
+                        fileList.innerHTML = Array.from(e.target.files).map(file => 
+                            `<div class="file-item">${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)</div>`
+                        ).join('');
+                    }
+                }
             }
         }
     });
@@ -240,62 +254,39 @@ function setupUploadHandlers(uploadArea, fileInput) {
         console.log('Files dropped:', files.length);
         
         if (typeof window.handleFileSelection === 'function') {
+            console.log('Calling window.handleFileSelection for drop');
             window.handleFileSelection(files);
+        } else {
+            console.error('window.handleFileSelection function not found for drop!');
+            // Basic fallback for drag and drop
+            const selectedFilesDiv = document.getElementById('selected-files');
+            if (selectedFilesDiv) {
+                selectedFilesDiv.style.display = 'block';
+                const fileList = document.getElementById('file-list');
+                if (fileList) {
+                    fileList.innerHTML = files.map(file => 
+                        `<div class="file-item">${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)</div>`
+                    ).join('');
+                }
+            }
         }
     });
     
     // Simple click handler - no cloning, no complex prevention
     uploadArea.addEventListener('click', handleUploadClick);
     
+    // Add debugging for upload area clicks
+    uploadArea.addEventListener('click', function(e) {
+        console.log('Upload area clicked!', e.target);
+    }, true); // Use capture phase for debugging
+    
     console.log('Upload handlers attached');
+    console.log('Upload area element:', uploadArea);
+    console.log('File input element:', fileInput);
 }
 
-// Legacy upload handler - kept for compatibility
-
-function handleFileSelection(files) {
-    // Validate file types
-    const validTypes = ['evtx'];
-    const maxFiles = 5;
-    
-    if (files.length > maxFiles) {
-        showAlert('error', `Maximum ${maxFiles} files allowed at once.`);
-        return;
-    }
-    
-    for (let file of files) {
-        const extension = file.name.split('.').pop().toLowerCase();
-        if (!validTypes.includes(extension)) {
-            showAlert('error', `Invalid file type: ${file.name}. Only EVTX files are allowed.`);
-            return;
-        }
-    }
-    
-    // Set the files on the input element properly
-    const fileInput = document.querySelector('#file-input');
-    if (fileInput) {
-        console.log('Setting files on input element');
-        // For drag & drop, create a new FileList
-        if (files !== fileInput.files) {
-            try {
-                const dt = new DataTransfer();
-                for (let file of files) {
-                    dt.items.add(file);
-                }
-                fileInput.files = dt.files;
-                console.log('Files set successfully, input now has:', fileInput.files.length, 'files');
-            } catch (e) {
-                console.error('Error setting files:', e);
-            }
-        }
-    } else {
-        console.error('File input not found!');
-    }
-    
-    // Show selected files and enable upload button
-    showSelectedFiles(files);
-    enableUploadButton();
-    console.log(`Selected ${files.length} files for upload`);
-}
+// handleFileSelection function is now provided by the upload template
+// Removed duplicate to avoid conflicts
 
 function showSelectedFiles(files) {
     const selectedFilesDiv = document.getElementById('selected-files');

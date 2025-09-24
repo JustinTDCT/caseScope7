@@ -575,7 +575,7 @@ let isUploading = false;
 // Upload functionality is now handled by main.js
 // This script only handles file selection and form processing
 
-function handleFileSelection(files) {
+window.handleFileSelection = function(files) {
     const validFiles = [];
     const maxFiles = 5;
     const maxSize = 500 * 1024 * 1024; // 500MB
