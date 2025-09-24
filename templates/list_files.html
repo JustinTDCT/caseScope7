@@ -1,0 +1,847 @@
+{% extends "base.html" %}
+
+{% block title %}Files - {{ case.name }} - caseScope{% endblock %}
+
+{% block content %}
+<div class="files-container">
+    <div class="page-header">
+        <div class="header-info">
+            <h1>Case Files</h1>
+            <div class="case-breadcrumb">
+                <i class="fas fa-folder"></i>
+                <span>{{ case.name }}</span>
+                <span class="file-count">{{ files|length }} file{{ 's' if files|length != 1 else '' }}</span>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-secondary" onclick="refreshFileList()">
+                <i class="fas fa-sync"></i>
+                Refresh
+            </button>
+            <a href="{{ url_for('upload_files') }}" class="btn btn-primary">
+                <i class="fas fa-upload"></i>
+                Upload Files
+            </a>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i>
+                Back to Case
+            </a>
+        </div>
+    </div>
+
+    <!-- File Statistics -->
+    <div class="grid grid-cols-4 mb-4">
+        <div class="stat-card">
+            <div class="stat-icon success">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="completed-count">
+                    {{ files|selectattr('processing_status', 'equalto', 'completed')|list|length }}
+                </div>
+                <div class="stat-label">Completed</div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon primary">
+                <i class="fas fa-spinner"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="processing-count">
+                    {{ files|selectattr('processing_status', 'equalto', 'processing')|list|length }}
+                </div>
+                <div class="stat-label">Processing</div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon warning">
+                <i class="fas fa-clock"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="pending-count">
+                    {{ files|selectattr('processing_status', 'equalto', 'pending')|list|length }}
+                </div>
+                <div class="stat-label">Pending</div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon danger">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="error-count">
+                    {{ files|selectattr('processing_status', 'equalto', 'error')|list|length }}
+                </div>
+                <div class="stat-label">Errors</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- File List -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                <i class="fas fa-list"></i>
+                File List
+            </h3>
+            <div class="card-actions">
+                {% if current_user.can_write() %}
+                <a href="{{ url_for('rerun_rules') }}" class="btn btn-warning" onclick="return confirm('Re-run rules on all completed files?')">
+                    <i class="fas fa-sync"></i>
+                    Re-run All Rules
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-content">
+            {% if files %}
+            <div class="file-list">
+                {% for file in files %}
+                <div class="file-item" data-file-id="{{ file.id }}">
+                    <div class="file-main">
+                        <div class="file-info">
+                            <div class="file-icon">
+                                <i class="fas fa-file-alt"></i>
+                            </div>
+                            <div class="file-details">
+                                <div class="file-name">{{ file.original_filename }}</div>
+                                <div class="file-meta">
+                                    <span class="file-size">{{ (file.file_size / 1024 / 1024)|round(2) }} MB</span>
+                                    <span class="file-date">{{ file.uploaded_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                                    <span class="file-uploader">by {{ file.uploader.username }}</span>
+                                    {% if file.file_hash %}
+                                    <span class="file-hash" title="SHA256: {{ file.file_hash }}">SHA256: {{ file.file_hash[:8] }}...</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="file-status">
+                            <span class="badge badge-{{ 'success' if file.processing_status == 'completed' else 'primary' if file.processing_status == 'processing' else 'danger' if file.processing_status == 'error' else 'secondary' }}">
+                                {{ file.processing_status.title() }}
+                            </span>
+                            {% if file.processing_status == 'processing' %}
+                            <div class="progress mt-2">
+                                <div class="progress-bar" style="width: {{ file.processing_progress }}%" id="progress-{{ file.id }}"></div>
+                            </div>
+                            <div class="progress-text">{{ file.processing_progress }}%</div>
+                            {% endif %}
+                        </div>
+
+                        <div class="file-stats">
+                            {% if file.event_count > 0 %}
+                            <div class="file-stat">
+                                <span class="stat-number">{{ file.event_count }}</span>
+                                <span class="stat-label">Events</span>
+                            </div>
+                            {% endif %}
+                            {% if file.sigma_violations > 0 %}
+                            <div class="file-stat violation sigma">
+                                <span class="stat-number">{{ file.sigma_violations }}</span>
+                                <span class="stat-label">Sigma</span>
+                            </div>
+                            {% endif %}
+                            {% if file.chainsaw_violations > 0 %}
+                            <div class="file-stat violation chainsaw">
+                                <span class="stat-number">{{ file.chainsaw_violations }}</span>
+                                <span class="stat-label">Chainsaw</span>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="file-actions">
+                            <div class="dropdown">
+                                <button class="dropdown-btn action-btn">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <div class="dropdown-content">
+                                    {% if file.processing_status == 'completed' and current_user.can_write() %}
+                                    <a href="#" onclick="reindexFile({{ file.id }})" class="dropdown-item">
+                                        <i class="fas fa-database"></i>
+                                        Re-index File
+                                    </a>
+                                    <a href="#" onclick="rerunRulesFile({{ file.id }})" class="dropdown-item">
+                                        <i class="fas fa-sync"></i>
+                                        Re-run Rules
+                                    </a>
+                                    {% endif %}
+                                    {% if file.sigma_violations > 0 or file.chainsaw_violations > 0 %}
+                                    <a href="{{ url_for('search', rule_violations=true, file_id=file.id) }}" class="dropdown-item">
+                                        <i class="fas fa-search"></i>
+                                        View Violations
+                                    </a>
+                                    {% endif %}
+                                    <a href="#" onclick="showFileDetails({{ file.id }})" class="dropdown-item">
+                                        <i class="fas fa-info"></i>
+                                        File Details
+                                    </a>
+                                    {% if current_user.can_admin() %}
+                                    <div class="dropdown-divider"></div>
+                                    <a href="#" onclick="deleteFile({{ file.id }})" class="dropdown-item danger">
+                                        <i class="fas fa-trash"></i>
+                                        Delete File
+                                    </a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Expandable Details -->
+                    <div class="file-details-section" id="details-{{ file.id }}" style="display: none;">
+                        <div class="details-grid">
+                            <div class="detail-item">
+                                <label>Original Filename:</label>
+                                <span>{{ file.original_filename }}</span>
+                            </div>
+                            <div class="detail-item">
+                                <label>File Size:</label>
+                                <span>{{ (file.file_size / 1024 / 1024)|round(2) }} MB ({{ file.file_size }} bytes)</span>
+                            </div>
+                            <div class="detail-item">
+                                <label>Upload Date:</label>
+                                <span>{{ file.uploaded_at.strftime('%B %d, %Y at %I:%M %p') }}</span>
+                            </div>
+                            <div class="detail-item">
+                                <label>Uploaded By:</label>
+                                <span>{{ file.uploader.username }} ({{ file.uploader.role.title() }})</span>
+                            </div>
+                            {% if file.file_hash %}
+                            <div class="detail-item">
+                                <label>SHA256 Hash:</label>
+                                <span class="hash-value">{{ file.file_hash }}</span>
+                            </div>
+                            {% endif %}
+                            <div class="detail-item">
+                                <label>Processing Status:</label>
+                                <span class="badge badge-{{ 'success' if file.processing_status == 'completed' else 'primary' if file.processing_status == 'processing' else 'danger' if file.processing_status == 'error' else 'secondary' }}">
+                                    {{ file.processing_status.title() }}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        {% if file.processing_status == 'completed' %}
+                        <div class="processing-summary">
+                            <h4>Processing Results</h4>
+                            <div class="summary-grid">
+                                <div class="summary-item">
+                                    <span class="summary-label">Events Processed:</span>
+                                    <span class="summary-value">{{ file.event_count }}</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Sigma Violations:</span>
+                                    <span class="summary-value {{ 'text-danger' if file.sigma_violations > 0 else '' }}">{{ file.sigma_violations }}</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Chainsaw Violations:</span>
+                                    <span class="summary-value {{ 'text-danger' if file.chainsaw_violations > 0 else '' }}">{{ file.chainsaw_violations }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-file-upload"></i>
+                <h4>No Files in Case</h4>
+                <p>Upload EVTX files to start analyzing events in this case.</p>
+                <a href="{{ url_for('upload_files') }}" class="btn btn-primary">
+                    <i class="fas fa-upload"></i>
+                    Upload First File
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.files-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+}
+
+.header-info h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 0.5rem 0;
+}
+
+.case-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.case-breadcrumb i {
+    color: var(--primary-color);
+}
+
+.file-count {
+    padding: 0.25rem 0.75rem;
+    background: var(--bg-secondary);
+    border-radius: 16px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.header-actions {
+    display: flex;
+    gap: 1rem;
+    flex-shrink: 0;
+}
+
+.file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.file-item {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.file-item:hover {
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+}
+
+.file-main {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem;
+}
+
+.file-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex: 1;
+}
+
+.file-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(66, 153, 225, 0.2);
+    color: var(--primary-color);
+    border-radius: 12px;
+    font-size: 1.5rem;
+}
+
+.file-details {
+    flex: 1;
+}
+
+.file-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.file-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.file-hash {
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    background: var(--bg-primary);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    cursor: help;
+}
+
+.file-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 120px;
+}
+
+.progress-text {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.file-stats {
+    display: flex;
+    gap: 1rem;
+}
+
+.file-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 0.75rem;
+    background: var(--bg-primary);
+    border-radius: 8px;
+    min-width: 70px;
+}
+
+.file-stat.violation {
+    background: rgba(252, 129, 129, 0.1);
+    border: 1px solid var(--error-color);
+}
+
+.file-stat.violation.sigma {
+    border-color: #e53e3e;
+}
+
+.file-stat.violation.chainsaw {
+    border-color: #d69e2e;
+}
+
+.file-stat .stat-number {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.file-stat.violation .stat-number {
+    color: var(--error-color);
+}
+
+.file-stat .stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.file-actions {
+    position: relative;
+}
+
+.action-btn {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.action-btn:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--primary-color);
+}
+
+.dropdown-content {
+    right: 0;
+    left: auto;
+    min-width: 180px;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    color: var(--text-primary);
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+.dropdown-item:hover {
+    background: var(--bg-secondary);
+}
+
+.dropdown-item.danger {
+    color: var(--error-color);
+}
+
+.dropdown-item.danger:hover {
+    background: rgba(252, 129, 129, 0.1);
+}
+
+.dropdown-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 0.5rem 0;
+}
+
+.file-details-section {
+    padding: 1.5rem;
+    border-top: 1px solid var(--border-color);
+    background: var(--card-bg);
+}
+
+.details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.detail-item label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.detail-item span {
+    color: var(--text-primary);
+}
+
+.hash-value {
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    word-break: break-all;
+    background: var(--bg-secondary);
+    padding: 0.5rem;
+    border-radius: 4px;
+}
+
+.processing-summary {
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.processing-summary h4 {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.summary-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.summary-label {
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.summary-value {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.summary-value.text-danger {
+    color: var(--error-color);
+}
+
+.card-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-secondary);
+}
+
+.empty-state i {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    color: var(--text-muted);
+}
+
+.empty-state h4 {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.empty-state p {
+    margin-bottom: 2rem;
+}
+
+@media (max-width: 768px) {
+    .page-header {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: stretch;
+    }
+    
+    .header-actions {
+        justify-content: center;
+    }
+    
+    .grid-cols-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    
+    .file-main {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .file-info {
+        width: 100%;
+    }
+    
+    .file-stats {
+        width: 100%;
+        justify-content: space-around;
+    }
+    
+    .file-actions {
+        align-self: center;
+    }
+    
+    .details-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .summary-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let refreshInterval;
+
+document.addEventListener('DOMContentLoaded', function() {
+    initializeFileList();
+    startProgressMonitoring();
+});
+
+function initializeFileList() {
+    // Initialize dropdowns
+    const dropdowns = document.querySelectorAll('.dropdown');
+    dropdowns.forEach(dropdown => {
+        const btn = dropdown.querySelector('.dropdown-btn');
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleDropdown(dropdown);
+        });
+    });
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.dropdown')) {
+            closeAllDropdowns();
+        }
+    });
+}
+
+function startProgressMonitoring() {
+    // Monitor processing files every 5 seconds
+    refreshInterval = setInterval(updateProcessingStatus, 5000);
+}
+
+function updateProcessingStatus() {
+    const processingFiles = document.querySelectorAll('.file-item [id^="progress-"]');
+    if (processingFiles.length === 0) {
+        clearInterval(refreshInterval);
+        return;
+    }
+
+    // This would typically make an API call to get current status
+    fetch(`/api/case/{{ case.id }}/file-status`)
+        .then(response => response.json())
+        .then(data => {
+            data.files.forEach(file => {
+                updateFileStatus(file.id, file.status, file.progress);
+            });
+        })
+        .catch(error => {
+            console.error('Error updating file status:', error);
+        });
+}
+
+function updateFileStatus(fileId, status, progress) {
+    const fileItem = document.querySelector(`[data-file-id="${fileId}"]`);
+    if (!fileItem) return;
+
+    const statusBadge = fileItem.querySelector('.badge');
+    const progressBar = fileItem.querySelector(`#progress-${fileId}`);
+    const progressText = fileItem.querySelector('.progress-text');
+
+    if (statusBadge) {
+        statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        statusBadge.className = `badge badge-${getStatusClass(status)}`;
+    }
+
+    if (progressBar && status === 'processing') {
+        progressBar.style.width = progress + '%';
+        if (progressText) {
+            progressText.textContent = progress + '%';
+        }
+    } else if (progressBar && status === 'completed') {
+        progressBar.parentElement.style.display = 'none';
+        if (progressText) {
+            progressText.style.display = 'none';
+        }
+    }
+}
+
+function getStatusClass(status) {
+    const statusClasses = {
+        'completed': 'success',
+        'processing': 'primary',
+        'pending': 'secondary',
+        'error': 'danger'
+    };
+    return statusClasses[status] || 'secondary';
+}
+
+function refreshFileList() {
+    window.location.reload();
+}
+
+function showFileDetails(fileId) {
+    const detailsSection = document.getElementById(`details-${fileId}`);
+    if (detailsSection) {
+        const isVisible = detailsSection.style.display !== 'none';
+        detailsSection.style.display = isVisible ? 'none' : 'block';
+        
+        if (!isVisible) {
+            detailsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+    closeAllDropdowns();
+}
+
+function reindexFile(fileId) {
+    if (confirm('Are you sure you want to re-index this file? This will remove all current events and re-process the file.')) {
+        fetch(`/api/file/${fileId}/reindex`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', 'File re-indexing started.');
+                    setTimeout(refreshFileList, 1000);
+                } else {
+                    showAlert('error', 'Failed to start re-indexing: ' + data.error);
+                }
+            })
+            .catch(error => {
+                showAlert('error', 'Error starting re-indexing: ' + error.message);
+            });
+    }
+    closeAllDropdowns();
+}
+
+function rerunRulesFile(fileId) {
+    if (confirm('Are you sure you want to re-run rules on this file?')) {
+        fetch(`/api/file/${fileId}/rerun-rules`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', 'Rules re-run started.');
+                    setTimeout(refreshFileList, 1000);
+                } else {
+                    showAlert('error', 'Failed to start rules re-run: ' + data.error);
+                }
+            })
+            .catch(error => {
+                showAlert('error', 'Error starting rules re-run: ' + error.message);
+            });
+    }
+    closeAllDropdowns();
+}
+
+function deleteFile(fileId) {
+    if (confirm('Are you sure you want to delete this file? This action cannot be undone and will remove all associated events from the search index.')) {
+        fetch(`/api/file/${fileId}`, { method: 'DELETE' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', 'File deleted successfully.');
+                    setTimeout(refreshFileList, 1000);
+                } else {
+                    showAlert('error', 'Failed to delete file: ' + data.error);
+                }
+            })
+            .catch(error => {
+                showAlert('error', 'Error deleting file: ' + error.message);
+            });
+    }
+    closeAllDropdowns();
+}
+
+function toggleDropdown(dropdown) {
+    const isActive = dropdown.classList.contains('active');
+    closeAllDropdowns();
+    
+    if (!isActive) {
+        dropdown.classList.add('active');
+    }
+}
+
+function closeAllDropdowns() {
+    const dropdowns = document.querySelectorAll('.dropdown');
+    dropdowns.forEach(dropdown => {
+        dropdown.classList.remove('active');
+    });
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', function() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+    }
+});
+
+// Expose functions globally
+window.showFileDetails = showFileDetails;
+window.reindexFile = reindexFile;
+window.rerunRulesFile = rerunRulesFile;
+window.deleteFile = deleteFile;
+window.refreshFileList = refreshFileList;
+</script>
+{% endblock %}
+

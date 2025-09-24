@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}caseScope{% endblock %}</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="app-container">
+        {% if current_user.is_authenticated %}
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-case">case</span><span class="logo-scope">Scope</span>
+                    <div class="version">v7.0.0</div>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="header-info">
+                    <div class="datetime" id="current-datetime"></div>
+                    <div class="user-info">
+                        <span class="username">{{ current_user.username }}</span>
+                        <span class="role">({{ current_user.role.title() }})</span>
+                    </div>
+                    <button class="theme-toggle" onclick="toggleTheme()">
+                        <i class="fas fa-sun"></i>
+                    </button>
+                    <a href="{{ url_for('logout') }}" class="logout-btn">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <div class="main-container">
+            <!-- Sidebar Navigation -->
+            <nav class="sidebar">
+                <div class="nav-section">
+                    <div class="nav-title">Navigation</div>
+                    <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                        <i class="fas fa-tachometer-alt"></i>
+                        Dashboard
+                    </a>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-title">Case Management</div>
+                    <div class="dropdown">
+                        <button class="dropdown-btn">
+                            <i class="fas fa-folder"></i>
+                            Cases
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="dropdown-content">
+                            <a href="{{ url_for('create_case') }}">
+                                <i class="fas fa-plus"></i> Create New Case
+                            </a>
+                            <a href="{{ url_for('deselect_case') }}">
+                                <i class="fas fa-home"></i> System Dashboard
+                            </a>
+                            <div class="case-list">
+                                <!-- Recent cases will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {% if session.get('selected_case_id') %}
+                <div class="nav-section">
+                    <div class="nav-title">File Management</div>
+                    <a href="{{ url_for('upload_files') }}" class="nav-item">
+                        <i class="fas fa-upload"></i>
+                        Upload Files
+                    </a>
+                    <a href="{{ url_for('list_files') }}" class="nav-item">
+                        <i class="fas fa-list"></i>
+                        List Files
+                    </a>
+                    <a href="{{ url_for('rerun_rules') }}" class="nav-item">
+                        <i class="fas fa-sync"></i>
+                        Re-run Rules
+                    </a>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-title">Search</div>
+                    <a href="{{ url_for('search') }}" class="nav-item">
+                        <i class="fas fa-search"></i>
+                        Event Search
+                    </a>
+                </div>
+                {% endif %}
+
+                <div class="nav-section">
+                    <div class="nav-title">System</div>
+                    <a href="{{ url_for('update_rules') }}" class="nav-item">
+                        <i class="fas fa-download"></i>
+                        Update Rules
+                    </a>
+                    {% if current_user.can_admin() %}
+                    <a href="{{ url_for('admin_cases') }}" class="nav-item">
+                        <i class="fas fa-cog"></i>
+                        Case Management
+                    </a>
+                    <a href="{{ url_for('admin_files') }}" class="nav-item">
+                        <i class="fas fa-file-alt"></i>
+                        File Management
+                    </a>
+                    <a href="{{ url_for('admin_users') }}" class="nav-item">
+                        <i class="fas fa-users"></i>
+                        User Management
+                    </a>
+                    <a href="{{ url_for('diagnostics') }}" class="nav-item">
+                        <i class="fas fa-stethoscope"></i>
+                        Diagnostics
+                    </a>
+                    {% endif %}
+                </div>
+            </nav>
+
+            <!-- Content Area -->
+            <main class="content">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}">
+                                <i class="fas fa-{% if category == 'error' %}exclamation-circle{% elif category == 'success' %}check-circle{% elif category == 'warning' %}exclamation-triangle{% else %}info-circle{% endif %}"></i>
+                                {{ message }}
+                                <button class="alert-close" onclick="this.parentElement.remove()">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <span>&copy; 2025 <a href="mailto:casescope@thedubes.net">Justin Dube</a></span>
+                {% if debug_enabled %}
+                <div class="debug-console" id="debug-console">
+                    <div class="debug-header">
+                        <span>Debug Console</span>
+                        <button onclick="clearDebugConsole()">Clear</button>
+                        <button onclick="toggleDebugConsole()">Hide</button>
+                    </div>
+                    <div class="debug-content" id="debug-content"></div>
+                </div>
+                {% endif %}
+            </div>
+        </footer>
+        {% else %}
+        <!-- Login-only content -->
+        {% block login_content %}{% endblock %}
+        {% endif %}
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
+

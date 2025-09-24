@@ -1,0 +1,418 @@
+{% extends "base.html" %}
+
+{% block title %}Create New Case - caseScope{% endblock %}
+
+{% block content %}
+<div class="create-case-container">
+    <div class="page-header">
+        <h1>Create New Case</h1>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i>
+            Back to Dashboard
+        </a>
+    </div>
+
+    <div class="form-container">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-folder-plus"></i>
+                    Case Information
+                </h3>
+            </div>
+            <div class="card-content">
+                <form method="POST" class="case-form">
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="form-group">
+                        {{ form.name.label(class="form-label") }}
+                        {{ form.name(class="form-input", placeholder="Enter a descriptive case name") }}
+                        {% if form.name.errors %}
+                            <div class="form-error">
+                                {% for error in form.name.errors %}
+                                    <span>{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="form-help">
+                            Choose a clear, descriptive name for your case. This will help identify it in the case list.
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        {{ form.description.label(class="form-label") }}
+                        {{ form.description(class="form-textarea", placeholder="Provide additional details about this case (optional)", rows="4") }}
+                        {% if form.description.errors %}
+                            <div class="form-error">
+                                {% for error in form.description.errors %}
+                                    <span>{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="form-help">
+                            Include relevant details such as incident type, timeline, or investigation objectives.
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-plus"></i>
+                            Create Case
+                        </button>
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+                            <i class="fas fa-times"></i>
+                            Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Case Creation Tips -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-lightbulb"></i>
+                    Case Creation Tips
+                </h3>
+            </div>
+            <div class="card-content">
+                <div class="tips-list">
+                    <div class="tip-item">
+                        <div class="tip-icon">
+                            <i class="fas fa-tag"></i>
+                        </div>
+                        <div class="tip-content">
+                            <h4>Naming Convention</h4>
+                            <p>Use descriptive names that include date, incident type, or ticket number for easy identification.</p>
+                            <div class="tip-examples">
+                                <span class="example">2025-01-15 Security Incident</span>
+                                <span class="example">INC-12345 Malware Investigation</span>
+                                <span class="example">Network Anomaly Analysis</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="tip-item">
+                        <div class="tip-icon">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <div class="tip-content">
+                            <h4>File Organization</h4>
+                            <p>All uploaded files will be associated with this case. Sigma and Chainsaw rules will be applied automatically to analyze events.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="tip-item">
+                        <div class="tip-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="tip-content">
+                            <h4>Collaboration</h4>
+                            <p>Team members can contribute files and analysis to the case. All activities are logged for audit purposes.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="tip-item">
+                        <div class="tip-icon">
+                            <i class="fas fa-search"></i>
+                        </div>
+                        <div class="tip-content">
+                            <h4>Search & Analysis</h4>
+                            <p>Once files are uploaded, you can search through events, view rule violations, and analyze patterns using the built-in search interface.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.create-case-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.page-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.form-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.case-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.form-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.form-input,
+.form-textarea {
+    padding: 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.form-input:focus,
+.form-textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 4px rgba(66, 153, 225, 0.2);
+}
+
+.form-textarea {
+    resize: vertical;
+    min-height: 100px;
+    line-height: 1.5;
+}
+
+.form-error {
+    color: var(--error-color);
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.form-help {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.tips-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.tip-item {
+    display: flex;
+    gap: 1rem;
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    border-left: 4px solid var(--primary-color);
+}
+
+.tip-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(66, 153, 225, 0.2);
+    color: var(--primary-color);
+    border-radius: 12px;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.tip-content {
+    flex: 1;
+}
+
+.tip-content h4 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 0.5rem 0;
+}
+
+.tip-content p {
+    color: var(--text-secondary);
+    margin: 0 0 0.75rem 0;
+    line-height: 1.5;
+}
+
+.tip-examples {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.example {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+}
+
+/* Form validation styles */
+.form-input.error,
+.form-textarea.error {
+    border-color: var(--error-color);
+    box-shadow: 0 0 0 4px rgba(252, 129, 129, 0.2);
+}
+
+.form-input.success,
+.form-textarea.success {
+    border-color: var(--success-color);
+    box-shadow: 0 0 0 4px rgba(104, 211, 145, 0.2);
+}
+
+/* Loading state */
+.btn.loading {
+    position: relative;
+    color: transparent;
+}
+
+.btn.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px;
+    height: 16px;
+    border: 2px solid transparent;
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    color: white;
+}
+
+@keyframes spin {
+    0% { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+    .page-header {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: stretch;
+    }
+    
+    .form-actions {
+        flex-direction: column;
+    }
+    
+    .tip-item {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .tip-icon {
+        align-self: center;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('.case-form');
+    const nameInput = document.querySelector('input[name="name"]');
+    const submitBtn = document.querySelector('button[type="submit"]');
+    
+    // Form validation
+    form.addEventListener('submit', function(e) {
+        if (!validateForm()) {
+            e.preventDefault();
+            return false;
+        }
+        
+        // Add loading state
+        submitBtn.classList.add('loading');
+        submitBtn.disabled = true;
+    });
+    
+    // Real-time validation
+    nameInput.addEventListener('input', function() {
+        validateCaseName();
+    });
+    
+    function validateForm() {
+        return validateCaseName();
+    }
+    
+    function validateCaseName() {
+        const name = nameInput.value.trim();
+        const isValid = name.length >= 1 && name.length <= 200;
+        
+        if (isValid) {
+            nameInput.classList.remove('error');
+            nameInput.classList.add('success');
+        } else {
+            nameInput.classList.remove('success');
+            if (name.length > 0) {
+                nameInput.classList.add('error');
+            }
+        }
+        
+        return isValid;
+    }
+    
+    // Character counter for description
+    const descriptionTextarea = document.querySelector('textarea[name="description"]');
+    if (descriptionTextarea) {
+        const maxLength = 1000; // Reasonable limit for description
+        
+        // Create character counter
+        const counter = document.createElement('div');
+        counter.className = 'character-counter';
+        counter.style.cssText = 'font-size: 0.8rem; color: var(--text-secondary); text-align: right; margin-top: 0.25rem;';
+        descriptionTextarea.parentNode.appendChild(counter);
+        
+        function updateCounter() {
+            const length = descriptionTextarea.value.length;
+            counter.textContent = `${length}/${maxLength} characters`;
+            
+            if (length > maxLength * 0.9) {
+                counter.style.color = 'var(--warning-color)';
+            } else {
+                counter.style.color = 'var(--text-secondary)';
+            }
+        }
+        
+        descriptionTextarea.addEventListener('input', updateCounter);
+        updateCounter();
+    }
+    
+    debugLog('Create case form initialized');
+});
+</script>
+{% endblock %}
+

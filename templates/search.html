@@ -1,0 +1,1040 @@
+{% extends "base.html" %}
+
+{% block title %}Search - {{ case.name }} - caseScope{% endblock %}
+
+{% block content %}
+<div class="search-container">
+    <div class="page-header">
+        <div class="header-info">
+            <h1>Event Search</h1>
+            <div class="case-breadcrumb">
+                <i class="fas fa-folder"></i>
+                <span>{{ case.name }}</span>
+                <span class="event-count" id="result-count">
+                    {% if results %}{{ results|length }} result{{ 's' if results|length != 1 else '' }}{% endif %}
+                </span>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-secondary" onclick="exportResults()">
+                <i class="fas fa-download"></i>
+                Export
+            </button>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i>
+                Back to Case
+            </a>
+        </div>
+    </div>
+
+    <!-- Search Interface -->
+    <div class="search-interface">
+        <div class="card">
+            <div class="card-content">
+                <form class="search-form" id="search-form" method="GET">
+                    <div class="search-bar">
+                        <div class="search-input-group">
+                            <input type="text" 
+                                   name="q" 
+                                   id="search-input" 
+                                   class="search-input" 
+                                   placeholder="Search events... (e.g., EventID:4624, user:admin, process:*.exe)"
+                                   value="{{ query }}"
+                                   autocomplete="off">
+                            <button type="submit" class="search-btn" id="search-btn">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                        <button type="button" class="filters-toggle" onclick="toggleFilters()">
+                            <i class="fas fa-filter"></i>
+                            Filters
+                        </button>
+                    </div>
+                    
+                    <div class="search-filters" id="search-filters" style="display: none;">
+                        <div class="filters-grid">
+                            <div class="filter-group">
+                                <label class="filter-label">Time Range</label>
+                                <select name="time_range" class="filter-select">
+                                    <option value="">All Time</option>
+                                    <option value="1h">Last Hour</option>
+                                    <option value="24h">Last 24 Hours</option>
+                                    <option value="7d">Last 7 Days</option>
+                                    <option value="30d">Last 30 Days</option>
+                                    <option value="custom">Custom Range</option>
+                                </select>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <label class="filter-label">Event Log</label>
+                                <select name="event_log" class="filter-select">
+                                    <option value="">All Logs</option>
+                                    <option value="Security">Security</option>
+                                    <option value="System">System</option>
+                                    <option value="Application">Application</option>
+                                    <option value="PowerShell">PowerShell</option>
+                                    <option value="Sysmon">Sysmon</option>
+                                </select>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <label class="filter-label">Severity</label>
+                                <select name="severity" class="filter-select">
+                                    <option value="">All Severities</option>
+                                    <option value="high">High</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="low">Low</option>
+                                </select>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <label class="filter-label">Rule Violations</label>
+                                <select name="rule_type" class="filter-select">
+                                    <option value="">All Events</option>
+                                    <option value="sigma">Sigma Violations Only</option>
+                                    <option value="chainsaw">Chainsaw Violations Only</option>
+                                    <option value="any">Any Rule Violations</option>
+                                </select>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <label class="filter-label">Source File</label>
+                                <select name="source_file" class="filter-select">
+                                    <option value="">All Files</option>
+                                    {% for file in case.files %}
+                                    <option value="{{ file.id }}">{{ file.original_filename }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <label class="filter-label">Results Per Page</label>
+                                <select name="limit" class="filter-select">
+                                    <option value="25">25</option>
+                                    <option value="50" selected>50</option>
+                                    <option value="100">100</option>
+                                    <option value="250">250</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="filter-actions">
+                            <button type="button" class="btn btn-secondary" onclick="clearFilters()">
+                                <i class="fas fa-times"></i>
+                                Clear Filters
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-search"></i>
+                                Apply Filters
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Results -->
+    <div class="search-results-container">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-list"></i>
+                    Search Results
+                    {% if results %}
+                    <span class="result-summary">({{ results|length }} events)</span>
+                    {% endif %}
+                </h3>
+                <div class="results-actions">
+                    <div class="view-toggle">
+                        <button class="view-btn active" onclick="setView('list')" data-view="list">
+                            <i class="fas fa-list"></i>
+                        </button>
+                        <button class="view-btn" onclick="setView('table')" data-view="table">
+                            <i class="fas fa-table"></i>
+                        </button>
+                        <button class="view-btn" onclick="setView('timeline')" data-view="timeline">
+                            <i class="fas fa-chart-line"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-content">
+                <div id="search-results">
+                    {% if query and results %}
+                    <div class="results-list" id="results-list">
+                        {% for result in results %}
+                        <div class="result-item" data-event-id="{{ loop.index }}">
+                            <div class="result-header">
+                                <div class="result-meta">
+                                    <span class="result-timestamp">
+                                        {{ result._source.timestamp if result._source.timestamp else 'N/A' }}
+                                    </span>
+                                    <span class="result-source">
+                                        {{ result._source.source_file if result._source.source_file else 'Unknown' }}
+                                    </span>
+                                    {% if result._source.get('rule_violations') %}
+                                    <span class="badge badge-danger">Rule Violation</span>
+                                    {% endif %}
+                                </div>
+                                <div class="result-actions">
+                                    <button class="expand-btn" onclick="toggleEventDetails({{ loop.index }})">
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="result-summary">
+                                <div class="event-id">
+                                    {% if result._source.event_data and result._source.event_data.Event and result._source.event_data.Event.System %}
+                                    Event ID: {{ result._source.event_data.Event.System.EventID.#text if result._source.event_data.Event.System.EventID else 'N/A' }}
+                                    {% else %}
+                                    Event ID: N/A
+                                    {% endif %}
+                                </div>
+                                <div class="event-preview">
+                                    {% if result._source.event_data %}
+                                    <!-- Extract key information for preview -->
+                                    {{ result._source.event_data | truncate(200) }}
+                                    {% else %}
+                                    No event data available
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <div class="result-details" id="details-{{ loop.index }}" style="display: none;">
+                                <div class="details-tabs">
+                                    <button class="tab-btn active" onclick="showTab({{ loop.index }}, 'raw')">Raw Data</button>
+                                    <button class="tab-btn" onclick="showTab({{ loop.index }}, 'formatted')">Formatted</button>
+                                    {% if result._source.get('rule_violations') %}
+                                    <button class="tab-btn" onclick="showTab({{ loop.index }}, 'violations')">Violations</button>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="tab-content">
+                                    <div class="tab-pane active" id="raw-{{ loop.index }}">
+                                        <pre class="json-content">{{ result._source | tojson(indent=2) }}</pre>
+                                    </div>
+                                    <div class="tab-pane" id="formatted-{{ loop.index }}" style="display: none;">
+                                        <div class="formatted-event">
+                                            {% if result._source.event_data and result._source.event_data.Event %}
+                                            <div class="event-section">
+                                                <h4>System Information</h4>
+                                                <div class="event-fields">
+                                                    {% if result._source.event_data.Event.System %}
+                                                    {% for key, value in result._source.event_data.Event.System.items() %}
+                                                    <div class="field-item">
+                                                        <label>{{ key }}:</label>
+                                                        <span>{{ value.#text if value.#text else value }}</span>
+                                                    </div>
+                                                    {% endfor %}
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                            
+                                            {% if result._source.event_data.Event.EventData %}
+                                            <div class="event-section">
+                                                <h4>Event Data</h4>
+                                                <div class="event-fields">
+                                                    {% for key, value in result._source.event_data.Event.EventData.items() %}
+                                                    <div class="field-item">
+                                                        <label>{{ key }}:</label>
+                                                        <span>{{ value }}</span>
+                                                    </div>
+                                                    {% endfor %}
+                                                </div>
+                                            </div>
+                                            {% endif %}
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    {% if result._source.get('rule_violations') %}
+                                    <div class="tab-pane" id="violations-{{ loop.index }}" style="display: none;">
+                                        <div class="violations-list">
+                                            {% for violation in result._source.rule_violations %}
+                                            <div class="violation-item">
+                                                <div class="violation-header">
+                                                    <span class="violation-type badge badge-{{ 'danger' if violation.severity == 'high' else 'warning' if violation.severity == 'medium' else 'info' }}">
+                                                        {{ violation.type.upper() }}
+                                                    </span>
+                                                    <span class="violation-severity">{{ violation.severity.title() }}</span>
+                                                </div>
+                                                <div class="violation-rule">{{ violation.rule_name }}</div>
+                                                <div class="violation-description">{{ violation.description }}</div>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% elif query %}
+                    <div class="no-results">
+                        <i class="fas fa-search"></i>
+                        <h4>No Results Found</h4>
+                        <p>No events match your search criteria. Try adjusting your search terms or filters.</p>
+                    </div>
+                    {% else %}
+                    <div class="search-prompt">
+                        <i class="fas fa-search"></i>
+                        <h4>Search Events</h4>
+                        <p>Enter search terms above to find events in this case.</p>
+                        <div class="search-examples">
+                            <h5>Example Searches:</h5>
+                            <div class="example-tags">
+                                <span class="example-tag" onclick="setSearchQuery('EventID:4624')">EventID:4624</span>
+                                <span class="example-tag" onclick="setSearchQuery('process:powershell.exe')">process:powershell.exe</span>
+                                <span class="example-tag" onclick="setSearchQuery('user:administrator')">user:administrator</span>
+                                <span class="example-tag" onclick="setSearchQuery('network OR connection')">network OR connection</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.search-container {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+}
+
+.header-info h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 0.5rem 0;
+}
+
+.case-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.case-breadcrumb i {
+    color: var(--primary-color);
+}
+
+.event-count {
+    padding: 0.25rem 0.75rem;
+    background: var(--bg-secondary);
+    border-radius: 16px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.header-actions {
+    display: flex;
+    gap: 1rem;
+    flex-shrink: 0;
+}
+
+.search-interface {
+    margin-bottom: 1.5rem;
+}
+
+.search-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.search-bar {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.search-input-group {
+    flex: 1;
+    display: flex;
+    position: relative;
+}
+
+.search-input {
+    flex: 1;
+    padding: 1rem 1.5rem;
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    padding-right: 60px;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 4px rgba(66, 153, 225, 0.2);
+}
+
+.search-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.75rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.search-btn:hover {
+    background: var(--primary-hover);
+}
+
+.filters-toggle {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+}
+
+.filters-toggle:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--primary-color);
+}
+
+.search-filters {
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.filters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.filter-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.filter-select {
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    transition: all 0.3s ease;
+}
+
+.filter-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.filter-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.results-actions {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.view-toggle {
+    display: flex;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.view-btn {
+    background: var(--bg-secondary);
+    border: none;
+    color: var(--text-primary);
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border-right: 1px solid var(--border-color);
+}
+
+.view-btn:last-child {
+    border-right: none;
+}
+
+.view-btn:hover {
+    background: var(--bg-tertiary);
+}
+
+.view-btn.active {
+    background: var(--primary-color);
+    color: white;
+}
+
+.result-summary {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.results-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.result-item {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.result-item:hover {
+    border-color: var(--primary-color);
+}
+
+.result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.result-meta {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.result-timestamp {
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.result-source {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.result-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.expand-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.expand-btn:hover {
+    background: var(--bg-tertiary);
+}
+
+.result-summary {
+    padding: 1rem 1.5rem;
+}
+
+.event-id {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.event-preview {
+    color: var(--text-secondary);
+    line-height: 1.5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.result-details {
+    border-top: 1px solid var(--border-color);
+    background: var(--card-bg);
+}
+
+.details-tabs {
+    display: flex;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 1rem 1.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border-bottom: 2px solid transparent;
+}
+
+.tab-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+}
+
+.tab-btn.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+    background: var(--card-bg);
+}
+
+.tab-content {
+    padding: 1.5rem;
+}
+
+.json-content {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: var(--text-primary);
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.formatted-event {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.event-section h4 {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.5rem;
+}
+
+.event-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 0.75rem;
+}
+
+.field-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.field-item label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.field-item span {
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.violations-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.violation-item {
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border-left: 4px solid var(--error-color);
+}
+
+.violation-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.violation-severity {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    text-transform: capitalize;
+}
+
+.violation-rule {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.violation-description {
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.no-results,
+.search-prompt {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-secondary);
+}
+
+.no-results i,
+.search-prompt i {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    color: var(--text-muted);
+}
+
+.no-results h4,
+.search-prompt h4 {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.no-results p,
+.search-prompt p {
+    margin-bottom: 2rem;
+}
+
+.search-examples {
+    margin-top: 2rem;
+}
+
+.search-examples h5 {
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+}
+
+.example-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+}
+
+.example-tag {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'Courier New', monospace;
+}
+
+.example-tag:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: translateY(-1px);
+}
+
+@media (max-width: 768px) {
+    .page-header {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: stretch;
+    }
+    
+    .header-actions {
+        justify-content: center;
+    }
+    
+    .search-bar {
+        flex-direction: column;
+    }
+    
+    .filters-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .filter-actions {
+        flex-direction: column;
+    }
+    
+    .result-header {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: flex-start;
+    }
+    
+    .result-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .details-tabs {
+        flex-wrap: wrap;
+    }
+    
+    .event-fields {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentView = 'list';
+
+document.addEventListener('DOMContentLoaded', function() {
+    initializeSearch();
+});
+
+function initializeSearch() {
+    const searchForm = document.getElementById('search-form');
+    const searchInput = document.getElementById('search-input');
+
+    // Auto-focus search input
+    searchInput.focus();
+
+    // Handle form submission
+    searchForm.addEventListener('submit', function(e) {
+        const query = searchInput.value.trim();
+        if (!query) {
+            e.preventDefault();
+            showAlert('warning', 'Please enter a search query.');
+            return;
+        }
+        
+        // Show loading state
+        const searchBtn = document.getElementById('search-btn');
+        searchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        searchBtn.disabled = true;
+    });
+
+    // Auto-complete suggestions (would be implemented with real data)
+    searchInput.addEventListener('input', function() {
+        // Implement auto-complete logic here
+    });
+
+    debugLog('Search interface initialized');
+}
+
+function toggleFilters() {
+    const filters = document.getElementById('search-filters');
+    const isVisible = filters.style.display !== 'none';
+    filters.style.display = isVisible ? 'none' : 'block';
+    
+    if (!isVisible) {
+        filters.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+}
+
+function clearFilters() {
+    const form = document.getElementById('search-form');
+    const selects = form.querySelectorAll('select');
+    selects.forEach(select => {
+        select.value = '';
+    });
+    
+    // Keep the search query but clear filters
+    form.submit();
+}
+
+function setSearchQuery(query) {
+    const searchInput = document.getElementById('search-input');
+    searchInput.value = query;
+    searchInput.focus();
+    
+    // Optionally submit immediately
+    document.getElementById('search-form').submit();
+}
+
+function setView(view) {
+    currentView = view;
+    
+    // Update view buttons
+    const viewBtns = document.querySelectorAll('.view-btn');
+    viewBtns.forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.view === view) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Update results display (would implement different views)
+    switch (view) {
+        case 'list':
+            showListView();
+            break;
+        case 'table':
+            showTableView();
+            break;
+        case 'timeline':
+            showTimelineView();
+            break;
+    }
+    
+    debugLog(`Switched to ${view} view`);
+}
+
+function showListView() {
+    // Current default view
+    const resultsList = document.getElementById('results-list');
+    if (resultsList) {
+        resultsList.style.display = 'flex';
+    }
+}
+
+function showTableView() {
+    // Would implement table view
+    showAlert('info', 'Table view not yet implemented.');
+}
+
+function showTimelineView() {
+    // Would implement timeline view
+    showAlert('info', 'Timeline view not yet implemented.');
+}
+
+function toggleEventDetails(eventId) {
+    const details = document.getElementById(`details-${eventId}`);
+    const expandBtn = document.querySelector(`[data-event-id="${eventId}"] .expand-btn i`);
+    
+    if (details.style.display === 'none') {
+        details.style.display = 'block';
+        expandBtn.className = 'fas fa-chevron-up';
+        details.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+        details.style.display = 'none';
+        expandBtn.className = 'fas fa-chevron-down';
+    }
+}
+
+function showTab(eventId, tabName) {
+    const eventDetails = document.getElementById(`details-${eventId}`);
+    const tabBtns = eventDetails.querySelectorAll('.tab-btn');
+    const tabPanes = eventDetails.querySelectorAll('.tab-pane');
+    
+    // Update tab buttons
+    tabBtns.forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    // Update tab panes
+    tabPanes.forEach(pane => {
+        pane.style.display = 'none';
+    });
+    
+    const targetPane = document.getElementById(`${tabName}-${eventId}`);
+    if (targetPane) {
+        targetPane.style.display = 'block';
+    }
+}
+
+function exportResults() {
+    const results = document.querySelectorAll('.result-item');
+    if (results.length === 0) {
+        showAlert('warning', 'No results to export.');
+        return;
+    }
+    
+    // Would implement export functionality
+    showAlert('info', 'Export functionality not yet implemented.');
+    debugLog('Export results requested');
+}
+
+function highlightSearchTerms(text, query) {
+    if (!query) return text;
+    
+    const terms = query.split(/\s+/).filter(term => 
+        !term.includes(':') && term.length > 2
+    );
+    
+    let highlightedText = text;
+    terms.forEach(term => {
+        const regex = new RegExp(`(${term})`, 'gi');
+        highlightedText = highlightedText.replace(regex, '<mark>$1</mark>');
+    });
+    
+    return highlightedText;
+}
+
+// Real-time search suggestions (would be implemented with server-side support)
+function loadSearchSuggestions(query) {
+    // This would make an API call to get search suggestions
+    return [];
+}
+
+// Advanced search helpers
+function buildAdvancedQuery() {
+    // Would help users build complex queries
+}
+
+function saveSearch() {
+    // Would allow users to save search queries
+    showAlert('info', 'Save search functionality not yet implemented.');
+}
+
+// Expose functions globally
+window.toggleFilters = toggleFilters;
+window.clearFilters = clearFilters;
+window.setSearchQuery = setSearchQuery;
+window.setView = setView;
+window.toggleEventDetails = toggleEventDetails;
+window.showTab = showTab;
+window.exportResults = exportResults;
+</script>
+{% endblock %}
+

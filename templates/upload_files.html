@@ -1,0 +1,847 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Files - {{ case.name }} - caseScope{% endblock %}
+
+{% block content %}
+<div class="upload-container">
+    <div class="page-header">
+        <div class="header-info">
+            <h1>Upload Files</h1>
+            <div class="case-breadcrumb">
+                <i class="fas fa-folder"></i>
+                <span>{{ case.name }}</span>
+            </div>
+        </div>
+        <div class="header-actions">
+            <a href="{{ url_for('list_files') }}" class="btn btn-secondary">
+                <i class="fas fa-list"></i>
+                View Files
+            </a>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i>
+                Back to Case
+            </a>
+        </div>
+    </div>
+
+    <!-- Upload Form -->
+    <div class="upload-form-container">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-upload"></i>
+                    File Upload
+                </h3>
+            </div>
+            <div class="card-content">
+                <form method="POST" enctype="multipart/form-data" class="upload-form" id="upload-form">
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="upload-area" id="upload-area">
+                        <div class="upload-content">
+                            <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                            <div class="upload-text">Drop EVTX files here or click to browse</div>
+                            <div class="upload-subtext">Maximum 5 files, up to 500MB each</div>
+                        </div>
+                        {{ form.files(style="display: none;", id="file-input") }}
+                    </div>
+                    
+                    {% if form.files.errors %}
+                        <div class="form-error">
+                            {% for error in form.files.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    
+                    <div class="selected-files" id="selected-files" style="display: none;">
+                        <h4>Selected Files</h4>
+                        <div class="file-list" id="file-list"></div>
+                    </div>
+                    
+                    <div class="upload-actions">
+                        <button type="submit" class="btn btn-primary" id="upload-btn" disabled>
+                            <i class="fas fa-upload"></i>
+                            Upload Files
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="clear-btn" onclick="clearFiles()" disabled>
+                            <i class="fas fa-times"></i>
+                            Clear All
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Upload Progress -->
+        <div class="upload-progress-container" id="upload-progress-container" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        Upload Progress
+                    </h3>
+                </div>
+                <div class="card-content">
+                    <div class="progress-list" id="upload-progress"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Guidelines -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-info-circle"></i>
+                    Upload Guidelines
+                </h3>
+            </div>
+            <div class="card-content">
+                <div class="guidelines-grid">
+                    <div class="guideline-item">
+                        <div class="guideline-icon">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <div class="guideline-content">
+                            <h4>Supported Formats</h4>
+                            <p>Only Windows Event Log (.evtx) files are supported. Other formats will be rejected.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="guideline-item">
+                        <div class="guideline-icon">
+                            <i class="fas fa-layer-group"></i>
+                        </div>
+                        <div class="guideline-content">
+                            <h4>Batch Upload</h4>
+                            <p>Upload up to 5 files at once. Each file can be up to 500MB in size.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="guideline-item">
+                        <div class="guideline-icon">
+                            <i class="fas fa-cogs"></i>
+                        </div>
+                        <div class="guideline-content">
+                            <h4>Automatic Processing</h4>
+                            <p>Files are automatically parsed, indexed in OpenSearch, and analyzed with Sigma/Chainsaw rules.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="guideline-item">
+                        <div class="guideline-icon">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <div class="guideline-content">
+                            <h4>Security Analysis</h4>
+                            <p>Rule violations are automatically detected and color-coded by severity level.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="guideline-item">
+                        <div class="guideline-icon">
+                            <i class="fas fa-copy"></i>
+                        </div>
+                        <div class="guideline-content">
+                            <h4>Duplicate Detection</h4>
+                            <p>Identical events are automatically deduplicated during the indexing process.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="guideline-item">
+                        <div class="guideline-icon">
+                            <i class="fas fa-search"></i>
+                        </div>
+                        <div class="guideline-content">
+                            <h4>Searchable Data</h4>
+                            <p>Once processed, events become searchable through the case search interface.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.upload-container {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+}
+
+.header-info h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 0.5rem 0;
+}
+
+.case-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.case-breadcrumb i {
+    color: var(--primary-color);
+}
+
+.header-actions {
+    display: flex;
+    gap: 1rem;
+    flex-shrink: 0;
+}
+
+.upload-form-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.upload-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.upload-area {
+    border: 3px dashed var(--border-color);
+    border-radius: 16px;
+    padding: 4rem 2rem;
+    text-align: center;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    background: var(--bg-secondary);
+    position: relative;
+    overflow: hidden;
+}
+
+.upload-area:hover,
+.upload-area.dragover {
+    border-color: var(--primary-color);
+    background: rgba(66, 153, 225, 0.05);
+    transform: translateY(-2px);
+}
+
+.upload-area.drag-active {
+    border-color: var(--success-color);
+    background: rgba(104, 211, 145, 0.05);
+    box-shadow: 0 0 20px rgba(104, 211, 145, 0.3);
+}
+
+.upload-content {
+    pointer-events: none;
+}
+
+.upload-icon {
+    font-size: 4rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+}
+
+.upload-area:hover .upload-icon {
+    color: var(--primary-color);
+    transform: scale(1.1);
+}
+
+.upload-text {
+    color: var(--text-primary);
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.upload-subtext {
+    color: var(--text-secondary);
+    font-size: 1rem;
+}
+
+.selected-files {
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.selected-files h4 {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+}
+
+.file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.file-preview {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.file-preview:hover {
+    border-color: var(--primary-color);
+}
+
+.file-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex: 1;
+}
+
+.file-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(66, 153, 225, 0.2);
+    color: var(--primary-color);
+    border-radius: 8px;
+    font-size: 1.2rem;
+}
+
+.file-details {
+    flex: 1;
+}
+
+.file-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.file-meta {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.file-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.file-remove {
+    background: var(--error-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.file-remove:hover {
+    background: #e53e3e;
+    transform: scale(1.05);
+}
+
+.upload-actions {
+    display: flex;
+    gap: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.upload-progress-container {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.progress-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.upload-progress-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+}
+
+.progress-file-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex: 1;
+}
+
+.progress-file-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(66, 153, 225, 0.2);
+    color: var(--primary-color);
+    border-radius: 12px;
+    font-size: 1.5rem;
+}
+
+.progress-file-details {
+    flex: 1;
+}
+
+.progress-file-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.progress-file-size {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.progress-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+    min-width: 200px;
+}
+
+.progress-status {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.progress {
+    width: 200px;
+    height: 8px;
+    background: var(--progress-bg);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background: var(--primary-color);
+    transition: width 0.3s ease;
+    border-radius: 4px;
+}
+
+.progress-bar.success {
+    background: var(--success-color);
+}
+
+.progress-bar.error {
+    background: var(--error-color);
+}
+
+.progress-percent {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.guidelines-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.guideline-item {
+    display: flex;
+    gap: 1rem;
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    border-left: 4px solid var(--primary-color);
+}
+
+.guideline-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(66, 153, 225, 0.2);
+    color: var(--primary-color);
+    border-radius: 12px;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.guideline-content {
+    flex: 1;
+}
+
+.guideline-content h4 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 0.5rem 0;
+}
+
+.guideline-content p {
+    color: var(--text-secondary);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.form-error {
+    color: var(--error-color);
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    background: rgba(252, 129, 129, 0.1);
+    border: 1px solid var(--error-color);
+    border-radius: 8px;
+}
+
+@media (max-width: 768px) {
+    .page-header {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: stretch;
+    }
+    
+    .header-actions {
+        justify-content: center;
+    }
+    
+    .upload-area {
+        padding: 2rem 1rem;
+    }
+    
+    .upload-icon {
+        font-size: 3rem;
+    }
+    
+    .upload-text {
+        font-size: 1.1rem;
+    }
+    
+    .upload-actions {
+        flex-direction: column;
+    }
+    
+    .guidelines-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .upload-progress-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .progress-info {
+        align-items: stretch;
+        width: 100%;
+    }
+    
+    .progress {
+        width: 100%;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let selectedFiles = [];
+let isUploading = false;
+
+document.addEventListener('DOMContentLoaded', function() {
+    initializeFileUpload();
+});
+
+function initializeFileUpload() {
+    const uploadArea = document.getElementById('upload-area');
+    const fileInput = document.getElementById('file-input');
+    const uploadForm = document.getElementById('upload-form');
+    const uploadBtn = document.getElementById('upload-btn');
+    const clearBtn = document.getElementById('clear-btn');
+
+    // File input change event
+    fileInput.addEventListener('change', function(e) {
+        handleFileSelection(Array.from(e.target.files));
+    });
+
+    // Drag and drop events
+    uploadArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+    });
+
+    uploadArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+    });
+
+    uploadArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        const files = Array.from(e.dataTransfer.files);
+        handleFileSelection(files);
+    });
+
+    // Click to browse
+    uploadArea.addEventListener('click', function() {
+        if (!isUploading) {
+            fileInput.click();
+        }
+    });
+
+    // Form submission
+    uploadForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (selectedFiles.length > 0 && !isUploading) {
+            startUpload();
+        }
+    });
+}
+
+function handleFileSelection(files) {
+    const validFiles = [];
+    const maxFiles = 5;
+    const maxSize = 500 * 1024 * 1024; // 500MB
+
+    // Validate files
+    for (let file of files) {
+        if (selectedFiles.length + validFiles.length >= maxFiles) {
+            showAlert('warning', `Maximum ${maxFiles} files allowed.`);
+            break;
+        }
+
+        // Check file extension
+        const extension = file.name.split('.').pop().toLowerCase();
+        if (extension !== 'evtx') {
+            showAlert('error', `Invalid file type: ${file.name}. Only EVTX files are allowed.`);
+            continue;
+        }
+
+        // Check file size
+        if (file.size > maxSize) {
+            showAlert('error', `File too large: ${file.name}. Maximum size is 500MB.`);
+            continue;
+        }
+
+        // Check for duplicates
+        if (selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
+            showAlert('warning', `File already selected: ${file.name}`);
+            continue;
+        }
+
+        validFiles.push(file);
+    }
+
+    if (validFiles.length > 0) {
+        selectedFiles = selectedFiles.concat(validFiles);
+        updateFileList();
+        updateUploadButton();
+        debugLog(`Selected ${validFiles.length} valid files`);
+    }
+
+    // Clear the file input
+    const fileInput = document.getElementById('file-input');
+    fileInput.value = '';
+}
+
+function updateFileList() {
+    const selectedFilesContainer = document.getElementById('selected-files');
+    const fileList = document.getElementById('file-list');
+
+    if (selectedFiles.length === 0) {
+        selectedFilesContainer.style.display = 'none';
+        return;
+    }
+
+    selectedFilesContainer.style.display = 'block';
+    fileList.innerHTML = '';
+
+    selectedFiles.forEach((file, index) => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-preview';
+        fileItem.innerHTML = `
+            <div class="file-info">
+                <div class="file-icon">
+                    <i class="fas fa-file-alt"></i>
+                </div>
+                <div class="file-details">
+                    <div class="file-name">${file.name}</div>
+                    <div class="file-meta">${formatFileSize(file.size)} • EVTX File</div>
+                </div>
+            </div>
+            <div class="file-actions">
+                <button type="button" class="file-remove" onclick="removeFile(${index})" title="Remove file">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+        fileList.appendChild(fileItem);
+    });
+}
+
+function removeFile(index) {
+    selectedFiles.splice(index, 1);
+    updateFileList();
+    updateUploadButton();
+    debugLog(`Removed file at index ${index}`);
+}
+
+function clearFiles() {
+    selectedFiles = [];
+    updateFileList();
+    updateUploadButton();
+    debugLog('Cleared all selected files');
+}
+
+function updateUploadButton() {
+    const uploadBtn = document.getElementById('upload-btn');
+    const clearBtn = document.getElementById('clear-btn');
+    
+    const hasFiles = selectedFiles.length > 0;
+    uploadBtn.disabled = !hasFiles || isUploading;
+    clearBtn.disabled = !hasFiles || isUploading;
+    
+    if (hasFiles) {
+        uploadBtn.innerHTML = `<i class="fas fa-upload"></i> Upload ${selectedFiles.length} File${selectedFiles.length > 1 ? 's' : ''}`;
+    } else {
+        uploadBtn.innerHTML = `<i class="fas fa-upload"></i> Upload Files`;
+    }
+}
+
+function startUpload() {
+    if (selectedFiles.length === 0) return;
+    
+    isUploading = true;
+    updateUploadButton();
+    
+    // Show progress container
+    const progressContainer = document.getElementById('upload-progress-container');
+    progressContainer.style.display = 'block';
+    
+    // Create FormData
+    const formData = new FormData();
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+    formData.append('csrf_token', csrfToken);
+    
+    selectedFiles.forEach((file, index) => {
+        formData.append('files', file);
+    });
+    
+    // Show initial progress
+    showUploadProgress(selectedFiles);
+    
+    // Submit form
+    fetch(window.location.href, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.text();
+        }
+        throw new Error('Upload failed');
+    })
+    .then(html => {
+        // Parse response to check for success
+        if (html.includes('Successfully uploaded')) {
+            showAlert('success', `Successfully uploaded ${selectedFiles.length} file(s). Processing started.`);
+            
+            // Clear form and redirect after delay
+            setTimeout(() => {
+                window.location.href = "{{ url_for('list_files') }}";
+            }, 2000);
+        } else {
+            throw new Error('Upload failed');
+        }
+    })
+    .catch(error => {
+        console.error('Upload error:', error);
+        showAlert('error', 'Upload failed. Please try again.');
+        isUploading = false;
+        updateUploadButton();
+        progressContainer.style.display = 'none';
+    });
+}
+
+function showUploadProgress(files) {
+    const progressList = document.getElementById('upload-progress');
+    progressList.innerHTML = '';
+    
+    files.forEach((file, index) => {
+        const progressItem = document.createElement('div');
+        progressItem.className = 'upload-progress-item';
+        progressItem.innerHTML = `
+            <div class="progress-file-info">
+                <div class="progress-file-icon">
+                    <i class="fas fa-file-alt"></i>
+                </div>
+                <div class="progress-file-details">
+                    <div class="progress-file-name">${file.name}</div>
+                    <div class="progress-file-size">${formatFileSize(file.size)}</div>
+                </div>
+            </div>
+            <div class="progress-info">
+                <div class="progress-status" id="status-${index}">Uploading...</div>
+                <div class="progress">
+                    <div class="progress-bar" id="progress-${index}" style="width: 0%"></div>
+                </div>
+                <div class="progress-percent" id="percent-${index}">0%</div>
+            </div>
+        `;
+        progressList.appendChild(progressItem);
+        
+        // Simulate upload progress
+        simulateProgress(index);
+    });
+}
+
+function simulateProgress(index) {
+    let progress = 0;
+    const progressBar = document.getElementById(`progress-${index}`);
+    const progressPercent = document.getElementById(`percent-${index}`);
+    const progressStatus = document.getElementById(`status-${index}`);
+    
+    const interval = setInterval(() => {
+        progress += Math.random() * 10 + 5;
+        if (progress >= 100) {
+            progress = 100;
+            clearInterval(interval);
+            progressStatus.textContent = 'Completed';
+            progressBar.classList.add('success');
+        }
+        
+        progressBar.style.width = progress + '%';
+        progressPercent.textContent = Math.round(progress) + '%';
+    }, 200);
+}
+
+// Expose functions globally
+window.removeFile = removeFile;
+window.clearFiles = clearFiles;
+</script>
+{% endblock %}
+

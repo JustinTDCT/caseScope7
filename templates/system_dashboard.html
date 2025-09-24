@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+
+{% block title %}System Dashboard - caseScope{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <div class="dashboard-header">
+        <h1>System Dashboard</h1>
+        <div class="dashboard-actions">
+            <button class="btn btn-primary" onclick="refreshSystemStats()">
+                <i class="fas fa-sync"></i>
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- System Status Cards -->
+    <div class="grid grid-cols-4 mb-4">
+        <div class="stat-card">
+            <div class="stat-icon success">
+                <i class="fas fa-server"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ system_info.os.name }} {{ system_info.os.version }}</div>
+                <div class="stat-label">Operating System</div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon primary">
+                <i class="fas fa-memory"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ "%.1f"|format(system_info.memory.percent) }}%</div>
+                <div class="stat-label">Memory Usage</div>
+                <div class="progress mt-2">
+                    <div class="progress-bar" style="width: {{ system_info.memory.percent }}%"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon warning">
+                <i class="fas fa-hdd"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ "%.1f"|format(system_info.disk.percent) }}%</div>
+                <div class="stat-label">Disk Usage</div>
+                <div class="progress mt-2">
+                    <div class="progress-bar" style="width: {{ system_info.disk.percent }}%"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon primary">
+                <i class="fas fa-clock"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="system-uptime">Online</div>
+                <div class="stat-label">System Status</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Service Status -->
+    <div class="grid grid-cols-2 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-cogs"></i>
+                    Service Status
+                </h3>
+            </div>
+            <div class="card-content">
+                <div class="service-list">
+                    {% for service, status in system_info.services.items() %}
+                    <div class="service-item">
+                        <div class="service-info">
+                            <i class="fas fa-circle service-status {% if status %}online{% else %}offline{% endif %}"></i>
+                            <span class="service-name">{{ service|title }}</span>
+                        </div>
+                        <span class="badge {% if status %}badge-success{% else %}badge-danger{% endif %}">
+                            {% if status %}Running{% else %}Stopped{% endif %}
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-shield-alt"></i>
+                    Rule Statistics
+                </h3>
+            </div>
+            <div class="card-content">
+                <div class="rule-stats">
+                    <div class="rule-stat-item">
+                        <div class="rule-info">
+                            <i class="fas fa-file-code"></i>
+                            <div class="rule-details">
+                                <div class="rule-count">{{ system_info.rules.sigma_count|default(0) }}</div>
+                                <div class="rule-label">Sigma Rules</div>
+                            </div>
+                        </div>
+                        {% if system_info.rules.sigma_updated %}
+                        <div class="rule-updated">
+                            Last updated: {{ system_info.rules.sigma_updated.strftime('%Y-%m-%d %H:%M') }}
+                        </div>
+                        {% else %}
+                        <div class="rule-updated text-warning">
+                            Not updated
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="rule-stat-item">
+                        <div class="rule-info">
+                            <i class="fas fa-link"></i>
+                            <div class="rule-details">
+                                <div class="rule-count">{{ system_info.rules.chainsaw_count|default(0) }}</div>
+                                <div class="rule-label">Chainsaw Rules</div>
+                            </div>
+                        </div>
+                        {% if system_info.rules.chainsaw_updated %}
+                        <div class="rule-updated">
+                            Last updated: {{ system_info.rules.chainsaw_updated.strftime('%Y-%m-%d %H:%M') }}
+                        </div>
+                        {% else %}
+                        <div class="rule-updated text-warning">
+                            Not updated
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Statistics -->
+    <div class="grid grid-cols-3 mb-4">
+        <div class="stat-card">
+            <div class="stat-icon primary">
+                <i class="fas fa-folder"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="case-count">{{ system_info.statistics.case_count|default(0) }}</div>
+                <div class="stat-label">Total Cases</div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon success">
+                <i class="fas fa-file-alt"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="file-count">{{ system_info.statistics.file_count|default(0) }}</div>
+                <div class="stat-label">Files Uploaded</div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon warning">
+                <i class="fas fa-database"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" id="total-size">
+                    {% if system_info.statistics.total_size %}
+                        {{ (system_info.statistics.total_size / 1024 / 1024 / 1024)|round(2) }} GB
+                    {% else %}
+                        0 GB
+                    {% endif %}
+                </div>
+                <div class="stat-label">Storage Used</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Cases -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                <i class="fas fa-history"></i>
+                Recent Cases
+            </h3>
+            <a href="{{ url_for('create_case') }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i>
+                New Case
+            </a>
+        </div>
+        <div class="card-content">
+            {% if recent_cases %}
+            <div class="case-list">
+                {% for case in recent_cases %}
+                <div class="case-item" onclick="handleCaseSelection({{ case.id }})">
+                    <div class="case-info">
+                        <div class="case-icon">
+                            <i class="fas fa-folder-open"></i>
+                        </div>
+                        <div class="case-details">
+                            <div class="case-name">{{ case.name }}</div>
+                            <div class="case-meta">
+                                <span class="case-date">Created {{ case.created_at.strftime('%Y-%m-%d') }}</span>
+                                <span class="case-creator">by {{ case.creator.username }}</span>
+                                {% if case.description %}
+                                <span class="case-description">{{ case.description[:100] }}{% if case.description|length > 100 %}...{% endif %}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="case-stats">
+                        <div class="case-stat">
+                            <span class="stat-number">{{ case.files.count() }}</span>
+                            <span class="stat-label">Files</span>
+                        </div>
+                        <div class="case-stat">
+                            <span class="stat-number">{{ case.last_modified.strftime('%m/%d') }}</span>
+                            <span class="stat-label">Modified</span>
+                        </div>
+                    </div>
+                    <div class="case-actions">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-folder-plus"></i>
+                <h4>No Cases Yet</h4>
+                <p>Create your first case to get started with caseScope.</p>
+                <a href="{{ url_for('create_case') }}" class="btn btn-primary">
+                    <i class="fas fa-plus"></i>
+                    Create First Case
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.dashboard-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.dashboard-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.dashboard-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.service-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.service-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.service-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.service-status {
+    font-size: 0.75rem;
+}
+
+.service-status.online {
+    color: var(--success-color);
+}
+
+.service-status.offline {
+    color: var(--error-color);
+}
+
+.service-name {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.rule-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.rule-stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.rule-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.rule-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.rule-count {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.rule-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.rule-updated {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding-left: 2.5rem;
+}
+
+.case-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.case-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.case-item:hover {
+    background: var(--bg-tertiary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.case-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex: 1;
+}
+
+.case-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(66, 153, 225, 0.2);
+    color: var(--primary-color);
+    border-radius: 12px;
+    font-size: 1.5rem;
+}
+
+.case-details {
+    flex: 1;
+}
+
+.case-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.case-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.case-description {
+    margin-top: 0.25rem;
+    color: var(--text-muted);
+}
+
+.case-stats {
+    display: flex;
+    gap: 2rem;
+}
+
+.case-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.case-stat .stat-number {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.case-stat .stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.case-actions {
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-secondary);
+}
+
+.empty-state i {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    color: var(--text-muted);
+}
+
+.empty-state h4 {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.empty-state p {
+    margin-bottom: 2rem;
+}
+
+.text-warning {
+    color: var(--warning-color) !important;
+}
+
+@media (max-width: 768px) {
+    .grid-cols-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    
+    .case-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .case-stats {
+        align-self: stretch;
+        justify-content: space-around;
+    }
+    
+    .case-actions {
+        align-self: center;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Update system uptime and other real-time data
+function updateSystemInfo() {
+    // This would typically fetch real-time data from the server
+    const uptimeElement = document.getElementById('system-uptime');
+    if (uptimeElement) {
+        // Calculate uptime or show status
+        uptimeElement.textContent = 'Online';
+    }
+}
+
+// Refresh stats every 30 seconds
+setInterval(updateSystemInfo, 30000);
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateSystemInfo();
+});
+</script>
+{% endblock %}
+
