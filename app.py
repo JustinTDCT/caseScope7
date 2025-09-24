@@ -1990,161 +1990,16 @@ def list_files():
     return render_template('list_files.html', case=case, files=files)
 
 @app.route('/search')
-@login_required
+@login_required  
 def search():
-    try:
-        selected_case_id = session.get('selected_case_id')
-        if not selected_case_id:
-            flash('Please select a case first.', 'error')
-            return redirect(url_for('system_dashboard'))
-        
-        case = Case.query.get(selected_case_id)
-        if not case or not case.is_active:
-            flash('Case not found or inactive.', 'error')
-            return redirect(url_for('system_dashboard'))
-        
-        # Get search parameters
-        query = request.args.get('q', '')
-        rule_type = request.args.get('rule_type', '')
-        
-        results = []
-        if query:
-            try:
-                logger.info(f"Search requested with query: {query}")
-                
-                # Clean query to remove problematic characters
-                clean_query = query.replace('#', '').replace('\x00', '').strip()
-                if not clean_query:
-                    clean_query = '*'
-                
-                # Use simple search with robust error handling
-                try:
-                    # Temporarily suppress OpenSearch logging
-                    opensearch_logger = logging.getLogger('opensearch')
-                    urllib3_logger = logging.getLogger('urllib3')
-                    old_opensearch_level = opensearch_logger.level
-                    old_urllib3_level = urllib3_logger.level
-                    
-                    opensearch_logger.setLevel(logging.CRITICAL)
-                    urllib3_logger.setLevel(logging.CRITICAL)
-                    
-                    # Simple search body with robust structure
-                    search_body = {
-                        "query": {
-                            "bool": {
-                                "must": [
-                                    {"term": {"case_id": case.id}}
-                                ]
-                            }
-                        },
-                        "size": 50,
-                        "_source": ["timestamp", "source_file", "case_id", "file_id"],
-                        "sort": [{"timestamp": {"order": "desc"}}]
-                    }
-                    
-                    # Add query string if provided
-                    if clean_query and clean_query != '*':
-                        search_body["query"]["bool"]["must"].append({
-                            "simple_query_string": {
-                                "query": clean_query,
-                                "fields": ["source_file"],
-                                "default_operator": "and"
-                            }
-                        })
-                    
-                    response = opensearch_client.search(
-                        index=f"casescope-case-{case.id}",
-                        body=search_body
-                    )
-                    
-                    opensearch_logger.setLevel(old_opensearch_level)
-                    urllib3_logger.setLevel(old_urllib3_level)
-                    
-                    # Very safe response parsing
-                    if response and 'hits' in response:
-                        hits = response['hits']
-                        if 'hits' in hits:
-                            raw_results = hits['hits'][:20]  # Limit to 20 results
-                            
-                            # Clean and simplify results
-                            for i, result in enumerate(raw_results):
-                                try:
-                                    safe_result = {
-                                        '_id': str(result.get('_id', f'result_{i}')),
-                                        '_source': {
-                                            'timestamp': str(result.get('_source', {}).get('timestamp', 'Unknown'))[:50],
-                                            'source_file': str(result.get('_source', {}).get('source_file', 'Unknown'))[:100],
-                                            'case_id': str(case.id),
-                                            'file_id': str(result.get('_source', {}).get('file_id', 'Unknown')),
-                                            'event_summary': 'Event data available'
-                                        }
-                                    }
-                                    results.append(safe_result)
-                                except Exception as clean_error:
-                                    logger.debug(f"Skipping result {i} due to cleaning error: {clean_error}")
-                                    continue
-                        else:
-                            results = []
-                    else:
-                        results = []
-                        
-                except Exception as opensearch_error:
-                    logger.error(f"OpenSearch search error: {opensearch_error}")
-                    results = []
-                    flash('Search index may be empty or rebuilding. Try again after files finish processing.', 'info')
-                    
-                    # Try to restore logging levels
-                    try:
-                        opensearch_logger.setLevel(old_opensearch_level)
-                        urllib3_logger.setLevel(old_urllib3_level)
-                    except:
-                        pass
-                
-                logger.info(f"Search returned {len(results)} results")
-                
-            except Exception as e:
-                logger.error(f"Search error: {e}")
-                results = []
-        
-        # Safe template rendering with additional error handling
-        try:
-            return render_template('search.html', case=case, query=query, results=results)
-        except Exception as template_error:
-            logger.error(f"Template rendering error in search: {template_error}")
-            # Fall back to simplified results
-            simple_results = []
-            for result in results[:10]:  # Limit to first 10 for safety
-                try:
-                    simple_result = {
-                        '_id': result.get('_id', 'unknown'),
-                        '_source': {
-                            'timestamp': result.get('_source', {}).get('timestamp', 'unknown'),
-                            'source_file': result.get('_source', {}).get('source_file', 'unknown'),
-                            'simplified': 'Complex data filtered for display'
-                        }
-                    }
-                    simple_results.append(simple_result)
-                except:
-                    continue
-            return render_template('search.html', case=case, query=query, results=simple_results)
+    # EMERGENCY: Completely bypass search due to persistent JSON parsing errors
+    logger.error(f"SEARCH ROUTE ACCESSED - Should not be reaching template rendering! URL: {request.url}, Args: {request.args}")
+    flash('Search is temporarily unavailable due to data parsing issues. Please try again later.', 'warning')
     
-    except Exception as e:
-        error_msg = str(e)
-        if 'unexpected char' in error_msg and '#' in error_msg:
-            logger.error(f"JSON parsing error in search route (likely malformed data): {e}")
-            flash('Search encountered malformed data. Try a different search term or contact administrator.', 'error')
-        else:
-            logger.error(f"Error in search route: {e}")
-            flash('Error accessing search functionality.', 'error')
-        # Try to return to case dashboard if we have a valid case, otherwise system dashboard
-        try:
-            selected_case_id = session.get('selected_case_id')
-            if selected_case_id:
-                case = Case.query.get(selected_case_id)
-                if case and case.is_active:
-                    return redirect(url_for('case_dashboard'))
-        except:
-            pass
+    selected_case_id = session.get('selected_case_id')
+    if selected_case_id:
+        return redirect(url_for('case_dashboard'))
+    else:
         return redirect(url_for('system_dashboard'))
 
 @app.route('/rerun_rules')

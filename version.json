@@ -1,6 +1,6 @@
 {
-  "version": "7.0.85",
+  "version": "7.0.86",
   "release_date": "2025-09-24",
-  "description": "MAJOR: Complete OpenSearch cleanup + re-import system to resolve JSON parsing errors",
+  "description": "EMERGENCY: Complete search disable - redirect all search access to prevent JSON errors",
   "build": "production"
 }
