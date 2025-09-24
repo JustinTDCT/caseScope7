@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.75"
+echo "caseScope Bug Fixes Script v7.0.76"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.75..."
+log "Updating version to 7.0.76..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.75 "FIX: Remove misleading debug messages, improve Chainsaw result parsing and counting" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.76 "FIX: OpenSearch mapper parsing exceptions - sanitize XML data before indexing" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -429,13 +429,13 @@ echo "  Worker Logs:   journalctl -u casescope-worker -f"
 echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
-echo "🔍 CHAINSAW PROCESSING LOGIC FIXES:"
-echo "  ✅ FIXED: Removed misleading 'Chainsaw reported 0 documents' debug messages"
-echo "  ✅ FIXED: Improved JSON parsing to handle both single objects and arrays"
-echo "  ✅ FIXED: Better detection counting (was undercounting valid results)"
-echo "  ✅ ADDED: Detailed output format analysis and debugging"
-echo "  ✅ ANALYSIS: Chainsaw IS working (74 detections found) but parsing was broken"
-echo "  ✅ EXPECTS: Should now correctly count all 74 violations instead of just 1!"
+echo "🔧 OPENSEARCH MAPPING EXCEPTIONS FIXED:"
+echo "  ✅ FIXED: OpenSearch mapper_parsing_exception errors during indexing"
+echo "  ✅ ADDED: Data sanitization for XML structures like {'#text': 'value', '@attr': 'value'}"
+echo "  ✅ ADDED: Robust error handling with fallback minimal document structure"
+echo "  ✅ FIXED: XML namespace attributes and complex artifacts causing index failures"
+echo "  ✅ ADDED: String length limits and recursion protection for large data"
+echo "  ✅ EXPECTS: Clean EVTX indexing without mapper parsing exceptions!"
 echo "  ✅ FIXED: Single file re-run rules now actually works (requeues processing)"
 echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
@@ -494,4 +494,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.75 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.76 deployment complete!"

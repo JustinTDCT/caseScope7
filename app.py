@@ -659,6 +659,69 @@ def load_actual_sigma_rules(sigma_path):
         logger.error(f"Error loading actual Sigma rules: {e}")
         return {}
 
+def sanitize_for_opensearch(data, max_depth=10):
+    """
+    Sanitize XML parsed data for OpenSearch indexing by:
+    1. Converting XML text nodes like {'#text': 'value', '@attr': 'attr_val'} to simple strings
+    2. Flattening nested structures
+    3. Converting all values to JSON-safe types
+    """
+    if max_depth <= 0:
+        return str(data)[:1000]  # Prevent infinite recursion, limit string length
+    
+    if isinstance(data, dict):
+        # Handle XML text nodes: {'#text': 'value', '@attr': 'value'} -> 'value'
+        if '#text' in data:
+            return str(data['#text'])
+        
+        # Handle single-key dicts that are likely XML artifacts
+        if len(data) == 1:
+            key, value = next(iter(data.items()))
+            if key.startswith('@'):
+                return str(value)
+            # Recursively sanitize the value
+            sanitized_value = sanitize_for_opensearch(value, max_depth - 1)
+            # If the sanitized value is simple, return it directly
+            if isinstance(sanitized_value, (str, int, float, bool)):
+                return sanitized_value
+        
+        # For normal dicts, recursively sanitize each value
+        sanitized = {}
+        for key, value in data.items():
+            # Skip XML namespace attributes and complex XML artifacts
+            if key.startswith('@') or key.startswith('#'):
+                continue
+                
+            # Clean the key name
+            clean_key = str(key).replace('@', '').replace('#', '').replace(' ', '_').lower()
+            if clean_key:
+                sanitized[clean_key] = sanitize_for_opensearch(value, max_depth - 1)
+        
+        return sanitized if sanitized else str(data)[:1000]
+        
+    elif isinstance(data, list):
+        # For lists, sanitize each item
+        sanitized_list = []
+        for item in data[:100]:  # Limit list size to prevent memory issues
+            sanitized_item = sanitize_for_opensearch(item, max_depth - 1)
+            if sanitized_item is not None and sanitized_item != '':
+                sanitized_list.append(sanitized_item)
+        
+        # If list has only one item and it's a simple type, return the item
+        if len(sanitized_list) == 1 and isinstance(sanitized_list[0], (str, int, float, bool)):
+            return sanitized_list[0]
+        return sanitized_list
+        
+    elif isinstance(data, (str, int, float, bool)):
+        # Simple types are OK as-is, but limit string length
+        if isinstance(data, str):
+            return data[:1000]
+        return data
+        
+    else:
+        # For any other type, convert to string and limit length
+        return str(data)[:1000]
+
 def prepare_event_for_real_sigma(event):
     """Prepare EVTX event for real Sigma rule evaluation"""
     try:
@@ -1371,26 +1434,71 @@ def process_evtx_file(file_id):
                         logger.error(f"Failed to extract event data from record")
                         continue
                     
+                    # Sanitize event data for OpenSearch compatibility
+                    try:
+                        sanitized_event_data = sanitize_for_opensearch(event_data)
+                        
+                        # Debug: Log problematic data structures (first 3 records only)
+                        if processed_records < 3:
+                            logger.info(f"Record {processed_records + 1} - Original data keys: {list(event_data.keys()) if isinstance(event_data, dict) else 'Not a dict'}")
+                            logger.info(f"Record {processed_records + 1} - Sanitized data keys: {list(sanitized_event_data.keys()) if isinstance(sanitized_event_data, dict) else 'Not a dict'}")
+                            
+                    except Exception as sanitize_error:
+                        logger.error(f"Error sanitizing event data: {sanitize_error}")
+                        # Fall back to string representation
+                        sanitized_event_data = {'raw_data': str(event_data)[:1000]}
+                    
                     # Create OpenSearch document
                     doc = {
                         'case_id': case_file.case_id,
                         'file_id': case_file.id,
                         'timestamp': datetime.utcnow().isoformat(),
-                        'event_data': event_data,
+                        'event_data': sanitized_event_data,
                         'source_file': case_file.original_filename,
                         'processed_at': datetime.utcnow().isoformat()
                     }
                     
-                    # Index in OpenSearch
-                    response = opensearch_client.index(
-                        index=f"casescope-case-{case_file.case_id}",
-                        body=doc
-                    )
-                    
-                    # Add the document ID to the event for rule processing
-                    doc['_id'] = response['_id']
-                    events.append(doc)
-                    processed_records += 1
+                    # Index in OpenSearch with error handling
+                    try:
+                        response = opensearch_client.index(
+                            index=f"casescope-case-{case_file.case_id}",
+                            body=doc
+                        )
+                        
+                        # Add the document ID to the event for rule processing
+                        doc['_id'] = response['_id']
+                        events.append(doc)
+                        processed_records += 1
+                        
+                    except Exception as index_error:
+                        # Log detailed error for mapping issues
+                        logger.error(f"OpenSearch indexing error for record {processed_records + 1}: {index_error}")
+                        
+                        # Try with minimal document structure as fallback
+                        try:
+                            minimal_doc = {
+                                'case_id': case_file.case_id,
+                                'file_id': case_file.id,
+                                'timestamp': datetime.utcnow().isoformat(),
+                                'source_file': case_file.original_filename,
+                                'processed_at': datetime.utcnow().isoformat(),
+                                'raw_event': str(event_data)[:500] if event_data else 'unknown'
+                            }
+                            
+                            response = opensearch_client.index(
+                                index=f"casescope-case-{case_file.case_id}",
+                                body=minimal_doc
+                            )
+                            
+                            minimal_doc['_id'] = response['_id']
+                            events.append(minimal_doc)
+                            processed_records += 1
+                            logger.info(f"Indexed record {processed_records} with minimal structure due to mapping error")
+                            
+                        except Exception as fallback_error:
+                            logger.error(f"Failed to index even minimal document: {fallback_error}")
+                            # Skip this record but continue processing
+                            continue
                     
                     # Update progress
                     progress = int((processed_records / total_records) * 80) + 10

@@ -1,6 +1,6 @@
 {
-  "version": "7.0.75",
+  "version": "7.0.76",
   "release_date": "2025-09-24",
-  "description": "FIX: Remove misleading debug messages, improve Chainsaw result parsing and counting",
+  "description": "FIX: OpenSearch mapper parsing exceptions - sanitize XML data before indexing",
   "build": "production"
 }
