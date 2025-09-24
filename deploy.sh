@@ -64,7 +64,7 @@ Werkzeug==3.0.1
 WTForms==3.1.0
 opensearch-py==2.4.2
 gunicorn==21.2.0
-python-evtx==0.8.2
+python-evtx==0.8.1
 pyyaml==6.0.1
 requests==2.31.0
 bcrypt==4.1.2

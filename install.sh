@@ -107,7 +107,7 @@ Werkzeug==3.0.1
 WTForms==3.1.0
 opensearch-py==2.4.2
 gunicorn==21.2.0
-python-evtx==0.8.2
+python-evtx==0.8.1
 pyyaml==6.0.1
 requests==2.31.0
 bcrypt==4.1.2
@@ -117,8 +117,6 @@ celery==5.3.4
 redis==5.0.1
 xmltodict==0.13.0
 elasticsearch-dsl==8.11.0
-sigma-cli==1.0.3
-chainsaw==2.9.1
 APScheduler==3.10.4
 jinja2==3.1.2
 markupsafe==2.1.3
@@ -231,15 +229,42 @@ fi
 
 # Download and setup Chainsaw rules
 log "Setting up Chainsaw rules..."
-wget -O chainsaw.zip https://github.com/WithSecureLabs/chainsaw/releases/latest/download/chainsaw_all_linux.zip 2>&1 | tee -a /opt/casescope/logs/install.log
-if [ $? -eq 0 ]; then
-    unzip chainsaw.zip
-    chmod +x chainsaw
-    mv chainsaw /opt/casescope/rules/
+# Try multiple versions of Chainsaw
+CHAINSAW_DOWNLOADED=false
+for version in "v2.9.1" "v2.8.0" "v2.7.0"; do
+    log "Trying Chainsaw version $version..."
+    wget -O chainsaw.zip "https://github.com/WithSecureLabs/chainsaw/releases/download/$version/chainsaw_all_linux.zip" 2>&1 | tee -a /opt/casescope/logs/install.log
+    if [ $? -eq 0 ]; then
+        unzip -q chainsaw.zip 2>&1 | tee -a /opt/casescope/logs/install.log
+        # Find and move the chainsaw binary
+        find . -name "*chainsaw*" -type f -executable | head -1 | while read file; do
+            if [ -f "$file" ]; then
+                mv "$file" /opt/casescope/rules/chainsaw
+                chmod +x /opt/casescope/rules/chainsaw
+            fi
+        done
+        if [ -f /opt/casescope/rules/chainsaw ]; then
+            CHAINSAW_DOWNLOADED=true
+            log "Chainsaw $version downloaded successfully"
+            break
+        fi
+    fi
+    rm -f chainsaw.zip 2>/dev/null
+done
+
+if [ "$CHAINSAW_DOWNLOADED" = "true" ] || [ -f /opt/casescope/rules/chainsaw ]; then
+    # Download Chainsaw rules
     git clone https://github.com/WithSecureLabs/chainsaw.git chainsaw-rules 2>&1 | tee -a /opt/casescope/logs/install.log
+    log "Chainsaw setup completed"
 else
-    log_warning "Failed to download Chainsaw"
+    log_warning "Failed to download Chainsaw - will continue without it"
+    # Create placeholder for chainsaw rules
+    mkdir -p chainsaw-rules/rules
+    echo "# Chainsaw rules placeholder" > chainsaw-rules/rules/placeholder.yml
 fi
+
+# Clean up any temporary files
+rm -f chainsaw.zip chainsaw_* 2>/dev/null || true
 
 # Create systemd services
 log "Creating systemd services..."
