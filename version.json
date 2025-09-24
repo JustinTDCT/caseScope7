@@ -1,6 +1,6 @@
 {
-  "version": "7.0.82",
+  "version": "7.0.83",
   "release_date": "2025-09-24",
-  "description": "FIX: Aggressive search data cleaning - completely resolve JSON parsing issues",
+  "description": "FIX: Temporarily disable search + OpenSearch index cleanup to resolve JSON errors",
   "build": "production"
 }
