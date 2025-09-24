@@ -6,6 +6,18 @@
 echo "=== caseScope Test Server Update ==="
 echo "Date: $(date)"
 
+# Auto-increment version
+echo "Auto-incrementing version..."
+current_version=$(python3 version_utils.py get 2>/dev/null || echo "7.0.33")
+IFS='.' read -ra ADDR <<< "$current_version"
+major=${ADDR[0]}
+minor=${ADDR[1]}
+patch=$((${ADDR[2]} + 1))
+new_version="$major.$minor.$patch"
+
+echo "Updating version from $current_version to $new_version"
+python3 version_utils.py set "$new_version" "Auto-update $(date '+%Y-%m-%d %H:%M')" 2>/dev/null || true
+
 # Stop services
 echo "Stopping caseScope services..."
 sudo systemctl stop casescope-web casescope-worker 2>/dev/null || true

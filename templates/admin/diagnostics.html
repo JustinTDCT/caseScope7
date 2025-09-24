@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}System Diagnostics - caseScope{% endblock %}
+
+{% block content %}
+<div class="admin-container">
+    <div class="page-header">
+        <h1><i class="fas fa-stethoscope"></i> System Diagnostics</h1>
+        <div class="header-actions">
+            <button class="btn btn-primary" onclick="runDiagnostics()">
+                <i class="fas fa-play"></i>
+                Run Diagnostics
+            </button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>System Health Check</h3>
+        </div>
+        <div class="card-content">
+            <div id="diagnostics-results">
+                <p>Click "Run Diagnostics" to check system health.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mt-4">
+        <div class="card-header">
+            <h3>Debug Console</h3>
+            <div class="card-actions">
+                <button class="btn btn-secondary" onclick="toggleDebugConsole()">
+                    <i class="fas fa-terminal"></i>
+                    Toggle Console
+                </button>
+                <button class="btn btn-secondary" onclick="clearDebugConsole()">
+                    <i class="fas fa-eraser"></i>
+                    Clear
+                </button>
+            </div>
+        </div>
+        <div class="card-content">
+            <div id="debug-console" style="display: none;">
+                <div id="debug-content" style="background: #000; color: #00ff00; padding: 1rem; height: 300px; overflow-y: auto; font-family: monospace;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function runDiagnostics() {
+    const resultsDiv = document.getElementById('diagnostics-results');
+    resultsDiv.innerHTML = '<div class="loading">Running diagnostics...</div>';
+    
+    fetch('/api/admin/diagnostics', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            let html = '<div class="diagnostics-report">';
+            html += '<h4>System Status: <span class="badge badge-success">Healthy</span></h4>';
+            html += '<div class="diagnostic-items">';
+            
+            for (const [key, value] of Object.entries(data.results)) {
+                const status = value ? 'success' : 'danger';
+                const icon = value ? 'check' : 'times';
+                html += `<div class="diagnostic-item">
+                    <i class="fas fa-${icon} text-${status}"></i>
+                    ${key}: <span class="text-${status}">${value ? 'OK' : 'Failed'}</span>
+                </div>`;
+            }
+            
+            html += '</div></div>';
+            resultsDiv.innerHTML = html;
+        } else {
+            resultsDiv.innerHTML = `<div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle"></i>
+                Diagnostics failed: ${data.error}
+            </div>`;
+        }
+    })
+    .catch(error => {
+        resultsDiv.innerHTML = `<div class="alert alert-danger">
+            <i class="fas fa-exclamation-triangle"></i>
+            Error running diagnostics: ${error}
+        </div>`;
+    });
+}
+
+function toggleDebugConsole() {
+    const console = document.getElementById('debug-console');
+    if (console.style.display === 'none') {
+        console.style.display = 'block';
+        debugLog('Debug console enabled');
+    } else {
+        console.style.display = 'none';
+    }
+}
+
+function clearDebugConsole() {
+    const content = document.getElementById('debug-content');
+    content.innerHTML = '';
+}
+
+function debugLog(message) {
+    const content = document.getElementById('debug-content');
+    const timestamp = new Date().toISOString();
+    const entry = document.createElement('div');
+    entry.innerHTML = `<span style="color: #888">[${timestamp}]</span> ${message}`;
+    content.appendChild(entry);
+    content.scrollTop = content.scrollHeight;
+}
+
+// Enable debugging globally
+window.debugLog = debugLog;
+</script>
+
+<style>
+.diagnostics-report {
+    padding: 1rem;
+}
+
+.diagnostic-items {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.diagnostic-item {
+    padding: 0.5rem;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.text-success {
+    color: var(--success-color);
+}
+
+.text-danger {
+    color: var(--error-color);
+}
+
+.loading {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-secondary);
+}
+</style>
+{% endblock %}

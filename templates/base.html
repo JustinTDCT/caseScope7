@@ -105,22 +105,12 @@
                 </div>
                 {% endif %}
 
+                {% if current_user.can_admin() %}
                 <div class="nav-section">
-                    <div class="nav-title">System</div>
-                    <form method="POST" action="{{ url_for('update_rules') }}" style="display: inline;">
-                        <button type="submit" class="nav-item nav-button">
-                            <i class="fas fa-download"></i>
-                            Update Rules
-                        </button>
-                    </form>
-                    {% if current_user.can_admin() %}
+                    <div class="nav-title">Administration</div>
                     <a href="{{ url_for('admin_cases') }}" class="nav-item">
-                        <i class="fas fa-cog"></i>
+                        <i class="fas fa-folder-open"></i>
                         Case Management
-                    </a>
-                    <a href="{{ url_for('admin_files') }}" class="nav-item">
-                        <i class="fas fa-file-alt"></i>
-                        File Management
                     </a>
                     <a href="{{ url_for('admin_users') }}" class="nav-item">
                         <i class="fas fa-users"></i>
@@ -130,8 +120,16 @@
                         <i class="fas fa-stethoscope"></i>
                         Diagnostics
                     </a>
-                    {% endif %}
+                    <form method="POST" action="{{ url_for('update_rules') }}" style="display: inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="nav-button">
+                            <i class="fas fa-sync"></i>
+                            Update Rules
+                        </button>
+                    </form>
                 </div>
+                {% endif %}
+
             </nav>
 
             <!-- Content Area -->

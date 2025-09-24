@@ -278,10 +278,10 @@ def require_role(role):
             
             if role == 'admin' and not current_user.can_admin():
                 flash('Administrator privileges required.', 'error')
-                return redirect(url_for('dashboard'))
+                return redirect(url_for('system_dashboard'))
             elif role == 'write' and not current_user.can_write():
                 flash('Write privileges required.', 'error')
-                return redirect(url_for('dashboard'))
+                return redirect(url_for('system_dashboard'))
             
             return f(*args, **kwargs)
         return decorated_function
@@ -558,13 +558,13 @@ def process_evtx_file(file_id):
 @app.route('/')
 def index():
     if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     
     form = LoginForm()
     
@@ -672,18 +672,18 @@ def select_case(case_id):
     case = Case.query.get_or_404(case_id)
     if not case.is_active:
         flash('Case not found or inactive.', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     
     session['selected_case_id'] = case_id
     log_audit('case_selected', f'Selected case: {case.name}')
-    return redirect(url_for('dashboard'))
+    return redirect(url_for('system_dashboard'))
 
 @app.route('/deselect_case')
 @login_required
 def deselect_case():
     session.pop('selected_case_id', None)
     log_audit('case_deselected', 'Deselected case')
-    return redirect(url_for('dashboard'))
+    return redirect(url_for('system_dashboard'))
 
 @app.route('/create_case', methods=['GET', 'POST'])
 @login_required
@@ -712,12 +712,12 @@ def upload_files():
     selected_case_id = session.get('selected_case_id')
     if not selected_case_id:
         flash('Please select a case first.', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     
     case = Case.query.get(selected_case_id)
     if not case or not case.is_active:
         flash('Case not found or inactive.', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     
     form = FileUploadForm()
     if form.validate_on_submit():
@@ -775,12 +775,12 @@ def list_files():
     selected_case_id = session.get('selected_case_id')
     if not selected_case_id:
         flash('Please select a case first.', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     
     case = Case.query.get(selected_case_id)
     if not case or not case.is_active:
         flash('Case not found or inactive.', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     
     files = case.files.order_by(CaseFile.uploaded_at.desc()).all()
     return render_template('list_files.html', case=case, files=files)
@@ -791,12 +791,12 @@ def search():
     selected_case_id = session.get('selected_case_id')
     if not selected_case_id:
         flash('Please select a case first.', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     
     case = Case.query.get(selected_case_id)
     if not case or not case.is_active:
         flash('Case not found or inactive.', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     
     # Get search parameters
     query = request.args.get('q', '')
@@ -847,12 +847,12 @@ def rerun_rules():
     selected_case_id = session.get('selected_case_id')
     if not selected_case_id:
         flash('Please select a case first.', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     
     case = Case.query.get(selected_case_id)
     if not case or not case.is_active:
         flash('Case not found or inactive.', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     
     # Queue all files for rule re-run
     files = case.files.filter_by(processing_status='completed').all()
@@ -871,12 +871,12 @@ def clear_pending_files():
     selected_case_id = session.get('selected_case_id')
     if not selected_case_id:
         flash('No case selected.', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     
     case = Case.query.get(selected_case_id)
     if not case or not case.is_active:
         flash('Case not found or inactive.', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     
     try:
         # Find pending files
@@ -948,7 +948,7 @@ def update_rules():
         logger.error(f"Rule update error: {e}")
         flash('Rule update failed.', 'error')
     
-    return redirect(url_for('dashboard'))
+    return redirect(url_for('system_dashboard'))
 
 # Admin routes
 @app.route('/admin/cases')
@@ -965,12 +965,12 @@ def admin_files():
     selected_case_id = session.get('selected_case_id')
     if not selected_case_id:
         flash('Please select a case first.', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     
     case = Case.query.get(selected_case_id)
     if not case:
         flash('Case not found.', 'error')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('system_dashboard'))
     
     files = case.files.order_by(CaseFile.uploaded_at.desc()).all()
     return render_template('admin/files.html', case=case, files=files)

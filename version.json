@@ -1,6 +1,6 @@
 {
-  "version": "7.0.32",
+  "version": "7.0.33",
   "release_date": "2025-09-24",
-  "description": "Fix version updating and ensure fixes work",
+  "description": "Comprehensive fixes for dashboard, file management, search, and auto-versioning",
   "build": "production"
 }

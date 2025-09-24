@@ -46,6 +46,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Create application directories first
 log "Creating application directories..."
 mkdir -p /opt/casescope/app/templates/admin
+mkdir -p /opt/casescope/config
 mkdir -p /opt/casescope/app/static/css
 mkdir -p /opt/casescope/app/static/js
 mkdir -p /opt/casescope/data/uploads
@@ -77,8 +78,8 @@ python-dateutil==2.8.2
 psutil==5.9.8
 celery==5.3.4
 redis==5.0.1
-xmltodict==0.13.0
 elasticsearch-dsl==8.11.0
+xmltodict==0.13.0
 APScheduler==3.10.4
 jinja2==3.1.2
 markupsafe==2.1.3
