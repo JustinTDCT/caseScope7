@@ -115,8 +115,14 @@ function closeAllDropdowns() {
 function initializeFileUpload() {
     const uploadArea = document.querySelector('.upload-area');
     const fileInput = document.querySelector('input[type="file"]');
+    const uploadBtn = document.getElementById('upload-btn');
+    const clearBtn = document.getElementById('clear-btn');
     
     if (uploadArea && fileInput) {
+        // Prevent multiple event listeners
+        uploadArea.removeEventListener('click', handleUploadAreaClick);
+        fileInput.removeEventListener('change', handleFileInputChange);
+        
         // Drag and drop functionality
         uploadArea.addEventListener('dragover', function(e) {
             e.preventDefault();
@@ -138,17 +144,24 @@ function initializeFileUpload() {
             }
         });
 
-        uploadArea.addEventListener('click', function(e) {
-            // Prevent form submission if clicked
-            e.preventDefault();
-            fileInput.click();
-        });
+        // Add named functions to prevent duplicate listeners
+        uploadArea.addEventListener('click', handleUploadAreaClick);
+        fileInput.addEventListener('change', handleFileInputChange);
+    }
+}
 
-        fileInput.addEventListener('change', function(e) {
-            if (e.target.files.length > 0) {
-                handleFileSelection(e.target.files);
-            }
-        });
+function handleUploadAreaClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const fileInput = document.querySelector('input[type="file"]');
+    if (fileInput) {
+        fileInput.click();
+    }
+}
+
+function handleFileInputChange(e) {
+    if (e.target.files.length > 0) {
+        handleFileSelection(e.target.files);
     }
 }
 
@@ -173,29 +186,80 @@ function handleFileSelection(files) {
     // Set the files on the input element
     const fileInput = document.querySelector('input[type="file"]');
     if (fileInput) {
-        // Create a new FileList with the dropped files
-        const dt = new DataTransfer();
-        for (let file of files) {
-            dt.items.add(file);
+        // For drag & drop, create a new FileList
+        if (files !== fileInput.files) {
+            const dt = new DataTransfer();
+            for (let file of files) {
+                dt.items.add(file);
+            }
+            fileInput.files = dt.files;
         }
-        fileInput.files = dt.files;
     }
     
-    // Show upload progress and start upload
-    showUploadProgress(files);
-    startFileUpload(files);
+    // Show selected files and enable upload button
+    showSelectedFiles(files);
+    enableUploadButton();
     debugLog(`Selected ${files.length} files for upload`);
 }
 
-function startFileUpload(files) {
-    const form = document.getElementById('upload-form');
-    if (!form) {
-        showAlert('error', 'Upload form not found.');
-        return;
+function showSelectedFiles(files) {
+    const selectedFilesDiv = document.getElementById('selected-files');
+    const fileListDiv = document.getElementById('file-list');
+    
+    if (selectedFilesDiv && fileListDiv) {
+        fileListDiv.innerHTML = '';
+        
+        Array.from(files).forEach(file => {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'selected-file-item';
+            fileItem.innerHTML = `
+                <i class="fas fa-file-alt"></i>
+                <span class="file-name">${file.name}</span>
+                <span class="file-size">${(file.size / 1024 / 1024).toFixed(2)} MB</span>
+            `;
+            fileListDiv.appendChild(fileItem);
+        });
+        
+        selectedFilesDiv.style.display = 'block';
+    }
+}
+
+function enableUploadButton() {
+    const uploadBtn = document.getElementById('upload-btn');
+    const clearBtn = document.getElementById('clear-btn');
+    
+    if (uploadBtn) {
+        uploadBtn.disabled = false;
+        uploadBtn.classList.add('enabled');
     }
     
-    // Submit the form
-    form.submit();
+    if (clearBtn) {
+        clearBtn.disabled = false;
+    }
+}
+
+function clearFiles() {
+    const fileInput = document.querySelector('input[type="file"]');
+    const selectedFilesDiv = document.getElementById('selected-files');
+    const uploadBtn = document.getElementById('upload-btn');
+    const clearBtn = document.getElementById('clear-btn');
+    
+    if (fileInput) {
+        fileInput.value = '';
+    }
+    
+    if (selectedFilesDiv) {
+        selectedFilesDiv.style.display = 'none';
+    }
+    
+    if (uploadBtn) {
+        uploadBtn.disabled = true;
+        uploadBtn.classList.remove('enabled');
+    }
+    
+    if (clearBtn) {
+        clearBtn.disabled = true;
+    }
 }
 
 function showUploadProgress(files) {

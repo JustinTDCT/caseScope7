@@ -365,6 +365,62 @@ body {
   padding-left: 1.5rem;
 }
 
+/* Upload File Selection */
+.selected-files {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.selected-files h4 {
+  margin: 0 0 1rem 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.selected-file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  background: var(--card-bg);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.selected-file-item:last-child {
+  margin-bottom: 0;
+}
+
+.selected-file-item i {
+  color: var(--primary-color);
+}
+
+.selected-file-item .file-name {
+  flex: 1;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.selected-file-item .file-size {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.upload-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.btn.enabled {
+  opacity: 1;
+  cursor: pointer;
+}
+
 /* Content Area */
 .content {
   flex: 1;
