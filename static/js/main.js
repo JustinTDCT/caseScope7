@@ -1,5 +1,5 @@
 /**
- * caseScope v7.0.22 - Main JavaScript
+ * caseScope v7.0.23 - Main JavaScript
  * Copyright 2025 Justin Dube
  */
 
@@ -111,19 +111,17 @@ function closeAllDropdowns() {
     });
 }
 
-// File Upload - Completely rebuilt for v7.0.22
+// File Upload - v7.0.23 Chrome fix + Upload processing
 let uploadInitialized = false;
+let clickInProgress = false;
 
 function initializeFileUpload() {
-    // Prevent multiple initializations
     if (uploadInitialized) {
-        console.log('Upload already initialized, skipping');
         return;
     }
     
-    console.log('Initializing simple file upload v7.0.22');
+    console.log('Initializing file upload v7.0.23');
     
-    // Simple approach - no cloning, no complex event handling
     const uploadArea = document.querySelector('.upload-area');
     const fileInput = document.querySelector('#file-input');
     
@@ -132,57 +130,69 @@ function initializeFileUpload() {
         return;
     }
     
-    // Mark as initialized
     uploadInitialized = true;
     
-    // Simple click handler with debouncing
-    let clickTimeout = null;
-    uploadArea.onclick = function(e) {
-        console.log('Upload area clicked (simple handler)');
+    // Chrome-safe click handler with proper debouncing
+    uploadArea.addEventListener('click', function(e) {
+        console.log('Upload area clicked, clickInProgress:', clickInProgress);
         
-        // Clear any existing timeout
-        if (clickTimeout) {
-            clearTimeout(clickTimeout);
+        // Prevent double clicks (Chrome issue)
+        if (clickInProgress) {
+            console.log('Click already in progress, ignoring');
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return false;
         }
         
-        // Debounce the click
-        clickTimeout = setTimeout(function() {
-            console.log('Triggering file input');
+        clickInProgress = true;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        
+        // Reset the flag after a delay
+        setTimeout(() => {
+            console.log('Triggering file input click');
             fileInput.click();
-            clickTimeout = null;
-        }, 100);
-    };
+            
+            // Reset after file dialog should be open
+            setTimeout(() => {
+                clickInProgress = false;
+                console.log('Click processing reset');
+            }, 500);
+        }, 50);
+        
+        return false;
+    }, true); // Use capture phase
     
-    // Simple file change handler
-    fileInput.onchange = function(e) {
-        console.log('File input changed (simple handler)');
+    // File selection handler
+    fileInput.addEventListener('change', function(e) {
+        console.log('File input changed, files:', e.target.files.length);
         if (e.target.files && e.target.files.length > 0) {
             handleFileSelection(e.target.files);
         }
-    };
+    });
     
     // Drag and drop
-    uploadArea.ondragover = function(e) {
+    uploadArea.addEventListener('dragover', function(e) {
         e.preventDefault();
         uploadArea.classList.add('dragover');
-    };
+    });
     
-    uploadArea.ondragleave = function(e) {
+    uploadArea.addEventListener('dragleave', function(e) {
         e.preventDefault();
         uploadArea.classList.remove('dragover');
-    };
+    });
     
-    uploadArea.ondrop = function(e) {
+    uploadArea.addEventListener('drop', function(e) {
         e.preventDefault();
         uploadArea.classList.remove('dragover');
-        console.log('Files dropped');
+        console.log('Files dropped:', e.dataTransfer.files.length);
         
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             handleFileSelection(e.dataTransfer.files);
         }
-    };
+    });
     
-    console.log('Simple file upload initialized successfully');
+    console.log('File upload initialized successfully');
 }
 
 function handleFileSelection(files) {
@@ -203,23 +213,31 @@ function handleFileSelection(files) {
         }
     }
     
-    // Set the files on the input element
-    const fileInput = document.querySelector('input[type="file"]');
+    // Set the files on the input element properly
+    const fileInput = document.querySelector('#file-input');
     if (fileInput) {
+        console.log('Setting files on input element');
         // For drag & drop, create a new FileList
         if (files !== fileInput.files) {
-            const dt = new DataTransfer();
-            for (let file of files) {
-                dt.items.add(file);
+            try {
+                const dt = new DataTransfer();
+                for (let file of files) {
+                    dt.items.add(file);
+                }
+                fileInput.files = dt.files;
+                console.log('Files set successfully, input now has:', fileInput.files.length, 'files');
+            } catch (e) {
+                console.error('Error setting files:', e);
             }
-            fileInput.files = dt.files;
         }
+    } else {
+        console.error('File input not found!');
     }
     
     // Show selected files and enable upload button
     showSelectedFiles(files);
     enableUploadButton();
-    debugLog(`Selected ${files.length} files for upload`);
+    console.log(`Selected ${files.length} files for upload`);
 }
 
 function showSelectedFiles(files) {
@@ -247,14 +265,31 @@ function showSelectedFiles(files) {
 function enableUploadButton() {
     const uploadBtn = document.getElementById('upload-btn');
     const clearBtn = document.getElementById('clear-btn');
+    const fileInput = document.querySelector('#file-input');
+    
+    console.log('Enabling upload button');
     
     if (uploadBtn) {
         uploadBtn.disabled = false;
         uploadBtn.classList.add('enabled');
+        uploadBtn.style.opacity = '1';
+        uploadBtn.style.cursor = 'pointer';
+        console.log('Upload button enabled');
+    } else {
+        console.error('Upload button not found!');
     }
     
     if (clearBtn) {
         clearBtn.disabled = false;
+        console.log('Clear button enabled');
+    }
+    
+    // Verify file input has files
+    if (fileInput) {
+        console.log('File input verification - files count:', fileInput.files.length);
+        if (fileInput.files.length === 0) {
+            console.warn('Warning: File input has no files after selection!');
+        }
     }
 }
 
