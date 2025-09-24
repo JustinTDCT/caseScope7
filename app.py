@@ -313,8 +313,11 @@ def get_system_info():
         
         # Check each service
         services['opensearch'] = check_service_port(9200, 'opensearch')
-        services['redis-server'] = check_service_port(6379, 'redis')
+        services['redis-server'] = check_service_port(6379, 'redis')  
         services['nginx'] = check_service_port(80, 'nginx')
+        
+        # Debug logging
+        logger.info(f"Service detection results: {services}")
         
         # Rule counts and last updated
         sigma_count = 0
@@ -364,6 +367,29 @@ def get_system_info():
         }
     except Exception as e:
         logger.error(f"Error getting system info: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Try to get at least basic service status even if other parts fail
+        basic_services = {}
+        try:
+            def check_service_port(port, service_name):
+                try:
+                    result = subprocess.run(['netstat', '-tln'], capture_output=True, text=True, timeout=5)
+                    return f':{port}' in result.stdout
+                except:
+                    try:
+                        result = subprocess.run(['ss', '-tln'], capture_output=True, text=True, timeout=5)
+                        return f':{port}' in result.stdout
+                    except:
+                        return False
+            
+            basic_services['opensearch'] = check_service_port(9200, 'opensearch')
+            basic_services['redis-server'] = check_service_port(6379, 'redis')
+            basic_services['nginx'] = check_service_port(80, 'nginx')
+        except:
+            basic_services = {'opensearch': False, 'redis-server': False, 'nginx': False}
+        
         # Return a default structure to prevent template errors
         return {
             'os': {
@@ -380,11 +406,7 @@ def get_system_info():
                 'used': 0,
                 'percent': 0
             },
-            'services': {
-                'opensearch': False,
-                'redis-server': False,
-                'nginx': False
-            },
+            'services': basic_services,
             'rules': {
                 'sigma_count': 0,
                 'sigma_updated': None,
@@ -861,6 +883,52 @@ def diagnostics():
 def api_system_stats():
     system_info = get_system_info()
     return jsonify(system_info['statistics'])
+
+@app.route('/api/debug/services')
+@login_required
+def api_debug_services():
+    """Debug endpoint to check service detection"""
+    import subprocess
+    
+    debug_info = {}
+    
+    # Test each method
+    for port, service in [(9200, 'opensearch'), (6379, 'redis'), (80, 'nginx')]:
+        debug_info[service] = {}
+        
+        # Method 1: netstat
+        try:
+            result = subprocess.run(['netstat', '-tln'], capture_output=True, text=True, timeout=5)
+            debug_info[service]['netstat'] = f':{port}' in result.stdout
+        except Exception as e:
+            debug_info[service]['netstat'] = f'Error: {e}'
+        
+        # Method 2: ss
+        try:
+            result = subprocess.run(['ss', '-tln'], capture_output=True, text=True, timeout=5)
+            debug_info[service]['ss'] = f':{port}' in result.stdout
+        except Exception as e:
+            debug_info[service]['ss'] = f'Error: {e}'
+        
+        # Method 3: lsof
+        try:
+            result = subprocess.run(['lsof', '-i', f':{port}'], capture_output=True, text=True, timeout=5)
+            debug_info[service]['lsof'] = bool(result.stdout.strip())
+        except Exception as e:
+            debug_info[service]['lsof'] = f'Error: {e}'
+        
+        # Method 4: pgrep
+        try:
+            result = subprocess.run(['pgrep', '-f', service], capture_output=True, text=True, timeout=5)
+            debug_info[service]['pgrep'] = bool(result.stdout.strip())
+        except Exception as e:
+            debug_info[service]['pgrep'] = f'Error: {e}'
+    
+    # Also get the actual system_info result
+    system_info = get_system_info()
+    debug_info['system_info_services'] = system_info.get('services', {})
+    
+    return jsonify(debug_info)
 
 @app.route('/api/case/<int:case_id>/processing-stats')
 @login_required
