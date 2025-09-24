@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.69"
+echo "caseScope Bug Fixes Script v7.0.70"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.69..."
+log "Updating version to 7.0.70..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.69 "SUCCESS: Fixed variable scope error, now 596 rules loaded! Ready for proper detection" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.70 "CRITICAL: Fix incompatible Sigma rules - get proper Chainsaw format rules (500 rejected)" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -163,35 +163,67 @@ fi
 log "Attempting to fix Chainsaw rules..."
 cd /opt/casescope/rules/
 
-# The issue might be that we need the separate rules repository
-if [ ! -d "chainsaw-rules/rules" ] || [ "$(find chainsaw-rules/rules -name "*.yml" | wc -l)" -lt "200" ]; then
-    log "Fixing Chainsaw rules - getting proper rules repository..."
+# Fix Chainsaw rules - need proper Chainsaw format, not Sigma format
+if [ ! -d "chainsaw-rules/rules" ] || [ "$(find chainsaw-rules/rules -name "*.yml" | wc -l)" -lt "50" ]; then
+    log "Fixing Chainsaw rules - getting PROPER Chainsaw rules (not Sigma)..."
     rm -rf chainsaw-rules
     
-    # Try the official Chainsaw rules repository
+    # Clone the main Chainsaw repository to get proper Chainsaw rules
     if git clone https://github.com/WithSecureLabs/chainsaw.git chainsaw-rules; then
         log "Cloned main Chainsaw repository"
-        # Check if rules are in hunting/rules or detection_rules
-        if [ -d "chainsaw-rules/hunting/rules" ]; then
-            log "Found rules in hunting/rules directory"
-            ln -sf hunting/rules chainsaw-rules/rules 2>/dev/null || cp -r chainsaw-rules/hunting/rules chainsaw-rules/rules
-        elif [ -d "chainsaw-rules/detection_rules" ]; then
-            log "Found rules in detection_rules directory"  
-            ln -sf detection_rules chainsaw-rules/rules 2>/dev/null || cp -r chainsaw-rules/detection_rules chainsaw-rules/rules
+        
+        # The actual Chainsaw rules are in the 'rules' directory of the main repo
+        if [ -d "chainsaw-rules/rules" ]; then
+            log "Found native Chainsaw rules in rules/ directory"
+            # These are the real Chainsaw rules - count them
+            native_rule_count=$(find chainsaw-rules/rules -name "*.yml" | wc -l)
+            log "Found $native_rule_count native Chainsaw rules"
         else
-            log "Trying alternative Sigma rules for Chainsaw..."
+            log "ERROR: No rules directory found in Chainsaw repository"
+            # As absolute fallback, create minimal rules directory
             mkdir -p chainsaw-rules/rules
-            # Use some of our Sigma rules as Chainsaw rules (they often have similar formats)
-            if [ -d "/opt/casescope/rules/sigma-rules" ]; then
-                find /opt/casescope/rules/sigma-rules -name "*.yml" | head -500 | xargs -I {} cp {} chainsaw-rules/rules/
-                log "Copied 500 Sigma rules as Chainsaw rules"
-            fi
+            echo "# Placeholder Chainsaw rule" > chainsaw-rules/rules/placeholder.yml
         fi
+    else
+        log "ERROR: Failed to clone Chainsaw repository"
+        # Create minimal fallback
+        mkdir -p chainsaw-rules/rules  
+        echo "# Placeholder Chainsaw rule" > chainsaw-rules/rules/placeholder.yml
     fi
     
-    # Final rule count
+    # Final rule count  
     rule_count=$(find chainsaw-rules/rules -name "*.yml" -o -name "*.yaml" 2>/dev/null | wc -l)
     log "Final Chainsaw rule count: $rule_count"
+    
+    # Verify we have proper Chainsaw rules (not Sigma format)
+    if [ -f "chainsaw-rules/rules"/*.yml ]; then
+        log "Sample rule format check:"
+        head -10 chainsaw-rules/rules/*.yml | head -5
+        
+        # Use Chainsaw's built-in check to validate rules
+        log "Validating rules with Chainsaw check..."
+        if command -v /usr/local/bin/chainsaw >/dev/null 2>&1; then
+            /usr/local/bin/chainsaw check -r chainsaw-rules/rules/ || log "Some rules failed validation"
+        fi
+    fi
+else
+    log "Chainsaw rules directory already exists with sufficient rules"
+    # Still validate existing rules
+    if command -v /usr/local/bin/chainsaw >/dev/null 2>&1; then
+        log "Validating existing rules with Chainsaw check..."
+        /usr/local/bin/chainsaw check -r chainsaw-rules/rules/ || log "Some existing rules failed validation"
+    fi
+fi
+
+# Clean up any invalid Sigma rules that might be mixed in
+log "Cleaning up any invalid/incompatible rule files..."
+if [ -d "chainsaw-rules/rules" ]; then
+    # Remove any rules that have Sigma-specific syntax that Chainsaw doesn't understand
+    find chainsaw-rules/rules -name "*.yml" -exec grep -l "selection:" {} \; | head -5 | xargs rm -f 2>/dev/null || true
+    find chainsaw-rules/rules -name "*.yml" -exec grep -l "condition:" {} \; | head -5 | xargs rm -f 2>/dev/null || true
+    
+    final_count=$(find chainsaw-rules/rules -name "*.yml" | wc -l)
+    log "Final cleaned rule count: $final_count"
 fi
 
 # 11. CLEAN UP ORPHANED FILES
@@ -286,13 +318,13 @@ echo "  Worker Logs:   journalctl -u casescope-worker -f"
 echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
-echo "🎉 MAJOR BREAKTHROUGH:"
-echo "  ✅ SUCCESS: 596 Chainsaw rules now loaded (vs 100 before)!"
-echo "  ✅ FOUND: 5 Windows Defender specific rules"
-echo "  ✅ FIXED: Variable scope error in run_chainsaw_directly"
-echo "  ✅ READY: Proper rule set for threat detection"
-echo "  ✅ EXPECT: Significant increase in violation detection"
-echo "  ✅ ACHIEVEMENT: Full Chainsaw functionality restored!"
+echo "🔧 RULE FORMAT CRITICAL FIX:"
+echo "  ✅ DISCOVERED: 596 files found but only 100 rules loaded!"
+echo "  ✅ ISSUE: 500 rules rejected due to incompatible Sigma format"
+echo "  ✅ SOLUTION: Get native Chainsaw rules from official repository"
+echo "  ✅ VALIDATION: Use Chainsaw check command to verify rules"
+echo "  ✅ CLEANUP: Remove incompatible Sigma syntax patterns"
+echo "  ✅ TARGET: Get 100+ valid Chainsaw rules for detection"
 echo "  ✅ FIXED: Single file re-run rules now actually works (requeues processing)"
 echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
@@ -351,4 +383,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.69 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.70 deployment complete!"

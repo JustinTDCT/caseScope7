@@ -1,6 +1,6 @@
 {
-  "version": "7.0.69",
+  "version": "7.0.70",
   "release_date": "2025-09-24",
-  "description": "SUCCESS: Fixed variable scope error, now 596 rules loaded! Ready for proper detection",
+  "description": "CRITICAL: Fix incompatible Sigma rules - get proper Chainsaw format rules (500 rejected)",
   "build": "production"
 }
