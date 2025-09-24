@@ -267,13 +267,24 @@ def get_system_info():
         
         # Service status
         services = {}
-        for service in ['opensearch', 'redis-server', 'nginx']:
-            try:
-                result = subprocess.run(['systemctl', 'is-active', service], 
-                                      capture_output=True, text=True)
-                services[service] = result.stdout.strip() == 'active'
-            except:
-                services[service] = False
+        # Check actual service names that might be running
+        service_map = {
+            'opensearch': ['opensearch', 'opensearch.service'],
+            'redis-server': ['redis-server', 'redis.service', 'redis'],
+            'nginx': ['nginx', 'nginx.service']
+        }
+        
+        for service_key, service_names in service_map.items():
+            services[service_key] = False
+            for service_name in service_names:
+                try:
+                    result = subprocess.run(['systemctl', 'is-active', service_name], 
+                                          capture_output=True, text=True)
+                    if result.stdout.strip() == 'active':
+                        services[service_key] = True
+                        break
+                except:
+                    continue
         
         # Rule counts and last updated
         sigma_count = 0

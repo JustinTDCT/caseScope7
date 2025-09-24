@@ -16,7 +16,7 @@
             <div class="header-left">
                 <div class="logo">
                     <span class="logo-case">case</span><span class="logo-scope">Scope</span>
-                    <div class="version">v7.0.0</div>
+                    <span class="version">v7.0.0</span>
                 </div>
             </div>
             <div class="header-right">
@@ -98,10 +98,12 @@
 
                 <div class="nav-section">
                     <div class="nav-title">System</div>
-                    <a href="{{ url_for('update_rules') }}" class="nav-item">
-                        <i class="fas fa-download"></i>
-                        Update Rules
-                    </a>
+                    <form method="POST" action="{{ url_for('update_rules') }}" style="display: inline;">
+                        <button type="submit" class="nav-item nav-button">
+                            <i class="fas fa-download"></i>
+                            Update Rules
+                        </button>
+                    </form>
                     {% if current_user.can_admin() %}
                     <a href="{{ url_for('admin_cases') }}" class="nav-item">
                         <i class="fas fa-cog"></i>
