@@ -127,10 +127,12 @@
                         </div>
 
                         <div class="file-status">
-                            <span class="badge badge-{{ 'success' if file.processing_status == 'completed' else 'primary' if file.processing_status == 'processing' else 'danger' if file.processing_status == 'error' else 'secondary' }}">
-                                {{ file.processing_status.title() }}
+                            {% set status_class = 'success' if file.processing_status == 'completed' else 'warning' if file.processing_status == 'analyzing' else 'info' if file.processing_status == 'ingesting' else 'danger' if file.processing_status == 'error' else 'secondary' %}
+                            {% set status_text = 'Complete' if file.processing_status == 'completed' else 'Running Chainsaw' if file.processing_status == 'analyzing' else 'Ingesting Events' if file.processing_status == 'ingesting' else 'Error' if file.processing_status == 'error' else 'Queued' %}
+                            <span class="badge badge-{{ status_class }}">
+                                {{ status_text }}
                             </span>
-                            {% if file.processing_status == 'processing' %}
+                            {% if file.processing_status in ['ingesting', 'analyzing'] %}
                             <div class="progress mt-2">
                                 <div class="progress-bar" style="width: {{ file.processing_progress }}%" id="progress-{{ file.id }}"></div>
                             </div>

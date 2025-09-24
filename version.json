@@ -1,6 +1,6 @@
 {
-  "version": "7.0.77",
+  "version": "7.0.80",
   "release_date": "2025-09-24",
-  "description": "UI: Reduce tile sizes 15%, combine rule violations, add total events ingested tile",
+  "description": "FIX: Suppress OpenSearch connection error logs + cleaner worker output",
   "build": "production"
 }
