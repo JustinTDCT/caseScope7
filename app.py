@@ -854,18 +854,28 @@ def run_chainsaw_directly(case_file):
     """Run Chainsaw directly on EVTX file - much faster than event-by-event processing"""
     try:
         violations = 0
-        chainsaw_path = Path('/opt/casescope/rules/chainsaw/chainsaw')
-        chainsaw_rules_path = Path('/opt/casescope/rules/chainsaw/rules')
+        chainsaw_path = Path('/opt/casescope/rules/chainsaw')
+        chainsaw_rules_path = Path('/opt/casescope/rules/chainsaw-rules/rules')
         
         if not chainsaw_path.exists():
-            logger.warning("Chainsaw binary not found")
+            logger.warning(f"Chainsaw binary not found at {chainsaw_path}")
+            # Check what's actually in the rules directory
+            rules_dir = Path('/opt/casescope/rules')
+            if rules_dir.exists():
+                logger.info(f"Contents of /opt/casescope/rules: {list(rules_dir.iterdir())}")
             return 0
         
         if not chainsaw_rules_path.exists():
-            logger.warning("Chainsaw rules directory not found")
+            logger.warning(f"Chainsaw rules directory not found at {chainsaw_rules_path}")
+            # Check what's actually in the chainsaw-rules directory
+            chainsaw_base = Path('/opt/casescope/rules/chainsaw-rules')
+            if chainsaw_base.exists():
+                logger.info(f"Contents of chainsaw-rules: {list(chainsaw_base.iterdir())}")
             return 0
             
         logger.info(f"Running Chainsaw directly on EVTX file (fast method)")
+        logger.info(f"Chainsaw binary: {chainsaw_path}")
+        logger.info(f"Chainsaw rules: {chainsaw_rules_path}")
         
         # Get the original EVTX file path
         evtx_file_path = case_file.file_path
@@ -978,8 +988,8 @@ def apply_chainsaw_rules(events, case_file):
     """Apply actual Chainsaw rules by running Chainsaw binary"""
     try:
         violations = 0
-        chainsaw_path = Path('/opt/casescope/rules/chainsaw/chainsaw')
-        chainsaw_rules_path = Path('/opt/casescope/rules/chainsaw/rules')
+        chainsaw_path = Path('/opt/casescope/rules/chainsaw')
+        chainsaw_rules_path = Path('/opt/casescope/rules/chainsaw-rules/rules')
         
         if not chainsaw_path.exists():
             logger.warning("Chainsaw binary not found")

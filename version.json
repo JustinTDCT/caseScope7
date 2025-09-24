@@ -1,6 +1,6 @@
 {
-  "version": "7.0.56",
+  "version": "7.0.57",
   "release_date": "2025-09-24",
-  "description": "PERFORMANCE: Skip slow event indexing, run Chainsaw directly - 20s vs 5+ minutes",
+  "description": "FIX: Correct Chainsaw paths and add debugging to find rules directory",
   "build": "production"
 }

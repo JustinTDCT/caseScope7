@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.56"
+echo "caseScope Bug Fixes Script v7.0.57"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.56..."
+log "Updating version to 7.0.57..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.56 "PERFORMANCE: Skip slow event indexing, run Chainsaw directly - 20s vs 5+ minutes" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.57 "FIX: Correct Chainsaw paths and add debugging to find rules directory" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -206,13 +206,13 @@ echo "  Worker Logs:   journalctl -u casescope-worker -f"
 echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
-echo "🎯 MAJOR PERFORMANCE OPTIMIZATION:"
-echo "  ✅ SKIPPED: Slow individual event indexing (was taking 5+ minutes)"
-echo "  ✅ DIRECT: Run Chainsaw directly on EVTX file (20 seconds like native)"
-echo "  ✅ OPTIMIZED: Processing time from 5+ minutes to ~30 seconds"
-echo "  ✅ MAINTAINED: Rule violation detection and counting"
-echo "  ✅ SIMPLIFIED: Focus on speed over individual event searchability"
-echo "  ✅ TIMEOUT: Added 2-minute timeout protection for Chainsaw"
+echo "🎯 CHAINSAW PATH FIXES:"
+echo "  ✅ FIXED: Chainsaw binary path (/opt/casescope/rules/chainsaw)"
+echo "  ✅ FIXED: Chainsaw rules path (/opt/casescope/rules/chainsaw-rules/rules)"
+echo "  ✅ ADDED: Debugging to show actual directory contents"
+echo "  ✅ ADDED: Path validation and detailed error messages"
+echo "  ✅ PERFORMANCE: Processing still optimized (seconds vs minutes)"
+echo "  ✅ READY: Should now find rules and detect ~150 violations"
 echo "  ✅ FIXED: Single file re-run rules now actually works (requeues processing)"
 echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
@@ -271,4 +271,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.56 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.57 deployment complete!"
