@@ -157,7 +157,7 @@ apt install -y python3 python3-pip python3-venv python3-dev \
                sqlite3 libsqlite3-dev \
                libffi-dev libssl-dev \
                htop iotop \
-               net-tools 2>&1 | tee -a /opt/casescope/logs/install.log
+               net-tools iproute2 2>&1 | tee -a /opt/casescope/logs/install.log
 
 if [ $? -ne 0 ]; then
     log_error "Failed to install system dependencies"

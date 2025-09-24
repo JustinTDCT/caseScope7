@@ -1,6 +1,6 @@
 {
-  "version": "7.0.88",
+  "version": "7.0.89",
   "release_date": "2025-09-24",
-  "description": "FIX: Database permissions for readonly database error + enhanced deploy script",
+  "description": "FIX: Enhanced OpenSearch data sanitization + system utilities + database permissions",
   "build": "production"
 }

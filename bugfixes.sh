@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# caseScope Bug Fixes Script v7.0.88
+# caseScope Bug Fixes Script v7.0.89
 # Run this script on production server after 'git pull'
 # This script contains ALL steps needed to apply current bug fixes
 
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.88"
+echo "caseScope Bug Fixes Script v7.0.89"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.86..."
+log "Updating version to 7.0.89..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.86 "EMERGENCY: Complete search disable - redirect all search access to prevent JSON errors" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.89 "FIX: Enhanced OpenSearch data sanitization + system utilities + database permissions" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -452,6 +452,149 @@ if [ -d /opt/casescope/data ]; then
     log "Data directory permissions verified"
 fi
 
+# 13.5. ENHANCED OPENSEARCH DATA SANITIZATION FIX
+log "Applying enhanced OpenSearch data sanitization fix..."
+if [ -f /opt/casescope/app/app.py ]; then
+    # Create backup
+    cp /opt/casescope/app/app.py /opt/casescope/app/app.py.backup.$(date +%s)
+    
+    # Apply improved sanitization using Python
+    cd /opt/casescope/app
+    python3 << 'PYTHON_SANITIZE_FIX'
+import re
+
+# Read the current app.py
+with open('app.py', 'r') as f:
+    content = f.read()
+
+# Enhanced sanitization function
+new_sanitize_function = '''def sanitize_for_opensearch(data, max_depth=10):
+    """
+    Enhanced sanitize XML parsed data for OpenSearch indexing.
+    Fixes field mapping conflicts by flattening nested structures more aggressively.
+    """
+    if max_depth <= 0:
+        return str(data)[:500]  # Prevent infinite recursion, shorter limit
+    
+    if isinstance(data, dict):
+        # Handle XML text nodes: {'#text': 'value', '@attr': 'attr_val'} -> 'value'
+        if '#text' in data:
+            text_value = str(data['#text'])[:500]
+            # Also include attributes if they exist
+            if len(data) > 1:
+                attrs = {k.replace('@', 'attr_'): str(v)[:200] 
+                        for k, v in data.items() if k.startswith('@')}
+                if attrs:
+                    return {'text': text_value, **attrs}
+            return text_value
+        
+        # Aggressively flatten single-key dicts to prevent mapping conflicts
+        while len(data) == 1 and isinstance(data, dict):
+            key, value = next(iter(data.items()))
+            if isinstance(value, dict):
+                data = value  # Unwrap one level
+            else:
+                return sanitize_for_opensearch(value, max_depth - 1)
+        
+        # For normal dicts, recursively sanitize each value with strict field naming
+        sanitized = {}
+        processed_keys = set()
+        
+        for key, value in data.items():
+            # Skip XML namespace attributes and complex XML artifacts
+            if key.startswith('@') or key.startswith('#'):
+                continue
+                
+            # Create OpenSearch-safe field names
+            clean_key = re.sub(r'[^\\w]', '_', str(key).lower())
+            clean_key = re.sub(r'_+', '_', clean_key).strip('_')
+            
+            # Prevent duplicate keys
+            if clean_key in processed_keys:
+                clean_key = f"{clean_key}_{len(processed_keys)}"
+            
+            if clean_key and len(clean_key) <= 50:  # OpenSearch field name limit
+                processed_keys.add(clean_key)
+                sanitized_value = sanitize_for_opensearch(value, max_depth - 1)
+                
+                # Only add non-empty, non-None values
+                if sanitized_value is not None and sanitized_value != '':
+                    # Ensure values are OpenSearch compatible
+                    if isinstance(sanitized_value, dict) and len(sanitized_value) == 0:
+                        continue  # Skip empty dicts
+                    sanitized[clean_key] = sanitized_value
+        
+        # Return flattened dict or string representation if too complex
+        if len(sanitized) > 50:  # Limit fields to prevent mapping explosion
+            return str(data)[:500]
+        return sanitized if sanitized else str(data)[:500]
+        
+    elif isinstance(data, list):
+        # For lists, limit size and sanitize each item
+        if len(data) > 20:  # Strict limit for performance
+            return str(data)[:500]
+            
+        sanitized_list = []
+        for item in data[:20]:
+            sanitized_item = sanitize_for_opensearch(item, max_depth - 1)
+            if sanitized_item is not None and sanitized_item != '':
+                sanitized_list.append(sanitized_item)
+        
+        # Convert single-item lists to the item itself
+        if len(sanitized_list) == 1:
+            return sanitized_list[0]
+        elif len(sanitized_list) == 0:
+            return None
+        return sanitized_list
+        
+    elif isinstance(data, (str, int, float, bool)):
+        # Simple types - ensure strings are reasonable length
+        if isinstance(data, str):
+            cleaned = re.sub(r'[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f-\\xff]', '', data)
+            return cleaned[:500] if cleaned else None
+        return data
+        
+    else:
+        # For any other type, convert to string and limit length
+        return str(data)[:500]'''
+
+# Find the existing function and replace it
+import re
+pattern = r'def sanitize_for_opensearch\(.*?\n(?:(?:[ ]{4,}.*\n|[ ]*\n)*?)(?=def |\Z)'
+match = re.search(pattern, content, re.DOTALL)
+
+if match:
+    content = content.replace(match.group(0), new_sanitize_function + '\n\n')
+    
+    with open('app.py', 'w') as f:
+        f.write(content)
+    print("Enhanced OpenSearch sanitization applied successfully")
+else:
+    print("Could not find sanitize_for_opensearch function to replace")
+PYTHON_SANITIZE_FIX
+
+    log "Enhanced OpenSearch data sanitization applied"
+    
+    # Reset file processing for reprocessing with new sanitization
+    python3 -c "
+import sys
+sys.path.insert(0, '/opt/casescope/app')
+from app import db, CaseFile
+with db.session() as session:
+    files = session.query(CaseFile).filter(CaseFile.processing_status.in_(['completed', 'error'])).all()
+    for f in files:
+        f.processing_status = 'pending'
+        f.processing_progress = 0
+        f.sigma_violations = 0
+        f.chainsaw_violations = 0
+        f.error_message = None
+    session.commit()
+    print(f'Reset {len(files)} files for reprocessing with enhanced sanitization')
+" 2>/dev/null || log "Could not reset file processing status"
+    
+    log "Files reset for reprocessing with enhanced sanitization"
+fi
+
 # 14. CLEAN UP ORPHANED FILES
 log "Cleaning up orphaned upload files..."
 find /opt/casescope/data/uploads -type f -name "*.evtx" -mtime +1 -delete 2>/dev/null || true
@@ -609,4 +752,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.88 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.89 deployment complete!"
