@@ -21,7 +21,7 @@
                 <i class="fas fa-server"></i>
             </div>
             <div class="stat-content">
-                <div class="stat-value">{{ system_info.os.name }} {{ system_info.os.version }}</div>
+                <div class="stat-value">{{ system_info['os']['name'] }} {{ system_info['os']['version'] }}</div>
                 <div class="stat-label">Operating System</div>
             </div>
         </div>
@@ -31,10 +31,10 @@
                 <i class="fas fa-memory"></i>
             </div>
             <div class="stat-content">
-                <div class="stat-value">{{ "%.1f"|format(system_info.memory.percent) }}%</div>
+                <div class="stat-value">{{ "%.1f"|format(system_info['memory']['percent']) }}%</div>
                 <div class="stat-label">Memory Usage</div>
                 <div class="progress mt-2">
-                    <div class="progress-bar" style="width: {{ system_info.memory.percent }}%"></div>
+                    <div class="progress-bar" style="width: {{ system_info['memory']['percent'] }}%"></div>
                 </div>
             </div>
         </div>
@@ -44,10 +44,10 @@
                 <i class="fas fa-hdd"></i>
             </div>
             <div class="stat-content">
-                <div class="stat-value">{{ "%.1f"|format(system_info.disk.percent) }}%</div>
+                <div class="stat-value">{{ "%.1f"|format(system_info['disk']['percent']) }}%</div>
                 <div class="stat-label">Disk Usage</div>
                 <div class="progress mt-2">
-                    <div class="progress-bar" style="width: {{ system_info.disk.percent }}%"></div>
+                    <div class="progress-bar" style="width: {{ system_info['disk']['percent'] }}%"></div>
                 </div>
             </div>
         </div>
@@ -74,7 +74,7 @@
             </div>
             <div class="card-content">
                 <div class="service-list">
-                    {% for service, status in system_info.services.items() %}
+                    {% for service, status in system_info['services'].items() %}
                     <div class="service-item">
                         <div class="service-info">
                             <i class="fas fa-circle service-status {% if status %}online{% else %}offline{% endif %}"></i>
@@ -102,13 +102,13 @@
                         <div class="rule-info">
                             <i class="fas fa-file-code"></i>
                             <div class="rule-details">
-                                <div class="rule-count">{{ system_info.rules.sigma_count|default(0) }}</div>
+                                <div class="rule-count">{{ system_info['rules']['sigma_count']|default(0) }}</div>
                                 <div class="rule-label">Sigma Rules</div>
                             </div>
                         </div>
-                        {% if system_info.rules.sigma_updated %}
+                        {% if system_info['rules']['sigma_updated'] %}
                         <div class="rule-updated">
-                            Last updated: {{ system_info.rules.sigma_updated.strftime('%Y-%m-%d %H:%M') }}
+                            Last updated: {{ system_info['rules']['sigma_updated'].strftime('%Y-%m-%d %H:%M') }}
                         </div>
                         {% else %}
                         <div class="rule-updated text-warning">
@@ -121,13 +121,13 @@
                         <div class="rule-info">
                             <i class="fas fa-link"></i>
                             <div class="rule-details">
-                                <div class="rule-count">{{ system_info.rules.chainsaw_count|default(0) }}</div>
+                                <div class="rule-count">{{ system_info['rules']['chainsaw_count']|default(0) }}</div>
                                 <div class="rule-label">Chainsaw Rules</div>
                             </div>
                         </div>
-                        {% if system_info.rules.chainsaw_updated %}
+                        {% if system_info['rules']['chainsaw_updated'] %}
                         <div class="rule-updated">
-                            Last updated: {{ system_info.rules.chainsaw_updated.strftime('%Y-%m-%d %H:%M') }}
+                            Last updated: {{ system_info['rules']['chainsaw_updated'].strftime('%Y-%m-%d %H:%M') }}
                         </div>
                         {% else %}
                         <div class="rule-updated text-warning">
@@ -147,7 +147,7 @@
                 <i class="fas fa-folder"></i>
             </div>
             <div class="stat-content">
-                <div class="stat-value" id="case-count">{{ system_info.statistics.case_count|default(0) }}</div>
+                <div class="stat-value" id="case-count">{{ system_info['statistics']['case_count']|default(0) }}</div>
                 <div class="stat-label">Total Cases</div>
             </div>
         </div>
@@ -157,7 +157,7 @@
                 <i class="fas fa-file-alt"></i>
             </div>
             <div class="stat-content">
-                <div class="stat-value" id="file-count">{{ system_info.statistics.file_count|default(0) }}</div>
+                <div class="stat-value" id="file-count">{{ system_info['statistics']['file_count']|default(0) }}</div>
                 <div class="stat-label">Files Uploaded</div>
             </div>
         </div>
@@ -168,8 +168,8 @@
             </div>
             <div class="stat-content">
                 <div class="stat-value" id="total-size">
-                    {% if system_info.statistics.total_size %}
-                        {{ (system_info.statistics.total_size / 1024 / 1024 / 1024)|round(2) }} GB
+                    {% if system_info['statistics']['total_size'] %}
+                        {{ (system_info['statistics']['total_size'] / 1024 / 1024 / 1024)|round(2) }} GB
                     {% else %}
                         0 GB
                     {% endif %}

@@ -19,7 +19,7 @@ from pathlib import Path
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_sqlalchemy import SQLAlchemy
-from flask_wtf import FlaskForm
+from flask_wtf import FlaskForm, CSRFError
 from flask_wtf.file import FileField, FileAllowed, FileRequired
 from wtforms import StringField, PasswordField, SelectField, TextAreaField, BooleanField
 from wtforms.validators import DataRequired, Length, Email
@@ -37,12 +37,20 @@ import xmltodict
 
 # Application setup
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.urandom(24)
+
+# Use a fixed secret key for production (in production, this should be from environment variable)
+SECRET_KEY = os.environ.get('SECRET_KEY', 'casescope-v7-production-key-change-in-production')
+app.config['SECRET_KEY'] = SECRET_KEY
+
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////opt/casescope/data/casescope.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
 app.config['UPLOAD_FOLDER'] = '/opt/casescope/data/uploads'
+
+# CSRF configuration
+app.config['WTF_CSRF_ENABLED'] = True
 app.config['WTF_CSRF_TIME_LIMIT'] = None
+app.config['WTF_CSRF_SSL_STRICT'] = False
 
 # Celery configuration
 app.config['CELERY_BROKER_URL'] = 'redis://localhost:6379/0'
@@ -178,6 +186,13 @@ class FileUploadForm(FlaskForm):
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+# CSRF Error Handler
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    logger.error(f"CSRF error: {e.description}")
+    flash('CSRF token validation failed. Please try again.', 'error')
+    return redirect(url_for('login'))
 
 def log_audit(action, details=None, user=None):
     """Log audit events"""
@@ -386,6 +401,12 @@ def login():
         return redirect(url_for('dashboard'))
     
     form = LoginForm()
+    
+    # Debug: Log form submission attempts
+    if request.method == 'POST':
+        logger.info(f"Login attempt for username: {form.username.data if form.username.data else 'None'}")
+        logger.info(f"Form validation errors: {form.errors}")
+        
     if form.validate_on_submit():
         user = User.query.filter_by(username=form.username.data).first()
         
@@ -397,6 +418,7 @@ def login():
             log_audit('user_login', f'User {user.username} logged in')
             
             # Log to login file
+            os.makedirs('/opt/casescope/logs', exist_ok=True)
             with open('/opt/casescope/logs/logins.log', 'a') as f:
                 f.write(f"{datetime.utcnow().isoformat()} - {user.username} - LOGIN - {request.remote_addr} - {request.headers.get('User-Agent')}\n")
             
