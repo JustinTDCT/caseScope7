@@ -741,28 +741,55 @@ function startUpload() {
     // Show initial progress
     showUploadProgress(selectedFiles);
     
-    // Submit form
+    // Submit form with JSON response expected
     fetch(window.location.href, {
         method: 'POST',
-        body: formData
+        body: formData,
+        headers: {
+            'Accept': 'application/json'
+        }
     })
     .then(response => {
         if (response.ok) {
-            return response.text();
+            return response.json();
         }
         throw new Error('Upload failed');
     })
-    .then(html => {
-        // Parse response to check for success
-        if (html.includes('Successfully uploaded')) {
-            showAlert('success', `Successfully uploaded ${selectedFiles.length} file(s). Processing started.`);
+    .then(data => {
+        console.log('Upload response:', data);
+        
+        // Handle successful uploads
+        if (data.uploaded_count > 0) {
+            showAlert('success', `✅ Successfully uploaded ${data.uploaded_count} file(s). Processing started.`);
+        }
+        
+        // Handle duplicate files - remove from selectedFiles and show warnings
+        if (data.duplicate_files && data.duplicate_files.length > 0) {
+            data.duplicate_files.forEach(filename => {
+                showAlert('warning', `⚠️ Duplicate: "${filename}" already exists in this case. Skipped.`);
+                
+                // Remove duplicate file from selectedFiles array
+                const index = selectedFiles.findIndex(file => file.name === filename);
+                if (index > -1) {
+                    selectedFiles.splice(index, 1);
+                }
+            });
             
-            // Clear form and redirect after delay
+            // Update the file list display
+            updateFileList();
+            setFilesOnFormInput();
+        }
+        
+        // If we had any successful uploads, redirect after showing messages
+        if (data.uploaded_count > 0) {
             setTimeout(() => {
                 window.location.href = "{{ url_for('list_files') }}";
-            }, 2000);
-        } else {
-            throw new Error('Upload failed');
+            }, 3000);
+        } else if (data.duplicate_files && data.duplicate_files.length > 0) {
+            // If only duplicates, stay on page and reset upload state
+            isUploading = false;
+            updateUploadButton();
+            progressContainer.style.display = 'none';
         }
     })
     .catch(error => {

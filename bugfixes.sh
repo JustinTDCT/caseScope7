@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.50"
+echo "caseScope Bug Fixes Script v7.0.51"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.50..."
+log "Updating version to 7.0.51..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.50 "FIX: Sigma false positives (stricter rules), duplicate warning now shows to users" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.51 "FIX: Single file rerun, duplicate handling with queue removal, Sigma threshold" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -207,10 +207,11 @@ echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
 echo "🎯 CRITICAL FIXES APPLIED:"
-echo "  ✅ FIXED: Sigma false positives - stricter rules requiring multiple criteria matches"
-echo "  ✅ FIXED: Duplicate file warnings now properly display to users"
-echo "  ✅ IMPROVED: Sigma rule matching is more precise (threshold-based)"
-echo "  ✅ ADDED: Better debugging for Sigma rule triggers"
+echo "  ✅ FIXED: Single file re-run rules now actually works (requeues processing)"
+echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"  
+echo "  ✅ FIXED: Sigma threshold adjusted (was too strict, now finds violations)"
+echo "  ✅ IMPROVED: Upload handling with JSON responses for better UI feedback"
+echo "  ✅ ADDED: Fallback Sigma rules for Windows events"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
 echo "  ✅ IMPLEMENTED: Basic Sigma rule engine with proper rule structure"
 echo "  ✅ Fixed dialog text to say 'all files' instead of 'completed files'"
@@ -267,4 +268,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.50 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.51 deployment complete!"

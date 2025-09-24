@@ -567,6 +567,12 @@ def load_sigma_rules(sigma_path):
             "Windows Defender Malware Detection": {
                 "provider": ["windows defender", "microsoft antimalware"],
                 "keywords": ["threat detected", "malware detected", "virus detected", "threat blocked", "trojan", "backdoor"]
+            },
+            "Windows Security Events": {
+                "keywords": ["logon", "authentication", "privilege", "elevation", "administrator", "system", "service"]
+            },
+            "Suspicious Activity": {
+                "keywords": ["suspicious", "blocked", "denied", "failed", "error", "warning", "alert"]
             }
         }
         
@@ -633,9 +639,13 @@ def check_sigma_rule_match(event_data, rule_patterns):
                         matches += 1
                         break  # Only count one match per category
         
-        # Require at least 50% of categories to match, or at least 2 matches
-        threshold = max(1, min(2, total_categories // 2))
-        return matches >= threshold
+        # More reasonable thresholds:
+        # - Single category rules: require 1 match
+        # - Multi-category rules: require at least 1 match but log details
+        if total_categories == 1:
+            return matches >= 1
+        else:
+            return matches >= 1  # Still require at least one category to match
         
     except Exception as e:
         logger.error(f"Error checking Sigma rule match: {e}")
@@ -1138,7 +1148,16 @@ def upload_files():
                 
                 log_audit('file_uploaded', f'Uploaded file: {original_filename} to case: {case.name}')
         
-        # Show upload results
+        # Handle AJAX requests differently (check for JSON Accept header)
+        if request.headers.get('Accept', '').startswith('application/json'):
+            return jsonify({
+                'success': len(uploaded_files) > 0,
+                'uploaded_count': len(uploaded_files),
+                'duplicate_files': duplicate_files,
+                'message': f'Successfully uploaded {len(uploaded_files)} file(s). Processing started.' if uploaded_files else 'No files uploaded.'
+            })
+        
+        # Show upload results for regular form submission
         if uploaded_files:
             flash(f'✅ Successfully uploaded {len(uploaded_files)} file(s). Processing started.', 'success')
         
@@ -1672,16 +1691,17 @@ def api_rerun_rules_file(file_id):
     try:
         case_file = CaseFile.query.get_or_404(file_id)
         
-        # Reset violation counts
+        # Reset violation counts and re-queue for processing
         case_file.sigma_violations = 0
         case_file.chainsaw_violations = 0
+        case_file.error_message = None
         db.session.commit()
         
-        # Queue for rules re-run (simplified - would need proper implementation)
-        # In a full implementation, this would re-run only the rule analysis
+        # Re-queue the file for rule processing
+        process_evtx_file.delay(case_file.id)
         
         log_audit('rules_rerun', f'Re-running rules for file: {case_file.original_filename}')
-        return jsonify({'success': True})
+        return jsonify({'success': True, 'message': f'Re-running rules for {case_file.original_filename}'})
         
     except Exception as e:
         logger.error(f"Error re-running rules for file {file_id}: {e}")
