@@ -1,5 +1,5 @@
 /**
- * caseScope v7.0.24 - Main JavaScript
+ * caseScope v7.0.25 - Main JavaScript
  * Copyright 2025 Justin Dube
  */
 
@@ -111,57 +111,86 @@ function closeAllDropdowns() {
     });
 }
 
-// File Upload - v7.0.23 Chrome fix + Upload processing
+// File Upload - v7.0.25 Element detection + Processing fix
 let uploadInitialized = false;
 let clickInProgress = false;
 
 function initializeFileUpload() {
+    console.log('Attempting to initialize file upload v7.0.25');
+    
+    // Only try to initialize if we're on the upload page
+    if (!document.location.pathname.includes('upload')) {
+        console.log('Not on upload page, skipping upload initialization');
+        return;
+    }
+    
     if (uploadInitialized) {
+        console.log('Upload already initialized');
         return;
     }
     
-    console.log('Initializing file upload v7.0.23');
+    // Wait for elements to be available
+    const waitForElements = () => {
+        const uploadArea = document.querySelector('.upload-area');
+        const fileInput = document.querySelector('#file-input');
+        
+        if (!uploadArea || !fileInput) {
+            console.log('Upload elements not ready yet, waiting...');
+            setTimeout(waitForElements, 100);
+            return;
+        }
+        
+        console.log('Upload elements found, initializing...');
+        initializeUploadHandlers(uploadArea, fileInput);
+    };
     
-    const uploadArea = document.querySelector('.upload-area');
-    const fileInput = document.querySelector('#file-input');
-    
-    if (!uploadArea || !fileInput) {
-        console.log('Upload elements not found');
-        return;
-    }
-    
+    waitForElements();
+}
+
+function initializeUploadHandlers(uploadArea, fileInput) {
     uploadInitialized = true;
     
-    // Chrome-safe click handler with proper debouncing
-    uploadArea.addEventListener('click', function(e) {
-        console.log('Upload area clicked, clickInProgress:', clickInProgress);
+    // Ultra-aggressive Chrome double-click prevention
+    let lastClickTime = 0;
+    const CLICK_THRESHOLD = 1000; // 1 second between clicks
+    
+    const handleClick = (e) => {
+        const currentTime = Date.now();
+        console.log('Upload area clicked at:', currentTime, 'lastClick:', lastClickTime);
         
-        // Prevent double clicks (Chrome issue)
-        if (clickInProgress) {
-            console.log('Click already in progress, ignoring');
-            e.preventDefault();
-            e.stopImmediatePropagation();
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        e.stopPropagation();
+        
+        // Prevent rapid clicks
+        if (currentTime - lastClickTime < CLICK_THRESHOLD) {
+            console.log('Click too soon, ignoring (Chrome fix)');
             return false;
         }
         
-        clickInProgress = true;
-        e.preventDefault();
-        e.stopImmediatePropagation();
+        lastClickTime = currentTime;
+        console.log('Processing click, opening file dialog');
         
-        // Reset the flag after a delay
+        // Trigger file input with delay
         setTimeout(() => {
-            console.log('Triggering file input click');
             fileInput.click();
-            
-            // Reset after file dialog should be open
-            setTimeout(() => {
-                clickInProgress = false;
-                console.log('Click processing reset');
-            }, 500);
-        }, 50);
+        }, 100);
         
         return false;
-    }, true); // Use capture phase
+    };
+    
+    // Remove any existing listeners and add new one
+    uploadArea.onclick = null;
+    uploadArea.addEventListener('click', handleClick, { 
+        capture: true, 
+        passive: false, 
+        once: false 
+    });
+    
+    // Also handle any potential parent element clicks
+    uploadArea.addEventListener('mousedown', (e) => {
+        e.stopImmediatePropagation();
+    }, true);
     
     // File selection handler
     fileInput.addEventListener('change', function(e) {
@@ -266,15 +295,34 @@ function enableUploadButton() {
     const uploadBtn = document.getElementById('upload-btn');
     const clearBtn = document.getElementById('clear-btn');
     const fileInput = document.querySelector('#file-input');
+    const form = document.getElementById('upload-form');
     
-    console.log('Enabling upload button');
+    console.log('Enabling upload button and verifying form');
     
     if (uploadBtn) {
         uploadBtn.disabled = false;
         uploadBtn.classList.add('enabled');
         uploadBtn.style.opacity = '1';
         uploadBtn.style.cursor = 'pointer';
-        console.log('Upload button enabled');
+        
+        // Add click handler to upload button for debugging
+        uploadBtn.onclick = function(e) {
+            console.log('Upload button clicked');
+            console.log('Form found:', !!form);
+            console.log('Files in input:', fileInput ? fileInput.files.length : 'No input');
+            
+            if (fileInput && fileInput.files.length === 0) {
+                console.error('No files in input when upload clicked!');
+                e.preventDefault();
+                alert('Please select files first');
+                return false;
+            }
+            
+            console.log('Submitting form...');
+            return true; // Allow form submission
+        };
+        
+        console.log('Upload button enabled with click handler');
     } else {
         console.error('Upload button not found!');
     }
@@ -290,6 +338,12 @@ function enableUploadButton() {
         if (fileInput.files.length === 0) {
             console.warn('Warning: File input has no files after selection!');
         }
+    }
+    
+    if (form) {
+        console.log('Form found, method:', form.method, 'action:', form.action);
+    } else {
+        console.error('Upload form not found!');
     }
 }
 
