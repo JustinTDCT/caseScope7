@@ -1,6 +1,6 @@
 {
-  "version": "7.0.31",
+  "version": "7.0.32",
   "release_date": "2025-09-24",
-  "description": "Fix CSRF, case dashboard, and upload issues",
+  "description": "Fix version updating and ensure fixes work",
   "build": "production"
 }

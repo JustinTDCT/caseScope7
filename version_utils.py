@@ -44,15 +44,13 @@ class VersionManager:
         return self._version_data
     
     def get_version(self):
-        """Get the current version string"""
-        if self._version_data is None:
-            self.load_version()
+        """Get the current version string (always fresh)"""
+        self.load_version()  # Always reload to get latest version
         return self._version_data.get("version", "7.0.0")
     
     def get_full_version_info(self):
-        """Get complete version information"""
-        if self._version_data is None:
-            self.load_version()
+        """Get complete version information (always fresh)"""
+        self.load_version()  # Always reload to get latest version
         return self._version_data
     
     def update_version(self, new_version, description=None):

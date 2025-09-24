@@ -15,11 +15,24 @@ sys.path.insert(0, str(script_dir))
 
 try:
     from version_utils import get_version, get_version_info
-    APP_VERSION = get_version()
-    VERSION_INFO = get_version_info()
+    # Load version dynamically to ensure updates are reflected
+    def get_current_version():
+        try:
+            return get_version()
+        except:
+            return "7.0.32"
+    
+    def get_current_version_info():
+        try:
+            return get_version_info()
+        except:
+            return {"version": "7.0.32", "description": "Fallback version"}
+            
+    APP_VERSION = get_current_version()
+    VERSION_INFO = get_current_version_info()
 except ImportError:
     # Fallback if version_utils not available
-    APP_VERSION = "7.0.29"
+    APP_VERSION = "7.0.32"
     VERSION_INFO = {"version": APP_VERSION, "description": "Fallback version"}
 import logging
 from datetime import datetime, timedelta
@@ -212,9 +225,13 @@ def inject_csrf_token():
 @app.before_request
 def load_global_data():
     """Load data that should be available in all templates"""
-    # Make version info available to all templates
-    g.app_version = APP_VERSION
-    g.version_info = VERSION_INFO
+    # Make version info available to all templates (load fresh each time)
+    try:
+        g.app_version = get_current_version()
+        g.version_info = get_current_version_info()
+    except:
+        g.app_version = "7.0.32"
+        g.version_info = {"version": "7.0.32", "description": "Fallback version"}
     
     if current_user.is_authenticated:
         # Load recent cases for the dropdown
@@ -1003,9 +1020,18 @@ def api_system_stats():
 @app.route('/api/version')
 def api_version():
     """API endpoint to get version information"""
+    try:
+        current_version = get_current_version()
+        current_info = get_current_version_info()
+    except:
+        current_version = "7.0.32"
+        current_info = {"version": "7.0.32", "description": "API fallback"}
+    
     return jsonify({
-        'version': APP_VERSION,
-        'info': VERSION_INFO,
+        'version': current_version,
+        'info': current_info,
+        'g_version': getattr(g, 'app_version', 'Not set'),
+        'cached_version': APP_VERSION,
         'server_time': datetime.utcnow().isoformat()
     })
 
