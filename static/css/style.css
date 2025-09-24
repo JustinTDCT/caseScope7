@@ -339,6 +339,32 @@ body {
   border-radius: 0 0 8px 8px;
 }
 
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: background 0.3s ease;
+  border-radius: 0;
+}
+
+.dropdown-item:hover {
+  background: var(--bg-secondary);
+  transform: none;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 0.5rem 0;
+}
+
+.case-list .dropdown-item {
+  padding-left: 1.5rem;
+}
+
 /* Content Area */
 .content {
   flex: 1;
