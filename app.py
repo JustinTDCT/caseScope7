@@ -972,7 +972,7 @@ def run_chainsaw_directly(case_file):
                 str(chainsaw_path),
                 'hunt', 
                 str(evtx_file_path),
-                '--rules', str(chainsaw_rules_path),
+                '--rule', str(chainsaw_rules_path),
                 '--output', temp_output,
                 '--json'
             ]
@@ -1136,7 +1136,7 @@ def apply_chainsaw_rules(events, case_file):
                 str(chainsaw_path),
                 'hunt', 
                 str(evtx_file_path),
-                '--rules', str(chainsaw_rules_path),
+                '--rule', str(chainsaw_rules_path),
                 '--output', temp_output,
                 '--json'
             ]

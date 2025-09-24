@@ -1,6 +1,6 @@
 {
-  "version": "7.0.63",
+  "version": "7.0.64",
   "release_date": "2025-09-24",
-  "description": "CRITICAL FIX: Correct Chainsaw path - binary is inside chainsaw directory",
+  "description": "FINAL FIX: Correct Chainsaw command syntax - use --rule instead of --rules",
   "build": "production"
 }
