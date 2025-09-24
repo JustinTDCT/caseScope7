@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# caseScope Bug Fixes Script v7.0.35
+# caseScope Bug Fixes Script v7.0.36
 # Run this script on production server after 'git pull'
 # This script contains ALL steps needed to apply current bug fixes
 
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.35"
+echo "caseScope Bug Fixes Script v7.0.36"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -37,23 +37,28 @@ log "Stopping caseScope services..."
 systemctl stop casescope-web 2>/dev/null || log "casescope-web not running"
 systemctl stop casescope-worker 2>/dev/null || log "casescope-worker not running"
 
-# 2. UPDATE VERSION
-log "Updating version to 7.0.35..."
+# 2. INSTALL MISSING SYSTEM UTILITIES
+log "Installing missing system utilities..."
+apt-get update -qq
+apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
+
+# 3. UPDATE VERSION
+log "Updating version to 7.0.36..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.35 "Critical fix for case dashboard database queries and API endpoints" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.36 "Fix SQLAlchemy AppenderQuery error and add missing system utilities" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
 
-# 3. COPY UPDATED APPLICATION FILES
+# 4. COPY UPDATED APPLICATION FILES
 log "Copying updated application files..."
 cp app.py /opt/casescope/app/ || { log "❌ Failed to copy app.py"; exit 1; }
 [ -f "version.json" ] && cp version.json /opt/casescope/app/
 [ -f "version_utils.py" ] && cp version_utils.py /opt/casescope/app/
 [ -f "migrate_db.py" ] && cp migrate_db.py /opt/casescope/app/
 
-# 4. ENSURE DIRECTORY STRUCTURE
+# 5. ENSURE DIRECTORY STRUCTURE
 log "Creating and fixing directory structure..."
 mkdir -p /opt/casescope/data/uploads
 mkdir -p /opt/casescope/logs
@@ -61,12 +66,12 @@ mkdir -p /opt/casescope/app/templates/admin
 mkdir -p /opt/casescope/app/static/css
 mkdir -p /opt/casescope/app/static/js
 
-# 5. COPY TEMPLATES AND STATIC FILES
+# 6. COPY TEMPLATES AND STATIC FILES
 log "Copying templates and static files..."
 cp -r templates/* /opt/casescope/app/templates/ 2>/dev/null || log "Templates copy failed, continuing..."
 cp -r static/* /opt/casescope/app/static/ 2>/dev/null || log "Static files copy failed, continuing..."
 
-# 6. SET PROPER OWNERSHIP AND PERMISSIONS
+# 7. SET PROPER OWNERSHIP AND PERMISSIONS
 log "Setting proper ownership and permissions..."
 chown -R casescope:casescope /opt/casescope/app
 chown -R casescope:casescope /opt/casescope/data
@@ -74,7 +79,7 @@ chown -R casescope:casescope /opt/casescope/logs
 chmod 755 /opt/casescope/data/uploads
 chmod +x /opt/casescope/app/app.py 2>/dev/null || true
 
-# 7. RUN DATABASE MIGRATION
+# 8. RUN DATABASE MIGRATION
 log "Running database migration..."
 if [ -f "/opt/casescope/app/migrate_db.py" ]; then
     sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_db.py || log "Migration failed, continuing..."
@@ -105,15 +110,15 @@ else:
 " || log "Manual migration failed, continuing..."
 fi
 
-# 8. CLEAR REDIS QUEUE (remove stuck tasks)
+# 9. CLEAR REDIS QUEUE (remove stuck tasks)
 log "Clearing Redis queue..."
 redis-cli flushdb 2>/dev/null || log "Redis flush failed, continuing..."
 
-# 9. CLEAN UP ORPHANED FILES
+# 10. CLEAN UP ORPHANED FILES
 log "Cleaning up orphaned upload files..."
 find /opt/casescope/data/uploads -type f -name "*.evtx" -mtime +1 -delete 2>/dev/null || true
 
-# 10. UPDATE SYSTEMD SERVICE FILES (if needed)
+# 11. UPDATE SYSTEMD SERVICE FILES (if needed)
 log "Updating systemd service files..."
 cat > /etc/systemd/system/casescope-web.service << 'EOF'
 [Unit]
@@ -155,11 +160,11 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
-# 11. RELOAD SYSTEMD
+# 12. RELOAD SYSTEMD
 log "Reloading systemd configuration..."
 systemctl daemon-reload
 
-# 12. ENSURE REQUIRED SERVICES ARE RUNNING
+# 13. ENSURE REQUIRED SERVICES ARE RUNNING
 log "Ensuring required services are running..."
 systemctl start redis-server 2>/dev/null || log "Redis start failed"
 systemctl start opensearch 2>/dev/null || log "OpenSearch start failed"
@@ -167,23 +172,23 @@ systemctl start opensearch 2>/dev/null || log "OpenSearch start failed"
 # Wait for services to stabilize
 sleep 3
 
-# 13. START CASESCOPE SERVICES
+# 14. START CASESCOPE SERVICES
 log "Starting caseScope services..."
 systemctl start casescope-web
 systemctl start casescope-worker
 
-# 14. WAIT FOR SERVICES TO START
+# 15. WAIT FOR SERVICES TO START
 log "Waiting for services to stabilize..."
 sleep 5
 
-# 15. CHECK SERVICE STATUS
+# 16. CHECK SERVICE STATUS
 log "Checking service status..."
 check_service "casescope-web"
 check_service "casescope-worker"
 check_service "opensearch"
 check_service "redis-server"
 
-# 16. VERIFY APPLICATION STATUS
+# 17. VERIFY APPLICATION STATUS
 log "Verifying application status..."
 if curl -s http://localhost:5000 > /dev/null; then
     log "✅ Web application is responding"
@@ -191,7 +196,7 @@ else
     log "⚠️ Web application is not responding"
 fi
 
-# 17. DISPLAY LOG LOCATIONS
+# 18. DISPLAY LOG LOCATIONS
 log "Bug fixes deployment completed!"
 echo "=================================================="
 echo "📊 VERIFICATION COMMANDS:"
@@ -202,9 +207,11 @@ echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
 echo "🎯 MAIN FIXES APPLIED:"
+echo "  ✅ SQLAlchemy AppenderQuery error fix"
+echo "  ✅ Worker statistics query rewrite"
+echo "  ✅ System utilities installation (netstat, ss)"
 echo "  ✅ Case dashboard database query fixes"
 echo "  ✅ Processing stats API endpoint fixes"
-echo "  ✅ Worker statistics calculation fixes"
 echo "  ✅ Template query syntax fixes"
 echo "  ✅ Enhanced error logging for debugging"
 echo "  ✅ Upload directory permissions and path validation"
@@ -215,4 +222,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.35 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.36 deployment complete!"

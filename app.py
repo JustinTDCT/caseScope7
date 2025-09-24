@@ -687,7 +687,12 @@ def case_dashboard():
         
         # Get users who worked on this case
         try:
-            workers = db.session.query(User).join(CaseFile, User.id == CaseFile.uploaded_by).filter(CaseFile.case_id == case.id).distinct().all()
+            # Get distinct user IDs who uploaded files for this case
+            worker_ids = db.session.query(CaseFile.uploaded_by).filter_by(case_id=case.id).distinct().all()
+            worker_ids = [w[0] for w in worker_ids if w[0]]  # Extract IDs and filter None
+            
+            # Get the actual user objects
+            workers = User.query.filter(User.id.in_(worker_ids)).all() if worker_ids else []
             logger.info(f"Workers found: {len(workers)}")
             
             # Add file count for each worker

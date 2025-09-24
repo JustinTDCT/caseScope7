@@ -1,6 +1,6 @@
 {
-  "version": "7.0.35",
+  "version": "7.0.36",
   "release_date": "2025-09-24",
-  "description": "Critical fix for case dashboard database queries and API endpoints",
+  "description": "Fix SQLAlchemy AppenderQuery error and add missing system utilities",
   "build": "production"
 }
