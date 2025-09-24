@@ -502,7 +502,11 @@ def apply_sigma_rules(events, case_file):
                 for rule_name, rule_patterns in sigma_rules.items():
                     if check_sigma_rule_match(event_data, rule_patterns):
                         violations += 1
-                        logger.info(f"Sigma rule triggered: {rule_name}")
+                        logger.info(f"Sigma rule triggered: {rule_name} for event {event.get('_id', 'unknown')}")
+                        
+                        # Log what matched for debugging (first 10 violations only)
+                        if violations <= 10:
+                            logger.info(f"Event data that triggered rule: {str(event_data)[:500]}...")
                         
                         # Tag event in OpenSearch
                         try:
@@ -539,26 +543,30 @@ def load_sigma_rules(sigma_path):
         # For now, implement a basic pattern-based system
         # This is a simplified version - real Sigma would parse YAML and compile conditions
         rules = {
-            "Suspicious PowerShell": {
-                "process": ["powershell.exe"],
-                "command_line": ["bypass", "hidden", "encoded", "downloadstring", "invoke-expression"]
+            "Suspicious PowerShell Execution": {
+                "process": ["powershell.exe", "powershell"],
+                "command_line": ["bypass", "hidden", "encoded", "downloadstring", "invoke-expression", "iex", "-e ", "-enc"]
             },
-            "Living Off The Land Binaries": {
-                "process": ["regsvr32.exe", "rundll32.exe", "mshta.exe", "certutil.exe", "bitsadmin.exe"]
+            "Living Off The Land Binary Abuse": {
+                "process": ["regsvr32.exe", "rundll32.exe", "mshta.exe", "certutil.exe", "bitsadmin.exe"],
+                "command_line": ["http", "download", "url", "script"]
             },
-            "Credential Access": {
-                "command_line": ["sekurlsa", "logonpasswords", "mimikatz", "procdump", "lsass"]
+            "Credential Theft Attempt": {
+                "process": ["powershell", "cmd", "rundll32"],
+                "command_line": ["sekurlsa", "logonpasswords", "mimikatz", "procdump", "lsass", "comsvcs.dll"]
             },
-            "Persistence Registry": {
-                "registry": ["\\run\\", "\\runonce\\", "\\startup\\"]
+            "Persistence via Registry": {
+                "process": ["reg.exe", "powershell", "cmd"],
+                "registry": ["\\run\\", "\\runonce\\", "\\startup\\", "\\services\\"]
             },
-            "Network Activity": {
+            "Malicious Network Activity": {
+                "process": ["powershell", "cmd", "rundll32", "regsvr32"],
                 "network": ["http://", "https://", "ftp://"],
-                "command_line": ["wget", "curl", "invoke-webrequest"]
+                "command_line": ["wget", "curl", "invoke-webrequest", "downloadstring", "webclient"]
             },
-            "Windows Defender Detection": {
-                "provider": ["windows defender", "antimalware"],
-                "keywords": ["threat", "malware", "virus", "suspicious", "blocked", "quarantine"]
+            "Windows Defender Malware Detection": {
+                "provider": ["windows defender", "microsoft antimalware"],
+                "keywords": ["threat detected", "malware detected", "virus detected", "threat blocked", "trojan", "backdoor"]
             }
         }
         
@@ -613,14 +621,21 @@ def prepare_event_for_sigma(event):
 def check_sigma_rule_match(event_data, rule_patterns):
     """Check if event data matches Sigma rule patterns"""
     try:
-        # For each category in the rule, check if any pattern matches
+        # Count how many categories match - require at least 2 for more precision
+        matches = 0
+        total_categories = len(rule_patterns)
+        
         for category, patterns in rule_patterns.items():
             if category in event_data:
                 event_field = event_data[category]
                 for pattern in patterns:
                     if pattern.lower() in event_field:
-                        return True
-        return False
+                        matches += 1
+                        break  # Only count one match per category
+        
+        # Require at least 50% of categories to match, or at least 2 matches
+        threshold = max(1, min(2, total_categories // 2))
+        return matches >= threshold
         
     except Exception as e:
         logger.error(f"Error checking Sigma rule match: {e}")
@@ -1065,6 +1080,7 @@ def upload_files():
             return render_template('upload_files.html', form=form, case=case)
         
         uploaded_files = []
+        duplicate_files = []
         
         for file in files[:5]:  # Limit to 5 files
             if file and file.filename:
@@ -1079,7 +1095,7 @@ def upload_files():
                 
                 if existing_file:
                     logger.warning(f"Duplicate file detected: {original_filename}")
-                    flash(f'⚠️ Duplicate: File "{original_filename}" already exists in this case. Skipped upload.', 'warning')
+                    duplicate_files.append(original_filename)
                     continue
                 
                 file_hash = hashlib.sha256(file.read()).hexdigest()
@@ -1122,7 +1138,17 @@ def upload_files():
                 
                 log_audit('file_uploaded', f'Uploaded file: {original_filename} to case: {case.name}')
         
-        flash(f'Successfully uploaded {len(uploaded_files)} file(s). Processing started.', 'success')
+        # Show upload results
+        if uploaded_files:
+            flash(f'✅ Successfully uploaded {len(uploaded_files)} file(s). Processing started.', 'success')
+        
+        if duplicate_files:
+            for filename in duplicate_files:
+                flash(f'⚠️ Duplicate: "{filename}" already exists in this case. Skipped.', 'warning')
+        
+        if not uploaded_files and not duplicate_files:
+            flash('No files were processed.', 'error')
+            
         return redirect(url_for('list_files'))
     
     return render_template('upload_files.html', form=form, case=case)

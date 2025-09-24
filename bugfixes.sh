@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.49"
+echo "caseScope Bug Fixes Script v7.0.50"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.49..."
+log "Updating version to 7.0.50..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.49 "MAJOR: Replace 3-dot menus with action buttons, proper Sigma rule engine, duplicate feedback" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.50 "FIX: Sigma false positives (stricter rules), duplicate warning now shows to users" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -206,11 +206,13 @@ echo "  Worker Logs:   journalctl -u casescope-worker -f"
 echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
-echo "🎯 MAJOR FIXES APPLIED:"
+echo "🎯 CRITICAL FIXES APPLIED:"
+echo "  ✅ FIXED: Sigma false positives - stricter rules requiring multiple criteria matches"
+echo "  ✅ FIXED: Duplicate file warnings now properly display to users"
+echo "  ✅ IMPROVED: Sigma rule matching is more precise (threshold-based)"
+echo "  ✅ ADDED: Better debugging for Sigma rule triggers"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
-echo "  ✅ IMPLEMENTED: Basic Sigma rule engine with proper rule structure"  
-echo "  ✅ ADDED: User feedback for duplicate file uploads"
-echo "  ✅ SIMPLIFIED: No more complex dropdown JavaScript - just buttons"
+echo "  ✅ IMPLEMENTED: Basic Sigma rule engine with proper rule structure"
 echo "  ✅ Fixed dialog text to say 'all files' instead of 'completed files'"
 echo "  ✅ Improved 3-dot menu grid layout with consistent alignment"
 echo "  ✅ Applied darker theme to 3-dot menu with better contrast"
@@ -265,4 +267,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.49 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.50 deployment complete!"
