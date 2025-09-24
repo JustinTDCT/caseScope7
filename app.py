@@ -265,18 +265,28 @@ def get_system_info():
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
         
-        # Service status
+        # Service status - check both systemctl and process status
         services = {}
-        # Check actual service names that might be running
         service_map = {
-            'opensearch': ['opensearch', 'opensearch.service'],
-            'redis-server': ['redis-server', 'redis.service', 'redis'],
-            'nginx': ['nginx', 'nginx.service']
+            'opensearch': {
+                'services': ['opensearch', 'opensearch.service'],
+                'processes': ['java.*opensearch', 'opensearch']
+            },
+            'redis-server': {
+                'services': ['redis-server', 'redis.service', 'redis'],
+                'processes': ['redis-server', 'redis']
+            },
+            'nginx': {
+                'services': ['nginx', 'nginx.service'],
+                'processes': ['nginx']
+            }
         }
         
-        for service_key, service_names in service_map.items():
+        for service_key, check_data in service_map.items():
             services[service_key] = False
-            for service_name in service_names:
+            
+            # First try systemctl
+            for service_name in check_data['services']:
                 try:
                     result = subprocess.run(['systemctl', 'is-active', service_name], 
                                           capture_output=True, text=True)
@@ -285,6 +295,18 @@ def get_system_info():
                         break
                 except:
                     continue
+            
+            # If systemctl failed, check processes
+            if not services[service_key]:
+                for process_name in check_data['processes']:
+                    try:
+                        result = subprocess.run(['pgrep', '-f', process_name], 
+                                              capture_output=True, text=True)
+                        if result.stdout.strip():
+                            services[service_key] = True
+                            break
+                    except:
+                        continue
         
         # Rule counts and last updated
         sigma_count = 0

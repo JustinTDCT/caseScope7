@@ -2,29 +2,35 @@
 /* Copyright 2025 Justin Dube */
 
 :root {
-  /* Dark Theme Colors */
-  --bg-primary: #1a1a1a;
-  --bg-secondary: #2d3748;
-  --bg-tertiary: #4a5568;
-  --card-bg: #2d3748;
-  --sidebar-bg: #1a202c;
-  --header-bg: #2d3748;
-  --border-color: #4a5568;
-  --text-primary: #f7fafc;
-  --text-secondary: #a0aec0;
-  --text-muted: #718096;
-  --primary-color: #4299e1;
-  --primary-hover: #3182ce;
-  --success-color: #68d391;
-  --warning-color: #f6e05e;
-  --error-color: #fc8181;
-  --input-bg: #2d3748;
-  --progress-bg: #4a5568;
+  /* Enhanced Dark Theme Colors */
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --card-bg: #1e293b;
+  --sidebar-bg: #0f172a;
+  --header-bg: #1e293b;
+  --border-color: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --primary-color: #3b82f6;
+  --primary-hover: #2563eb;
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --error-color: #ef4444;
+  --input-bg: #1e293b;
+  --progress-bg: #334155;
   
   /* Severity Colors */
-  --severity-high: #fc8181;
-  --severity-medium: #f6e05e;
-  --severity-low: #68d391;
+  --severity-high: #ef4444;
+  --severity-medium: #f59e0b;
+  --severity-low: #10b981;
+  
+  /* 3D Effect Colors */
+  --shadow-light: rgba(255, 255, 255, 0.1);
+  --shadow-dark: rgba(0, 0, 0, 0.3);
+  --border-light: rgba(255, 255, 255, 0.2);
+  --border-dark: rgba(0, 0, 0, 0.4);
 }
 
 [data-theme="light"] {
@@ -79,8 +85,19 @@ body {
   padding: 1rem 2rem;
   background: var(--header-bg);
   border-bottom: 1px solid var(--border-color);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   z-index: 1000;
+  
+  /* Enhanced 3D effect for header */
+  box-shadow: 
+    0 2px 8px var(--shadow-dark),
+    inset 0 1px 0 var(--shadow-light),
+    inset 0 -1px 0 var(--border-dark);
+  
+  /* Subtle gradient */
+  background: linear-gradient(180deg, 
+    rgba(255, 255, 255, 0.03) 0%, 
+    var(--header-bg) 50%, 
+    rgba(0, 0, 0, 0.05) 100%);
 }
 
 .header-left .logo {
@@ -88,7 +105,7 @@ body {
   font-weight: bold;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0;
 }
 
 .logo-case {
@@ -103,6 +120,7 @@ body {
   font-size: 0.75rem;
   color: var(--text-secondary);
   font-weight: normal;
+  margin-left: 0.5rem;
 }
 
 .header-right {
@@ -188,6 +206,11 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  
+  /* Subtle 3D effect for sidebar */
+  box-shadow: 
+    inset -1px 0 0 var(--shadow-light),
+    2px 0 4px var(--shadow-dark);
 }
 
 .nav-section {
@@ -632,13 +655,32 @@ body {
   padding: 1.5rem;
   background: var(--card-bg);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 16px;
   transition: all 0.3s ease;
+  position: relative;
+  
+  /* Enhanced 3D Effect */
+  box-shadow: 
+    0 4px 6px var(--shadow-dark),
+    0 1px 3px var(--shadow-dark),
+    inset 0 1px 0 var(--shadow-light),
+    inset 0 -1px 0 var(--border-dark);
+  
+  /* Subtle gradient overlay */
+  background: linear-gradient(145deg, 
+    rgba(255, 255, 255, 0.05) 0%, 
+    transparent 50%, 
+    rgba(0, 0, 0, 0.1) 100%),
+    var(--card-bg);
 }
 
 .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-3px);
+  box-shadow: 
+    0 8px 25px var(--shadow-dark),
+    0 4px 10px var(--shadow-dark),
+    inset 0 1px 0 var(--shadow-light),
+    inset 0 -1px 0 var(--border-dark);
 }
 
 .stat-icon {
