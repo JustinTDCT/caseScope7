@@ -729,6 +729,19 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Fix database permissions specifically
+log "Setting database permissions..."
+if [ -f /opt/casescope/data/casescope.db ]; then
+    chown casescope:casescope /opt/casescope/data/casescope.db
+    chmod 664 /opt/casescope/data/casescope.db
+    log "Database file permissions set"
+fi
+
+# Ensure the data directory is writable
+chown -R casescope:casescope /opt/casescope/data
+chmod 755 /opt/casescope/data
+log "Data directory permissions verified"
+
 # Update systemd service files to use correct paths
 log "Updating systemd service files..."
 cat > /etc/systemd/system/casescope-web.service << 'EOF'

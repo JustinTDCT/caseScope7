@@ -1,6 +1,6 @@
 {
-  "version": "7.0.87",
+  "version": "7.0.88",
   "release_date": "2025-09-24",
-  "description": "DEPLOY: Updated install/deploy scripts with requirements.txt and latest features",
+  "description": "FIX: Database permissions for readonly database error + enhanced deploy script",
   "build": "production"
 }

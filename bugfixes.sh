@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# caseScope Bug Fixes Script v7.0.37
+# caseScope Bug Fixes Script v7.0.88
 # Run this script on production server after 'git pull'
 # This script contains ALL steps needed to apply current bug fixes
 
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.86"
+echo "caseScope Bug Fixes Script v7.0.88"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -433,11 +433,30 @@ else
     log "curl not available, skipping OpenSearch cleanup"
 fi
 
-# 13. CLEAN UP ORPHANED FILES
+# 13. FIX DATABASE PERMISSIONS
+log "Fixing database permissions..."
+if [ -d /opt/casescope/data ]; then
+    chown -R casescope:casescope /opt/casescope/data
+    chmod 755 /opt/casescope/data
+    
+    if [ -f /opt/casescope/data/casescope.db ]; then
+        chown casescope:casescope /opt/casescope/data/casescope.db
+        chmod 664 /opt/casescope/data/casescope.db
+        log "Database file permissions fixed"
+    fi
+    
+    if [ -d /opt/casescope/data/uploads ]; then
+        chmod 755 /opt/casescope/data/uploads
+    fi
+    
+    log "Data directory permissions verified"
+fi
+
+# 14. CLEAN UP ORPHANED FILES
 log "Cleaning up orphaned upload files..."
 find /opt/casescope/data/uploads -type f -name "*.evtx" -mtime +1 -delete 2>/dev/null || true
 
-# 14. UPDATE SYSTEMD SERVICE FILES (if needed)
+# 15. UPDATE SYSTEMD SERVICE FILES (if needed)
 log "Updating systemd service files..."
 cat > /etc/systemd/system/casescope-web.service << 'EOF'
 [Unit]
@@ -590,4 +609,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.86 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.88 deployment complete!"
