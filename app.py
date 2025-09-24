@@ -19,7 +19,7 @@ from pathlib import Path
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_sqlalchemy import SQLAlchemy
-from flask_wtf import FlaskForm, CSRFError
+from flask_wtf import FlaskForm
 from flask_wtf.file import FileField, FileAllowed, FileRequired
 from wtforms import StringField, PasswordField, SelectField, TextAreaField, BooleanField
 from wtforms.validators import DataRequired, Length, Email
@@ -187,12 +187,12 @@ class FileUploadForm(FlaskForm):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# CSRF Error Handler
-@app.errorhandler(CSRFError)
-def handle_csrf_error(e):
-    logger.error(f"CSRF error: {e.description}")
-    flash('CSRF token validation failed. Please try again.', 'error')
-    return redirect(url_for('login'))
+# CSRF Error Handler (commented out due to import issues)
+# @app.errorhandler(CSRFError)
+# def handle_csrf_error(e):
+#     logger.error(f"CSRF error: {e.description}")
+#     flash('CSRF token validation failed. Please try again.', 'error')
+#     return redirect(url_for('login'))
 
 def log_audit(action, details=None, user=None):
     """Log audit events"""
