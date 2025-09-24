@@ -20,6 +20,7 @@ echo "Updating application files..."
 sudo cp app.py /opt/casescope/app/
 sudo cp version.json /opt/casescope/app/
 sudo cp version_utils.py /opt/casescope/app/
+sudo cp migrate_db.py /opt/casescope/app/
 
 # Fix upload directory permissions
 echo "Fixing upload directory..."
@@ -29,7 +30,7 @@ sudo chmod 755 /opt/casescope/data/uploads
 
 # Run database migration if needed
 echo "Running database migration..."
-sudo -u casescope /opt/casescope/venv/bin/python3 /Users/jdube/caseScope7_cursor/migrate_db.py
+sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_db.py
 
 # Clean up any orphaned files in upload directory
 echo "Cleaning orphaned upload files..."
