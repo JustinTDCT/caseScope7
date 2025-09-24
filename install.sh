@@ -25,6 +25,9 @@ cleanup_on_failure() {
     # Clean up working directory temp files
     rm -f chainsaw.zip chainsaw.tar.gz 2>/dev/null || true
     
+    # Clean up any temporary directories
+    rm -rf /tmp/tmp.* 2>/dev/null || true
+    
     log_error "Cleanup completed. Check /opt/casescope/logs/install.log for details."
     exit 1
 }
@@ -393,24 +396,32 @@ CHAINSAW_DOWNLOADED=false
 
 # First, let's try the newer release format
 log "Trying Chainsaw latest release..."
-wget -O chainsaw.zip "https://github.com/WithSecureLabs/chainsaw/releases/latest/download/chainsaw_x86_64-unknown-linux-gnu.tar.gz" 2>&1 | tee -a /opt/casescope/logs/install.log
-if [ $? -eq 0 ] && [ -s chainsaw.zip ]; then
+wget -O chainsaw.tar.gz "https://github.com/WithSecureLabs/chainsaw/releases/latest/download/chainsaw_x86_64-unknown-linux-gnu.tar.gz" 2>&1 | tee -a /opt/casescope/logs/install.log
+if [ $? -eq 0 ] && [ -s chainsaw.tar.gz ]; then
     log "Downloaded chainsaw archive, extracting..."
-    tar -xzf chainsaw.zip 2>&1 | tee -a /opt/casescope/logs/install.log
+    
+    # Create temporary extraction directory
+    TEMP_DIR=$(mktemp -d)
+    cd "$TEMP_DIR"
+    tar -xzf /opt/casescope/rules/chainsaw.tar.gz 2>&1 | tee -a /opt/casescope/logs/install.log
+    
     if [ $? -eq 0 ]; then
         # Find the chainsaw binary
-        find . -name "chainsaw" -type f -executable | head -1 | while read file; do
-            if [ -f "$file" ]; then
-                cp "$file" /opt/casescope/rules/chainsaw
-                chmod +x /opt/casescope/rules/chainsaw
-                log "Chainsaw binary installed successfully"
-            fi
-        done
-        if [ -f /opt/casescope/rules/chainsaw ]; then
+        CHAINSAW_BINARY=$(find . -name "chainsaw" -type f -executable | head -1)
+        if [ -n "$CHAINSAW_BINARY" ] && [ -f "$CHAINSAW_BINARY" ]; then
+            cp "$CHAINSAW_BINARY" /opt/casescope/rules/chainsaw
+            chmod +x /opt/casescope/rules/chainsaw
+            log "Chainsaw binary installed successfully from $CHAINSAW_BINARY"
             CHAINSAW_DOWNLOADED=true
+        else
+            log "Chainsaw binary not found in extracted archive"
         fi
     fi
-    rm -f chainsaw.zip 2>/dev/null || true
+    
+    # Clean up temp directory and return to rules directory
+    cd /opt/casescope/rules
+    rm -rf "$TEMP_DIR"
+    rm -f chainsaw.tar.gz 2>/dev/null || true
 fi
 
 # If that didn't work, try specific versions with different naming
@@ -419,19 +430,27 @@ if [ "$CHAINSAW_DOWNLOADED" = "false" ]; then
         log "Trying Chainsaw version $version with tar.gz format..."
         wget -O chainsaw.tar.gz "https://github.com/WithSecureLabs/chainsaw/releases/download/$version/chainsaw_x86_64-unknown-linux-gnu.tar.gz" 2>&1 | tee -a /opt/casescope/logs/install.log
         if [ $? -eq 0 ] && [ -s chainsaw.tar.gz ]; then
-            tar -xzf chainsaw.tar.gz 2>&1 | tee -a /opt/casescope/logs/install.log
+            # Create temporary extraction directory
+            TEMP_DIR=$(mktemp -d)
+            cd "$TEMP_DIR"
+            tar -xzf /opt/casescope/rules/chainsaw.tar.gz 2>&1 | tee -a /opt/casescope/logs/install.log
+            
             if [ $? -eq 0 ]; then
-                find . -name "chainsaw" -type f -executable | head -1 | while read file; do
-                    if [ -f "$file" ]; then
-                        cp "$file" /opt/casescope/rules/chainsaw
-                        chmod +x /opt/casescope/rules/chainsaw
-                        log "Chainsaw $version installed successfully"
-                    fi
-                done
-                if [ -f /opt/casescope/rules/chainsaw ]; then
+                CHAINSAW_BINARY=$(find . -name "chainsaw" -type f -executable | head -1)
+                if [ -n "$CHAINSAW_BINARY" ] && [ -f "$CHAINSAW_BINARY" ]; then
+                    cp "$CHAINSAW_BINARY" /opt/casescope/rules/chainsaw
+                    chmod +x /opt/casescope/rules/chainsaw
+                    log "Chainsaw $version installed successfully from $CHAINSAW_BINARY"
                     CHAINSAW_DOWNLOADED=true
-                    break
                 fi
+            fi
+            
+            # Clean up and return to rules directory
+            cd /opt/casescope/rules
+            rm -rf "$TEMP_DIR"
+            
+            if [ "$CHAINSAW_DOWNLOADED" = "true" ]; then
+                break
             fi
         fi
         rm -f chainsaw.tar.gz 2>/dev/null || true

@@ -38,7 +38,7 @@ import xmltodict
 # Application setup
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///casescope.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////opt/casescope/data/casescope.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
 app.config['UPLOAD_FOLDER'] = '/opt/casescope/data/uploads'
