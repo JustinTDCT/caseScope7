@@ -7,6 +7,7 @@ mailto:casescope@thedubes.net
 
 import os
 import sys
+import stat
 from pathlib import Path
 
 # Add the script directory to Python path for version imports
@@ -108,8 +109,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Create required directories
-os.makedirs('/opt/casescope/data/uploads', exist_ok=True)
+upload_dir = app.config.get('UPLOAD_FOLDER', '/opt/casescope/data/uploads')
+os.makedirs(upload_dir, exist_ok=True)
 os.makedirs('/opt/casescope/logs', exist_ok=True)
+
+# Set proper permissions for upload directory
+try:
+    os.chmod(upload_dir, stat.S_IRWXU | stat.S_IRWXG | stat.S_IROTH | stat.S_IXOTH)  # 755
+except:
+    pass
 
 # Models
 class User(UserMixin, db.Model):
@@ -483,7 +491,16 @@ def process_evtx_file(file_id):
             case_file.processing_progress = 10
             db.session.commit()
             
+            # Verify file exists before processing
+            if not os.path.exists(case_file.file_path):
+                logger.error(f"File not found: {case_file.file_path}")
+                case_file.processing_status = 'error'
+                case_file.error_message = f"File not found: {case_file.file_path}"
+                db.session.commit()
+                return False
+            
             # Parse EVTX file
+            logger.info(f"Processing EVTX file: {case_file.file_path}")
             parser = PyEvtxParser(case_file.file_path)
             events = []
             
@@ -589,7 +606,7 @@ def login():
                 f.write(f"{datetime.utcnow().isoformat()} - {user.username} - LOGIN - {request.remote_addr} - {request.headers.get('User-Agent')}\n")
             
             next_page = request.args.get('next')
-            return redirect(next_page) if next_page else redirect(url_for('dashboard'))
+            return redirect(next_page) if next_page else redirect(url_for('system_dashboard'))
         else:
             flash('Invalid username or password.', 'error')
     
@@ -628,7 +645,7 @@ def system_dashboard():
     except Exception as e:
         logger.error(f"Error loading system dashboard: {e}")
         flash('Error loading system dashboard', 'error')
-        return redirect(url_for('index'))
+        return redirect(url_for('login'))
 
 @app.route('/dashboard/case')
 @login_required
@@ -720,6 +737,13 @@ def upload_files():
         return redirect(url_for('system_dashboard'))
     
     form = FileUploadForm()
+    
+    # Debug form validation
+    if request.method == 'POST':
+        logger.info(f"Upload form POST request received. Files: {len(request.files.getlist('files'))}")
+        if not form.validate_on_submit():
+            logger.error(f"Form validation failed: {form.errors}")
+    
     if form.validate_on_submit():
         files = request.files.getlist('files')
         
@@ -738,10 +762,20 @@ def upload_files():
                 file.seek(0)  # Reset file pointer
                 
                 stored_filename = f"{file_hash}_{original_filename}"
-                file_path = os.path.join(app.config['UPLOAD_FOLDER'], stored_filename)
+                upload_folder = app.config.get('UPLOAD_FOLDER', '/opt/casescope/data/uploads')
+                file_path = os.path.join(upload_folder, stored_filename)
+                
+                # Ensure upload folder exists
+                os.makedirs(upload_folder, exist_ok=True)
                 
                 # Save file
                 file.save(file_path)
+                
+                # Verify file was saved
+                if not os.path.exists(file_path):
+                    logger.error(f"File {file_path} was not saved successfully")
+                    flash(f'Error saving file {original_filename}', 'error')
+                    continue
                 file_size = os.path.getsize(file_path)
                 
                 # Create database record
@@ -788,57 +822,63 @@ def list_files():
 @app.route('/search')
 @login_required
 def search():
-    selected_case_id = session.get('selected_case_id')
-    if not selected_case_id:
-        flash('Please select a case first.', 'error')
+    try:
+        selected_case_id = session.get('selected_case_id')
+        if not selected_case_id:
+            flash('Please select a case first.', 'error')
+            return redirect(url_for('system_dashboard'))
+        
+        case = Case.query.get(selected_case_id)
+        if not case or not case.is_active:
+            flash('Case not found or inactive.', 'error')
+            return redirect(url_for('system_dashboard'))
+        
+        # Get search parameters
+        query = request.args.get('q', '')
+        rule_type = request.args.get('rule_type', '')
+        
+        results = []
+        if query:
+            # Search OpenSearch
+            try:
+                search_body = {
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {"term": {"case_id": case.id}},
+                                {"multi_match": {
+                                    "query": query,
+                                    "fields": ["event_data.*", "source_file"]
+                                }}
+                            ]
+                        }
+                    },
+                    "size": 100,
+                    "sort": [{"timestamp": {"order": "desc"}}]
+                }
+                
+                if rule_type:
+                    search_body["query"]["bool"]["must"].append({
+                        "term": {"rule_violations.type": rule_type}
+                    })
+                
+                response = opensearch_client.search(
+                    index=f"casescope-case-{case.id}",
+                    body=search_body
+                )
+                
+                results = response.get('hits', {}).get('hits', [])
+                
+            except Exception as e:
+                logger.error(f"Search error: {e}")
+                flash('Search error occurred.', 'error')
+        
+        return render_template('search.html', case=case, query=query, results=results)
+    
+    except Exception as e:
+        logger.error(f"Error in search route: {e}")
+        flash('Error accessing search functionality.', 'error')
         return redirect(url_for('system_dashboard'))
-    
-    case = Case.query.get(selected_case_id)
-    if not case or not case.is_active:
-        flash('Case not found or inactive.', 'error')
-        return redirect(url_for('system_dashboard'))
-    
-    # Get search parameters
-    query = request.args.get('q', '')
-    rule_type = request.args.get('rule_type', '')
-    
-    results = []
-    if query:
-        # Search OpenSearch
-        try:
-            search_body = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"term": {"case_id": case.id}},
-                            {"multi_match": {
-                                "query": query,
-                                "fields": ["event_data.*", "source_file"]
-                            }}
-                        ]
-                    }
-                },
-                "size": 100,
-                "sort": [{"timestamp": {"order": "desc"}}]
-            }
-            
-            if rule_type:
-                search_body["query"]["bool"]["must"].append({
-                    "term": {"rule_violations.type": rule_type}
-                })
-            
-            response = opensearch_client.search(
-                index=f"casescope-case-{case.id}",
-                body=search_body
-            )
-            
-            results = response.get('hits', {}).get('hits', [])
-            
-        except Exception as e:
-            logger.error(f"Search error: {e}")
-            flash('Search error occurred.', 'error')
-    
-    return render_template('search.html', case=case, query=query, results=results)
 
 @app.route('/rerun_rules')
 @login_required
