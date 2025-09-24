@@ -865,6 +865,18 @@ def run_chainsaw_directly(case_file):
                 logger.info(f"Contents of /opt/casescope/rules: {list(rules_dir.iterdir())}")
             return 0
         
+        # Check if Chainsaw binary is executable
+        import stat
+        if not os.access(chainsaw_path, os.X_OK):
+            logger.warning(f"Chainsaw binary not executable at {chainsaw_path}")
+            try:
+                # Try to fix permissions
+                os.chmod(chainsaw_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+                logger.info("Fixed Chainsaw binary permissions")
+            except Exception as perm_error:
+                logger.error(f"Failed to fix Chainsaw permissions: {perm_error}")
+                return 0
+        
         if not chainsaw_rules_path.exists():
             logger.warning(f"Chainsaw rules directory not found at {chainsaw_rules_path}")
             # Check what's actually in the chainsaw-rules directory

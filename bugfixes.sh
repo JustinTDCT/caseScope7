@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.57"
+echo "caseScope Bug Fixes Script v7.0.58"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.57..."
+log "Updating version to 7.0.58..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.57 "FIX: Correct Chainsaw paths and add debugging to find rules directory" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.58 "FIX: Chainsaw binary permissions - add execute permissions to fix Permission denied" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -114,11 +114,21 @@ fi
 log "Clearing Redis queue..."
 redis-cli flushdb 2>/dev/null || log "Redis flush failed, continuing..."
 
-# 10. CLEAN UP ORPHANED FILES
+# 10. FIX CHAINSAW PERMISSIONS
+log "Fixing Chainsaw binary permissions..."
+if [ -f "/opt/casescope/rules/chainsaw" ]; then
+    chmod +x /opt/casescope/rules/chainsaw
+    chown casescope:casescope /opt/casescope/rules/chainsaw
+    log "Chainsaw binary permissions fixed"
+else
+    log "Chainsaw binary not found, skipping permission fix"
+fi
+
+# 11. CLEAN UP ORPHANED FILES
 log "Cleaning up orphaned upload files..."
 find /opt/casescope/data/uploads -type f -name "*.evtx" -mtime +1 -delete 2>/dev/null || true
 
-# 11. UPDATE SYSTEMD SERVICE FILES (if needed)
+# 12. UPDATE SYSTEMD SERVICE FILES (if needed)
 log "Updating systemd service files..."
 cat > /etc/systemd/system/casescope-web.service << 'EOF'
 [Unit]
@@ -206,13 +216,13 @@ echo "  Worker Logs:   journalctl -u casescope-worker -f"
 echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
-echo "🎯 CHAINSAW PATH FIXES:"
-echo "  ✅ FIXED: Chainsaw binary path (/opt/casescope/rules/chainsaw)"
-echo "  ✅ FIXED: Chainsaw rules path (/opt/casescope/rules/chainsaw-rules/rules)"
-echo "  ✅ ADDED: Debugging to show actual directory contents"
-echo "  ✅ ADDED: Path validation and detailed error messages"
-echo "  ✅ PERFORMANCE: Processing still optimized (seconds vs minutes)"
-echo "  ✅ READY: Should now find rules and detect ~150 violations"
+echo "🎯 CHAINSAW PERMISSION FIXES:"
+echo "  ✅ FIXED: Chainsaw binary execute permissions (chmod +x)"
+echo "  ✅ FIXED: Chainsaw binary ownership (casescope:casescope)"
+echo "  ✅ ADDED: Automatic permission fixing in Python code"
+echo "  ✅ ADDED: Permission validation before execution"
+echo "  ✅ RESOLVED: 'Permission denied' error should be gone"
+echo "  ✅ READY: Should now execute Chainsaw and detect ~150 violations"
 echo "  ✅ FIXED: Single file re-run rules now actually works (requeues processing)"
 echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
@@ -271,4 +281,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.57 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.58 deployment complete!"

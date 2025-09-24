@@ -1,6 +1,6 @@
 {
-  "version": "7.0.57",
+  "version": "7.0.58",
   "release_date": "2025-09-24",
-  "description": "FIX: Correct Chainsaw paths and add debugging to find rules directory",
+  "description": "FIX: Chainsaw binary permissions - add execute permissions to fix Permission denied",
   "build": "production"
 }
