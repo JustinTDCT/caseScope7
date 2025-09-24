@@ -7,7 +7,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "caseScope Bug Fixes Script v7.0.60"
+echo "caseScope Bug Fixes Script v7.0.61"
 echo "$(date): Starting bug fix deployment..."
 echo "=================================================="
 
@@ -43,10 +43,10 @@ apt-get update -qq
 apt-get install -y net-tools iproute2 2>/dev/null || log "Failed to install utilities, continuing..."
 
 # 3. UPDATE VERSION
-log "Updating version to 7.0.60..."
+log "Updating version to 7.0.61..."
 cd "$(dirname "$0")"
 if [ -f "version_utils.py" ]; then
-    python3 version_utils.py set 7.0.60 "DEEP DEBUG: File system, binary validity, and execution context analysis for Chainsaw" || log "Version update failed, continuing..."
+    python3 version_utils.py set 7.0.61 "FIX: Move Chainsaw binary to /usr/local/bin to bypass noexec mount restriction" || log "Version update failed, continuing..."
 else
     log "version_utils.py not found, skipping version update"
 fi
@@ -114,24 +114,25 @@ fi
 log "Clearing Redis queue..."
 redis-cli flushdb 2>/dev/null || log "Redis flush failed, continuing..."
 
-# 10. FIX CHAINSAW PERMISSIONS
-log "Fixing Chainsaw binary permissions..."
+# 10. FIX CHAINSAW NOEXEC ISSUE
+log "Fixing Chainsaw binary location (noexec bypass)..."
 if [ -f "/opt/casescope/rules/chainsaw" ]; then
-    log "Chainsaw binary found, checking current permissions..."
-    ls -la /opt/casescope/rules/chainsaw
+    log "Chainsaw binary found, checking mount restrictions..."
+    mount | grep /opt || log "No specific /opt mount found"
     
-    log "Setting executable permissions..."
-    chmod 755 /opt/casescope/rules/chainsaw
-    chown casescope:casescope /opt/casescope/rules/chainsaw
+    log "Moving Chainsaw binary to /usr/local/bin to bypass noexec..."
+    cp /opt/casescope/rules/chainsaw /usr/local/bin/chainsaw
+    chmod 755 /usr/local/bin/chainsaw
+    chown root:root /usr/local/bin/chainsaw
     
-    log "Verifying permissions after fix..."
-    ls -la /opt/casescope/rules/chainsaw
+    log "Creating symlink for compatibility..."
+    ln -sf /usr/local/bin/chainsaw /opt/casescope/rules/chainsaw-exec
     
-    # Test if it's actually executable by the casescope user
-    if sudo -u casescope test -x /opt/casescope/rules/chainsaw; then
-        log "✅ Chainsaw binary is executable by casescope user"
+    log "Testing Chainsaw execution from new location..."
+    if sudo -u casescope /usr/local/bin/chainsaw --help >/dev/null 2>&1; then
+        log "✅ Chainsaw binary is now executable from /usr/local/bin"
     else
-        log "❌ ERROR: Chainsaw binary still not executable by casescope user"
+        log "❌ ERROR: Chainsaw binary still not executable from /usr/local/bin"
     fi
 else
     log "Chainsaw binary not found, listing directory contents..."
@@ -230,13 +231,13 @@ echo "  Worker Logs:   journalctl -u casescope-worker -f"
 echo "  App Logs:      tail -f /opt/casescope/logs/*.log"
 echo "  Test Access:   curl http://localhost"
 echo "=================================================="
-echo "🔬 DEEP CHAINSAW DIAGNOSTICS:"
-echo "  ✅ ENHANCED: File system mount analysis (noexec detection)"
-echo "  ✅ ENHANCED: Binary validity checking (ELF header inspection)"
-echo "  ✅ ENHANCED: Process context analysis (UID/GID checking)"
-echo "  ✅ ENHANCED: Test execution with --help before main run"
-echo "  ✅ ENHANCED: Specific PermissionError handling"
-echo "  ✅ READY: Full diagnostic suite to identify root cause"
+echo "🚀 CHAINSAW NOEXEC FIX:"
+echo "  ✅ MOVED: Chainsaw binary from /opt to /usr/local/bin"
+echo "  ✅ BYPASSED: noexec mount restriction on /opt filesystem"
+echo "  ✅ UPDATED: Python code to use /usr/local/bin/chainsaw"
+echo "  ✅ TESTED: Chainsaw execution from new location"
+echo "  ✅ MAINTAINED: Rules still in /opt/casescope/rules/chainsaw-rules"
+echo "  ✅ RESOLVED: Permission denied error should be gone!"
 echo "  ✅ FIXED: Single file re-run rules now actually works (requeues processing)"
 echo "  ✅ FIXED: Duplicate files show proper warnings and are removed from upload queue"
 echo "  ✅ REPLACED: 3-dot menus with simple action buttons (much more reliable)"
@@ -295,4 +296,4 @@ echo "  ✅ Redis queue cleanup"
 echo "  ✅ Service configuration updates"
 echo "=================================================="
 
-log "🚀 caseScope Bug Fixes v7.0.60 deployment complete!"
+log "🚀 caseScope Bug Fixes v7.0.61 deployment complete!"

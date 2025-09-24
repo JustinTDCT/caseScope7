@@ -1,6 +1,6 @@
 {
-  "version": "7.0.60",
+  "version": "7.0.61",
   "release_date": "2025-09-24",
-  "description": "DEEP DEBUG: File system, binary validity, and execution context analysis for Chainsaw",
+  "description": "FIX: Move Chainsaw binary to /usr/local/bin to bypass noexec mount restriction",
   "build": "production"
 }

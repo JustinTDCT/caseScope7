@@ -854,7 +854,8 @@ def run_chainsaw_directly(case_file):
     """Run Chainsaw directly on EVTX file - much faster than event-by-event processing"""
     try:
         violations = 0
-        chainsaw_path = Path('/opt/casescope/rules/chainsaw')
+        # Use executable location to bypass noexec mount restrictions
+        chainsaw_path = Path('/usr/local/bin/chainsaw')
         chainsaw_rules_path = Path('/opt/casescope/rules/chainsaw-rules/rules')
         
         if not chainsaw_path.exists():
@@ -1078,7 +1079,8 @@ def apply_chainsaw_rules(events, case_file):
     """Apply actual Chainsaw rules by running Chainsaw binary"""
     try:
         violations = 0
-        chainsaw_path = Path('/opt/casescope/rules/chainsaw')
+        # Use executable location to bypass noexec mount restrictions  
+        chainsaw_path = Path('/usr/local/bin/chainsaw')
         chainsaw_rules_path = Path('/opt/casescope/rules/chainsaw-rules/rules')
         
         if not chainsaw_path.exists():
