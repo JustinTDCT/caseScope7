@@ -1,6 +1,6 @@
 {
-  "version": "7.0.92",
+  "version": "7.0.93",
   "release_date": "2025-09-25",
-  "description": "FIX: Flask circular import + reverted to working evtx package + system dependencies",
+  "description": "CRITICAL: Added missing bcrypt package to requirements.txt",
   "build": "production"
 }

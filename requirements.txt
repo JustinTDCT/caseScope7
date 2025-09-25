@@ -11,6 +11,7 @@ SQLAlchemy==2.0.23
 Flask-Login==0.6.3
 Flask-WTF==1.2.1
 WTForms==3.1.1
+bcrypt==4.1.2
 
 # OpenSearch Client
 opensearch-py==2.4.2
@@ -50,3 +51,7 @@ pathlib2==2.3.7
 
 # Logging Utilities
 colorlog==6.8.0
+
+# Additional Required Packages
+jinja2==3.1.2
+markupsafe==2.1.3

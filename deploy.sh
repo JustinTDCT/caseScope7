@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope v7.0.92 Deployment Script
+# caseScope v7.0.93 Deployment Script
 # Deploys application files after installation
 # Copyright 2025 Justin Dube
 
@@ -38,7 +38,7 @@ if [ ! -f /opt/casescope/logs/install.log ]; then
     exit 1
 fi
 
-log "Starting caseScope v7.0.92 application deployment..."
+log "Starting caseScope v7.0.93 application deployment..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -733,12 +733,65 @@ fi
 # Initialize database (using the virtual environment)
 log "Initializing database..."
 cd /opt/casescope/app
+
+# Test imports first
+log "Testing Python imports..."
 /opt/casescope/venv/bin/python3 -c "
 import sys
 sys.path.insert(0, '/opt/casescope/app')
-from app import init_db
-init_db()
-print('Database initialized successfully')
+try:
+    import bcrypt
+    print('✓ bcrypt imported successfully')
+    import flask
+    print('✓ flask imported successfully')
+    import flask_sqlalchemy
+    print('✓ flask_sqlalchemy imported successfully')
+    print('All critical imports successful')
+except Exception as e:
+    print(f'✗ Import failed: {e}')
+    raise
+" 2>&1 | tee -a /opt/casescope/logs/deploy.log
+
+if [ $? -ne 0 ]; then
+    log_error "Failed import test - check requirements.txt"
+    exit 1
+fi
+
+# Now initialize database
+log "Creating database tables..."
+/opt/casescope/venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/opt/casescope/app')
+try:
+    from app import db, app as flask_app, User
+    with flask_app.app_context():
+        # Create all database tables
+        db.create_all()
+        
+        # Create default admin user if it doesn't exist
+        admin_user = User.query.filter_by(username='Admin').first()
+        if not admin_user:
+            from werkzeug.security import generate_password_hash
+            admin_user = User(
+                username='Admin',
+                email='admin@casescope.local',
+                password_hash=generate_password_hash('ChangeMe!'),
+                role='administrator'
+            )
+            db.session.add(admin_user)
+            db.session.commit()
+            print('✓ Created default admin user: Admin / ChangeMe!')
+        else:
+            print('✓ Admin user already exists')
+        
+        print('✓ Database initialized successfully')
+        print(f'✓ Database location: /opt/casescope/data/casescope.db')
+        
+except Exception as e:
+    print(f'✗ Database initialization failed: {e}')
+    import traceback
+    traceback.print_exc()
+    raise
 " 2>&1 | tee -a /opt/casescope/logs/deploy.log
 
 if [ $? -ne 0 ]; then
@@ -922,7 +975,7 @@ else
     log_error "Nginx is not running"
 fi
 
-log "caseScope v7.0.92 deployment completed successfully!"
+log "caseScope v7.0.93 deployment completed successfully!"
 echo ""
 echo -e "${GREEN}=== Deployment Summary ===${NC}"
 echo -e "${GREEN}Web Interface:${NC} http://$(hostname -I | awk '{print $1}')"
