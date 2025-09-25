@@ -459,22 +459,12 @@ log "Downloading Chainsaw mapping files..."
 mkdir -p /usr/local/bin/mappings
 cd /usr/local/bin/mappings
 
-# Download the official mapping files from Chainsaw repository (using correct GitHub refs URL)
+# Download the official Chainsaw mapping file (contains ALL log source mappings)
 wget -O sigma-event-logs-all.yml "https://raw.githubusercontent.com/WithSecureLabs/chainsaw/refs/heads/master/mappings/sigma-event-logs-all.yml" 2>&1 | tee -a /opt/casescope/logs/install.log
 if [ $? -eq 0 ]; then
-    log "✓ Downloaded sigma-event-logs-all.yml mapping file"
+    log "✓ Downloaded sigma-event-logs-all.yml mapping file (contains all log source mappings)"
 else
     log_warning "Failed to download sigma-event-logs-all.yml mapping file"
-fi
-
-# Check for additional mapping files (process-creation specific)
-log "Checking for additional mapping files..."
-wget -O sigma-event-logs-process-creation.yml "https://raw.githubusercontent.com/WithSecureLabs/chainsaw/refs/heads/master/mappings/sigma-event-logs-process-creation.yml" 2>&1 | tee -a /opt/casescope/logs/install.log
-if [ $? -eq 0 ] && [ -s sigma-event-logs-process-creation.yml ]; then
-    log "✓ Downloaded sigma-event-logs-process-creation.yml mapping file"
-else
-    log "ℹ sigma-event-logs-process-creation.yml not available (using generic mapping)"
-    rm -f sigma-event-logs-process-creation.yml
 fi
 
 cd /opt/casescope/rules

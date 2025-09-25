@@ -1,6 +1,6 @@
 {
-  "version": "7.0.100",
+  "version": "7.0.101",
   "release_date": "2025-09-25",
-  "description": "FIX: Updated Chainsaw mapping file URLs to use correct GitHub refs/heads/master path",
+  "description": "FIX: Removed non-existent process-creation mapping file - only sigma-event-logs-all.yml exists",
   "build": "production"
 }

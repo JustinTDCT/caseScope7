@@ -1006,28 +1006,18 @@ else
     log "✗ Failed to update Chainsaw rules"
 fi
 
-# Update Chainsaw mapping files
-log "Updating Chainsaw mapping files..."
+# Update Chainsaw mapping file
+log "Updating Chainsaw mapping file..."
 cd /usr/local/bin/mappings
 
-# Update sigma-event-logs-all.yml (using correct GitHub refs URL)
+# Update sigma-event-logs-all.yml (contains ALL log source mappings)
 wget -O sigma-event-logs-all.yml.new "https://raw.githubusercontent.com/WithSecureLabs/chainsaw/refs/heads/master/mappings/sigma-event-logs-all.yml"
 if [ $? -eq 0 ]; then
     mv sigma-event-logs-all.yml.new sigma-event-logs-all.yml
-    log "✓ Updated sigma-event-logs-all.yml mapping file"
+    log "✓ Updated sigma-event-logs-all.yml mapping file (contains all log source mappings)"
 else
     rm -f sigma-event-logs-all.yml.new
     log "✗ Failed to update sigma-event-logs-all.yml mapping file"
-fi
-
-# Update sigma-event-logs-process-creation.yml (if it exists)
-wget -O sigma-event-logs-process-creation.yml.new "https://raw.githubusercontent.com/WithSecureLabs/chainsaw/refs/heads/master/mappings/sigma-event-logs-process-creation.yml" 2>/dev/null
-if [ $? -eq 0 ] && [ -s sigma-event-logs-process-creation.yml.new ]; then
-    mv sigma-event-logs-process-creation.yml.new sigma-event-logs-process-creation.yml
-    log "✓ Updated sigma-event-logs-process-creation.yml mapping file"
-else
-    rm -f sigma-event-logs-process-creation.yml.new
-    log "ℹ sigma-event-logs-process-creation.yml mapping file not available (using generic mapping)"
 fi
 
 # Update application database
