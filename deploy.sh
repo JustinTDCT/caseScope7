@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope v7.0.94 Deployment Script
+# caseScope v7.0.95 Deployment Script
 # Deploys application files after installation
 # Copyright 2025 Justin Dube
 
@@ -38,7 +38,7 @@ if [ ! -f /opt/casescope/logs/install.log ]; then
     exit 1
 fi
 
-log "Starting caseScope v7.0.94 application deployment..."
+log "Starting caseScope v7.0.95 application deployment..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -787,6 +787,15 @@ try:
         print('✓ Database initialized successfully')
         print(f'✓ Database location: /opt/casescope/data/casescope.db')
         
+        # Ensure database has proper permissions immediately after creation
+        import os
+        import stat
+        db_path = '/opt/casescope/data/casescope.db'
+        if os.path.exists(db_path):
+            # Set file permissions to 664 (rw-rw-r--)
+            os.chmod(db_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH)
+            print('✓ Database permissions set to 664')
+        
 except Exception as e:
     print(f'✗ Database initialization failed: {e}')
     import traceback
@@ -808,18 +817,37 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Fix database permissions specifically
-log "Setting database permissions..."
+# Fix database and directory permissions comprehensively
+log "Setting comprehensive database permissions..."
+
+# Ensure data directory is owned by casescope and writable
+chown -R casescope:casescope /opt/casescope/data
+chmod 755 /opt/casescope/data
+log "✓ Data directory ownership and permissions set"
+
+# Fix database file permissions if it exists
 if [ -f /opt/casescope/data/casescope.db ]; then
     chown casescope:casescope /opt/casescope/data/casescope.db
     chmod 664 /opt/casescope/data/casescope.db
-    log "Database file permissions set"
+    log "✓ Database file permissions set (664)"
+    
+    # Verify permissions
+    DB_PERMS=$(ls -la /opt/casescope/data/casescope.db)
+    log "Database permissions: $DB_PERMS"
+else
+    log "Database file not found yet - will be created with proper permissions"
 fi
 
-# Ensure the data directory is writable
-chown -R casescope:casescope /opt/casescope/data
-chmod 755 /opt/casescope/data
-log "Data directory permissions verified"
+# Ensure uploads directory is writable
+mkdir -p /opt/casescope/data/uploads
+chown -R casescope:casescope /opt/casescope/data/uploads
+chmod 755 /opt/casescope/data/uploads
+log "✓ Uploads directory permissions set"
+
+# Set proper permissions on parent directories
+chown casescope:casescope /opt/casescope
+chmod 755 /opt/casescope
+log "✓ Parent directory permissions verified"
 
 # Update systemd service files to use correct paths
 log "Updating systemd service files..."
@@ -919,6 +947,39 @@ else
     systemctl status casescope-worker --no-pager
 fi
 
+# Final database permission verification
+log "Final database permission verification..."
+if [ -f /opt/casescope/data/casescope.db ]; then
+    # Test database write permissions by running as casescope user
+    sudo -u casescope touch /opt/casescope/data/test_write_permissions.tmp 2>/dev/null
+    if [ $? -eq 0 ]; then
+        rm -f /opt/casescope/data/test_write_permissions.tmp
+        log "✓ Database directory write permissions verified"
+        
+        # Test database file write access
+        sudo -u casescope sqlite3 /opt/casescope/data/casescope.db "PRAGMA user_version;" >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            log "✓ Database file write access verified"
+        else
+            log_error "Database file write access failed"
+            log "Fixing database file permissions..."
+            chown casescope:casescope /opt/casescope/data/casescope.db
+            chmod 664 /opt/casescope/data/casescope.db
+        fi
+    else
+        log_error "Database directory write permissions failed"
+        log "Fixing directory permissions..."
+        chown -R casescope:casescope /opt/casescope/data
+        chmod 755 /opt/casescope/data
+    fi
+    
+    # Display final permissions
+    log "Final database permissions:"
+    ls -la /opt/casescope/data/casescope.db | tee -a /opt/casescope/logs/deploy.log
+else
+    log_warning "Database file not found - this may cause issues"
+fi
+
 # Create daily rule update cron job
 log "Creating daily rule update cron job..."
 cat > /etc/cron.d/casescope-rules << 'EOF'
@@ -975,7 +1036,7 @@ else
     log_error "Nginx is not running"
 fi
 
-log "caseScope v7.0.94 deployment completed successfully!"
+log "caseScope v7.0.95 deployment completed successfully!"
 echo ""
 echo -e "${GREEN}=== Deployment Summary ===${NC}"
 echo -e "${GREEN}Web Interface:${NC} http://$(hostname -I | awk '{print $1}')"

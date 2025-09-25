@@ -1,6 +1,6 @@
 {
-  "version": "7.0.94",
+  "version": "7.0.95",
   "release_date": "2025-09-25",
-  "description": "CRITICAL: Complete requirements.txt with all missing packages (APScheduler, setuptools, wheel)",
+  "description": "FIX: Database write permissions for case creation + comprehensive permission verification",
   "build": "production"
 }
