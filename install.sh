@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope v7.0.86 Installation Script
+# caseScope v7.0.92 Installation Script
 # Designed for Ubuntu 24 headless server
 # Copyright 2025 Justin Dube
 
@@ -130,7 +130,7 @@ fi
 # Reload systemd to clear removed services
 systemctl daemon-reload
 
-log "Starting caseScope v7.0.90 installation..."
+log "Starting caseScope v7.0.92 installation..."
 log "Target OS: Ubuntu 24 headless server"
 log "Installation directory: /opt/casescope"
 
@@ -159,7 +159,9 @@ apt install -y python3 python3-pip python3-venv python3-dev \
                htop iotop \
                net-tools iproute2 \
                libxml2-dev libxslt1-dev \
-               pkg-config 2>&1 | tee -a /opt/casescope/logs/install.log
+               pkg-config \
+               libc6-dev \
+               python3-setuptools 2>&1 | tee -a /opt/casescope/logs/install.log
 
 if [ $? -ne 0 ]; then
     log_error "Failed to install system dependencies"
@@ -188,31 +190,11 @@ pip install --upgrade pip 2>&1 | tee -a /opt/casescope/logs/install.log
 
 # Install Python dependencies
 log "Installing Python dependencies..."
-cat > requirements.txt << 'EOF'
-Flask==3.0.0
-Flask-Login==0.6.3
-Flask-WTF==1.2.1
-Flask-SQLAlchemy==3.1.1
-Werkzeug==3.0.1
-WTForms==3.1.0
-opensearch-py==2.4.2
-gunicorn==21.2.0
-evtx
-pyyaml==6.0.1
-requests==2.31.0
-bcrypt==4.1.2
-python-dateutil==2.8.2
-psutil==5.9.8
-celery==5.3.4
-redis==5.0.1
-xmltodict==0.13.0
-elasticsearch-dsl==8.11.0
-APScheduler==3.10.4
-jinja2==3.1.2
-markupsafe==2.1.3
-EOF
+# Note: requirements.txt will be provided by deploy script
+# For now, install essential packages for system setup
 
-pip install -r requirements.txt 2>&1 | tee -a /opt/casescope/logs/install.log
+pip install --upgrade pip 2>&1 | tee -a /opt/casescope/logs/install.log
+pip install setuptools wheel 2>&1 | tee -a /opt/casescope/logs/install.log
 if [ $? -ne 0 ]; then
     log_error "Failed to install Python dependencies"
     exit 1
@@ -673,12 +655,12 @@ fi
 log "Installation framework complete. Application files will be created next."
 
 # Create version file
-echo "7.0.90" > /opt/casescope/VERSION
+echo "7.0.92" > /opt/casescope/VERSION
 
 # Set final permissions
 chown -R casescope:casescope /opt/casescope
 
-log "caseScope v7.0.90 installation framework completed successfully!"
+log "caseScope v7.0.92 installation framework completed successfully!"
 log "Application files will be deployed next..."
 
 # Check if reboot is needed

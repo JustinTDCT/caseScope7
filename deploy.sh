@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope v7.0.86 Deployment Script
+# caseScope v7.0.92 Deployment Script
 # Deploys application files after installation
 # Copyright 2025 Justin Dube
 
@@ -38,7 +38,7 @@ if [ ! -f /opt/casescope/logs/install.log ]; then
     exit 1
 fi
 
-log "Starting caseScope v7.0.90 application deployment..."
+log "Starting caseScope v7.0.92 application deployment..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,31 +59,46 @@ cp "$SCRIPT_DIR/version_utils.py" /opt/casescope/app/
 cp -r "$SCRIPT_DIR/templates"/* /opt/casescope/app/templates/
 cp -r "$SCRIPT_DIR/static"/* /opt/casescope/app/static/
 
-# Create requirements.txt in the app directory
-log "Creating requirements.txt..."
-cat > /opt/casescope/app/requirements.txt << 'EOF'
-Flask==3.0.0
-Flask-Login==0.6.3
-Flask-WTF==1.2.1
-Flask-SQLAlchemy==3.1.1
-Werkzeug==3.0.1
-WTForms==3.1.0
-opensearch-py==2.4.2
-gunicorn==21.2.0
-evtx
-pyyaml==6.0.1
-requests==2.31.0
-bcrypt==4.1.2
-python-dateutil==2.8.2
-psutil==5.9.8
-celery==5.3.4
-redis==5.0.1
-elasticsearch-dsl==8.11.0
-xmltodict==0.13.0
-APScheduler==3.10.4
-jinja2==3.1.2
-markupsafe==2.1.3
-EOF
+# Fix Flask app circular import issue
+log "Fixing Flask app circular import..."
+cd /opt/casescope/app
+python3 << 'PYTHON_FIX_IMPORTS'
+# Fix the circular import issue in app.py
+with open('app.py', 'r') as f:
+    content = f.read()
+
+# Replace the problematic line that uses app before it's defined
+old_line = "upload_dir = app.config.get('UPLOAD_FOLDER', '/opt/casescope/data/uploads')"
+new_line = "upload_dir = '/opt/casescope/data/uploads'  # Default upload directory"
+
+if old_line in content:
+    content = content.replace(old_line, new_line)
+    print("✓ Fixed Flask app config circular reference")
+
+# Also fix any other early app.config references
+import re
+pattern = r"app\.config\.get\([^)]+\)"
+matches = re.findall(pattern, content)
+for match in matches:
+    if "UPLOAD_FOLDER" in match:
+        content = content.replace(match, "'/opt/casescope/data/uploads'")
+        print(f"✓ Fixed early config reference: {match}")
+
+with open('app.py', 'w') as f:
+    f.write(content)
+
+print("Flask app import fix completed")
+PYTHON_FIX_IMPORTS
+
+# Copy requirements.txt to the app directory
+log "Copying requirements.txt..."
+if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
+    cp "$SCRIPT_DIR/requirements.txt" /opt/casescope/app/
+    log "✓ Copied requirements.txt from source"
+else
+    log_error "requirements.txt not found in source directory"
+    exit 1
+fi
 
 # Create admin templates
 log "Creating admin templates..."
@@ -907,7 +922,7 @@ else
     log_error "Nginx is not running"
 fi
 
-log "caseScope v7.0.90 deployment completed successfully!"
+log "caseScope v7.0.92 deployment completed successfully!"
 echo ""
 echo -e "${GREEN}=== Deployment Summary ===${NC}"
 echo -e "${GREEN}Web Interface:${NC} http://$(hostname -I | awk '{print $1}')"

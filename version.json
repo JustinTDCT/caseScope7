@@ -1,6 +1,6 @@
 {
-  "version": "7.0.90",
+  "version": "7.0.92",
   "release_date": "2025-09-25",
-  "description": "FIX: Missing pyevtx package + system utilities + proper logging configuration",
+  "description": "FIX: Flask circular import + reverted to working evtx package + system dependencies",
   "build": "production"
 }

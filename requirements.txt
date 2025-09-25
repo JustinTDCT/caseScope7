@@ -1,4 +1,4 @@
-# caseScope v7.0.86 Python Dependencies
+# caseScope v7.0.92 Python Dependencies
 # Core Flask Framework
 Flask==3.0.0
 Werkzeug==3.0.1
@@ -21,9 +21,11 @@ redis==5.0.1
 # Celery for Background Tasks
 celery==5.3.4
 
+# WSGI Server
+gunicorn==21.2.0
+
 # EVTX Parsing
-pyevtx==20231118
-pyevtx-rs==0.8.1
+evtx
 
 # XML Processing
 xmltodict==0.13.0
