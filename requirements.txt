@@ -23,6 +23,7 @@ celery==5.3.4
 
 # EVTX Parsing
 pyevtx==20231118
+pyevtx-rs==0.8.1
 
 # XML Processing
 xmltodict==0.13.0

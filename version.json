@@ -1,6 +1,6 @@
 {
-  "version": "7.0.89",
-  "release_date": "2025-09-24",
-  "description": "FIX: Enhanced OpenSearch data sanitization + system utilities + database permissions",
+  "version": "7.0.90",
+  "release_date": "2025-09-25",
+  "description": "FIX: Missing pyevtx package + system utilities + proper logging configuration",
   "build": "production"
 }

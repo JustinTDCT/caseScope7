@@ -130,7 +130,7 @@ fi
 # Reload systemd to clear removed services
 systemctl daemon-reload
 
-log "Starting caseScope v7.0.86 installation..."
+log "Starting caseScope v7.0.90 installation..."
 log "Target OS: Ubuntu 24 headless server"
 log "Installation directory: /opt/casescope"
 
@@ -157,7 +157,9 @@ apt install -y python3 python3-pip python3-venv python3-dev \
                sqlite3 libsqlite3-dev \
                libffi-dev libssl-dev \
                htop iotop \
-               net-tools iproute2 2>&1 | tee -a /opt/casescope/logs/install.log
+               net-tools iproute2 \
+               libxml2-dev libxslt1-dev \
+               pkg-config 2>&1 | tee -a /opt/casescope/logs/install.log
 
 if [ $? -ne 0 ]; then
     log_error "Failed to install system dependencies"
@@ -671,12 +673,12 @@ fi
 log "Installation framework complete. Application files will be created next."
 
 # Create version file
-echo "7.0.86" > /opt/casescope/VERSION
+echo "7.0.90" > /opt/casescope/VERSION
 
 # Set final permissions
 chown -R casescope:casescope /opt/casescope
 
-log "caseScope v7.0.86 installation framework completed successfully!"
+log "caseScope v7.0.90 installation framework completed successfully!"
 log "Application files will be deployed next..."
 
 # Check if reboot is needed

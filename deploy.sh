@@ -38,7 +38,7 @@ if [ ! -f /opt/casescope/logs/install.log ]; then
     exit 1
 fi
 
-log "Starting caseScope v7.0.86 application deployment..."
+log "Starting caseScope v7.0.90 application deployment..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -685,6 +685,17 @@ session_timeout = 3600
 max_login_attempts = 5
 EOF
 
+# Create and set up log files
+log "Creating log files with proper permissions..."
+mkdir -p /opt/casescope/logs
+touch /opt/casescope/logs/application.log
+touch /opt/casescope/logs/error.log
+touch /opt/casescope/logs/access.log
+touch /opt/casescope/logs/celery.log
+chown -R casescope:casescope /opt/casescope/logs
+chmod 755 /opt/casescope/logs
+chmod 664 /opt/casescope/logs/*.log
+
 # Set permissions
 log "Setting file permissions..."
 chown -R casescope:casescope /opt/casescope/app
@@ -754,9 +765,9 @@ Type=exec
 User=casescope
 Group=casescope
 WorkingDirectory=/opt/casescope/app
-Environment=PATH=/opt/casescope/venv/bin
+Environment=PATH=/opt/casescope/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=PYTHONPATH=/opt/casescope/app
-ExecStart=/opt/casescope/venv/bin/gunicorn --bind 127.0.0.1:5000 --workers 4 --timeout 300 wsgi:app
+ExecStart=/opt/casescope/venv/bin/gunicorn --bind 127.0.0.1:5000 --workers 4 --timeout 300 --access-logfile /opt/casescope/logs/access.log --error-logfile /opt/casescope/logs/error.log wsgi:app
 Restart=always
 RestartSec=3
 
@@ -774,9 +785,9 @@ Type=exec
 User=casescope
 Group=casescope
 WorkingDirectory=/opt/casescope/app
-Environment=PATH=/opt/casescope/venv/bin
+Environment=PATH=/opt/casescope/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=PYTHONPATH=/opt/casescope/app
-ExecStart=/opt/casescope/venv/bin/celery -A app.celery worker --loglevel=info
+ExecStart=/opt/casescope/venv/bin/celery -A app.celery worker --loglevel=info --logfile=/opt/casescope/logs/celery.log
 Restart=always
 RestartSec=3
 
@@ -896,7 +907,7 @@ else
     log_error "Nginx is not running"
 fi
 
-log "caseScope v7.0.86 deployment completed successfully!"
+log "caseScope v7.0.90 deployment completed successfully!"
 echo ""
 echo -e "${GREEN}=== Deployment Summary ===${NC}"
 echo -e "${GREEN}Web Interface:${NC} http://$(hostname -I | awk '{print $1}')"
