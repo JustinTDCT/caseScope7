@@ -132,7 +132,7 @@ except Exception as e:
     print(f'ERROR: {e}')
 " 2>/dev/null || echo "0")
         
-        if [[ "$USER_COUNT" =~ ^[0-9]+$ ]]; then
+        if [[ "$USER_COUNT" =~ ^[0-9]+$ ]] && [ "$USER_COUNT" -ge 0 ]; then
             log "✓ Database connectivity OK ($USER_COUNT users)"
         else
             log_error "Database connectivity failed: $USER_COUNT"

@@ -467,12 +467,13 @@ else
     log_warning "Failed to download sigma-event-logs-all.yml mapping file"
 fi
 
-# Download additional mapping files for better coverage
+# Download additional mapping files for better coverage (check if file exists first)
 wget -O sigma-event-logs-process-creation.yml "https://raw.githubusercontent.com/WithSecureLabs/chainsaw/master/mappings/sigma-event-logs-process-creation.yml" 2>&1 | tee -a /opt/casescope/logs/install.log
-if [ $? -eq 0 ]; then
+if [ $? -eq 0 ] && [ -s sigma-event-logs-process-creation.yml ]; then
     log "✓ Downloaded sigma-event-logs-process-creation.yml mapping file"
 else
-    log_warning "Failed to download sigma-event-logs-process-creation.yml mapping file"
+    log_warning "Failed to download sigma-event-logs-process-creation.yml mapping file (may not exist)"
+    rm -f sigma-event-logs-process-creation.yml
 fi
 
 cd /opt/casescope/rules

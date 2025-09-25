@@ -53,10 +53,23 @@ mkdir -p /opt/casescope/data/uploads
 
 # Copy application files
 log "Copying application files..."
+if [ ! -f "$SCRIPT_DIR/app.py" ]; then
+    log_error "app.py not found in source directory: $SCRIPT_DIR"
+    exit 1
+fi
+
 cp "$SCRIPT_DIR/app.py" /opt/casescope/app/
 cp "$SCRIPT_DIR/version.json" /opt/casescope/app/
 cp -r "$SCRIPT_DIR/templates"/* /opt/casescope/app/templates/
 cp -r "$SCRIPT_DIR/static"/* /opt/casescope/app/static/
+
+# Verify critical files were copied
+if [ ! -f "/opt/casescope/app/app.py" ]; then
+    log_error "Failed to copy app.py to /opt/casescope/app/"
+    exit 1
+fi
+
+log "✓ Application files copied successfully"
 
 # Fix Flask app circular import issue
 log "Fixing Flask app circular import..."
@@ -1007,14 +1020,14 @@ else
     log "✗ Failed to update sigma-event-logs-all.yml mapping file"
 fi
 
-# Update sigma-event-logs-process-creation.yml
-wget -O sigma-event-logs-process-creation.yml.new "https://raw.githubusercontent.com/WithSecureLabs/chainsaw/master/mappings/sigma-event-logs-process-creation.yml"
-if [ $? -eq 0 ]; then
+# Update sigma-event-logs-process-creation.yml (if it exists)
+wget -O sigma-event-logs-process-creation.yml.new "https://raw.githubusercontent.com/WithSecureLabs/chainsaw/master/mappings/sigma-event-logs-process-creation.yml" 2>/dev/null
+if [ $? -eq 0 ] && [ -s sigma-event-logs-process-creation.yml.new ]; then
     mv sigma-event-logs-process-creation.yml.new sigma-event-logs-process-creation.yml
     log "✓ Updated sigma-event-logs-process-creation.yml mapping file"
 else
     rm -f sigma-event-logs-process-creation.yml.new
-    log "✗ Failed to update sigma-event-logs-process-creation.yml mapping file"
+    log "ℹ sigma-event-logs-process-creation.yml mapping file not available (may not exist upstream)"
 fi
 
 # Update application database

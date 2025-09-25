@@ -1,6 +1,6 @@
 {
-  "version": "7.0.98",
+  "version": "7.0.99",
   "release_date": "2025-09-25",
-  "description": "FIX: Chainsaw mapping files download + nightly update for mappings",
+  "description": "URGENT FIX: Missing app directory + 404 mapping file + debug script syntax + emergency recovery",
   "build": "production"
 }
