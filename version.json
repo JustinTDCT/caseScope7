@@ -1,6 +1,6 @@
 {
-  "version": "7.0.99",
+  "version": "7.0.100",
   "release_date": "2025-09-25",
-  "description": "URGENT FIX: Missing app directory + 404 mapping file + debug script syntax + emergency recovery",
+  "description": "FIX: Updated Chainsaw mapping file URLs to use correct GitHub refs/heads/master path",
   "build": "production"
 }
