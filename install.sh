@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope v7.0.96 Installation Script
+# caseScope v7.0.97 Installation Script
 # Designed for Ubuntu 24 headless server
 # Copyright 2025 Justin Dube
 
@@ -130,7 +130,7 @@ fi
 # Reload systemd to clear removed services
 systemctl daemon-reload
 
-log "Starting caseScope v7.0.96 installation..."
+log "Starting caseScope v7.0.97 installation..."
 log "Target OS: Ubuntu 24 headless server"
 log "Installation directory: /opt/casescope"
 
@@ -394,9 +394,9 @@ if [ $? -eq 0 ] && [ -s chainsaw.tar.gz ]; then
         # Find the chainsaw binary
         CHAINSAW_BINARY=$(find . -name "chainsaw" -type f -executable | head -1)
         if [ -n "$CHAINSAW_BINARY" ] && [ -f "$CHAINSAW_BINARY" ]; then
-            cp "$CHAINSAW_BINARY" /opt/casescope/rules/chainsaw
-            chmod +x /opt/casescope/rules/chainsaw
-            log "Chainsaw binary installed successfully from $CHAINSAW_BINARY"
+            cp "$CHAINSAW_BINARY" /usr/local/bin/chainsaw
+            chmod +x /usr/local/bin/chainsaw
+            log "Chainsaw binary installed successfully to /usr/local/bin/chainsaw from $CHAINSAW_BINARY"
             CHAINSAW_DOWNLOADED=true
         else
             log "Chainsaw binary not found in extracted archive"
@@ -423,9 +423,9 @@ if [ "$CHAINSAW_DOWNLOADED" = "false" ]; then
             if [ $? -eq 0 ]; then
                 CHAINSAW_BINARY=$(find . -name "chainsaw" -type f -executable | head -1)
                 if [ -n "$CHAINSAW_BINARY" ] && [ -f "$CHAINSAW_BINARY" ]; then
-                    cp "$CHAINSAW_BINARY" /opt/casescope/rules/chainsaw
-                    chmod +x /opt/casescope/rules/chainsaw
-                    log "Chainsaw $version installed successfully from $CHAINSAW_BINARY"
+                    cp "$CHAINSAW_BINARY" /usr/local/bin/chainsaw
+                    chmod +x /usr/local/bin/chainsaw
+                    log "Chainsaw $version installed successfully to /usr/local/bin/chainsaw from $CHAINSAW_BINARY"
                     CHAINSAW_DOWNLOADED=true
                 fi
             fi
@@ -655,12 +655,22 @@ fi
 log "Installation framework complete. Application files will be created next."
 
 # Create version file
-echo "7.0.96" > /opt/casescope/VERSION
+echo "7.0.97" > /opt/casescope/VERSION
+
+# Verify critical binaries
+log "Verifying critical installations..."
+if [ -f /usr/local/bin/chainsaw ]; then
+    log "✓ Chainsaw binary found at /usr/local/bin/chainsaw"
+    CHAINSAW_VERSION=$(/usr/local/bin/chainsaw --version 2>/dev/null || echo "unknown")
+    log "Chainsaw version: $CHAINSAW_VERSION"
+else
+    log_warning "Chainsaw binary not found at /usr/local/bin/chainsaw"
+fi
 
 # Set final permissions
 chown -R casescope:casescope /opt/casescope
 
-log "caseScope v7.0.96 installation framework completed successfully!"
+log "caseScope v7.0.97 installation framework completed successfully!"
 log "Application files will be deployed next..."
 
 # Check if reboot is needed

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope v7.0.96 Deployment Script
+# caseScope v7.0.97 Deployment Script
 # Deploys application files after installation
 # Copyright 2025 Justin Dube
 
@@ -38,7 +38,7 @@ if [ ! -f /opt/casescope/logs/install.log ]; then
     exit 1
 fi
 
-log "Starting caseScope v7.0.96 application deployment..."
+log "Starting caseScope v7.0.97 application deployment..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -916,6 +916,43 @@ systemctl enable casescope-worker
 
 # Start services
 systemctl restart opensearch
+
+# Wait for OpenSearch to be ready and clean up indices
+log "Waiting for OpenSearch to be ready..."
+sleep 10
+for i in {1..30}; do
+    if curl -s "http://localhost:9200/_cluster/health" >/dev/null 2>&1; then
+        log "OpenSearch is responding"
+        break
+    fi
+    
+    if [ $i -eq 30 ]; then
+        log_warning "OpenSearch may not be responding - continuing anyway"
+        break
+    fi
+    
+    sleep 2
+done
+
+# Clean up any problematic OpenSearch indices to prevent mapping conflicts
+log "Cleaning up OpenSearch indices to prevent mapping conflicts..."
+if curl -s "http://localhost:9200/_cluster/health" >/dev/null 2>&1; then
+    # Get all casescope indices and delete them to start fresh
+    INDICES=$(curl -s "http://localhost:9200/_cat/indices/casescope*" 2>/dev/null | awk '{print $3}' | tr '\n' ' ')
+    if [ -n "$INDICES" ]; then
+        log "Found existing indices: $INDICES"
+        for index in $INDICES; do
+            log "Deleting index: $index"
+            curl -s -X DELETE "http://localhost:9200/$index" >/dev/null 2>&1
+        done
+        log "✓ Cleaned up existing indices to prevent mapping conflicts"
+    else
+        log "✓ No existing indices found - clean start"
+    fi
+else
+    log_warning "Could not connect to OpenSearch for index cleanup"
+fi
+
 systemctl restart nginx
 systemctl start casescope-web
 systemctl start casescope-worker
@@ -1049,7 +1086,7 @@ else
     log_error "Nginx is not running"
 fi
 
-log "caseScope v7.0.96 deployment completed successfully!"
+log "caseScope v7.0.97 deployment completed successfully!"
 echo ""
 echo -e "${GREEN}=== Deployment Summary ===${NC}"
 echo -e "${GREEN}Web Interface:${NC} http://$(hostname -I | awk '{print $1}')"

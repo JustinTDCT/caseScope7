@@ -1,6 +1,6 @@
 {
-  "version": "7.0.96",
+  "version": "7.0.97",
   "release_date": "2025-09-25",
-  "description": "CRITICAL FIX: User role mismatch preventing case creation (administrator -> admin)",
+  "description": "FIX: Chainsaw binary location + OpenSearch mapping conflicts + index cleanup",
   "build": "production"
 }
