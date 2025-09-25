@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope v7.0.95 Installation Script
+# caseScope v7.0.96 Installation Script
 # Designed for Ubuntu 24 headless server
 # Copyright 2025 Justin Dube
 
@@ -130,7 +130,7 @@ fi
 # Reload systemd to clear removed services
 systemctl daemon-reload
 
-log "Starting caseScope v7.0.95 installation..."
+log "Starting caseScope v7.0.96 installation..."
 log "Target OS: Ubuntu 24 headless server"
 log "Installation directory: /opt/casescope"
 
@@ -655,12 +655,12 @@ fi
 log "Installation framework complete. Application files will be created next."
 
 # Create version file
-echo "7.0.95" > /opt/casescope/VERSION
+echo "7.0.96" > /opt/casescope/VERSION
 
 # Set final permissions
 chown -R casescope:casescope /opt/casescope
 
-log "caseScope v7.0.95 installation framework completed successfully!"
+log "caseScope v7.0.96 installation framework completed successfully!"
 log "Application files will be deployed next..."
 
 # Check if reboot is needed

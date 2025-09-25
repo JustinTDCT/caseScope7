@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope v7.0.95 Deployment Script
+# caseScope v7.0.96 Deployment Script
 # Deploys application files after installation
 # Copyright 2025 Justin Dube
 
@@ -38,7 +38,7 @@ if [ ! -f /opt/casescope/logs/install.log ]; then
     exit 1
 fi
 
-log "Starting caseScope v7.0.95 application deployment..."
+log "Starting caseScope v7.0.96 application deployment..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -776,13 +776,26 @@ try:
                 username='Admin',
                 email='admin@casescope.local',
                 password_hash=generate_password_hash('ChangeMe!'),
-                role='administrator'
+                role='admin'
             )
             db.session.add(admin_user)
             db.session.commit()
             print('✓ Created default admin user: Admin / ChangeMe!')
         else:
             print('✓ Admin user already exists')
+        
+        # Fix any existing users with incorrect role names
+        users_fixed = 0
+        incorrect_role_users = User.query.filter_by(role='administrator').all()
+        for user in incorrect_role_users:
+            user.role = 'admin'
+            users_fixed += 1
+        
+        if users_fixed > 0:
+            db.session.commit()
+            print(f'✓ Fixed {users_fixed} users with incorrect role names (administrator -> admin)')
+        else:
+            print('✓ All user roles are correct')
         
         print('✓ Database initialized successfully')
         print(f'✓ Database location: /opt/casescope/data/casescope.db')
@@ -1036,7 +1049,7 @@ else
     log_error "Nginx is not running"
 fi
 
-log "caseScope v7.0.95 deployment completed successfully!"
+log "caseScope v7.0.96 deployment completed successfully!"
 echo ""
 echo -e "${GREEN}=== Deployment Summary ===${NC}"
 echo -e "${GREEN}Web Interface:${NC} http://$(hostname -I | awk '{print $1}')"

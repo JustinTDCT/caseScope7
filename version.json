@@ -1,6 +1,6 @@
 {
-  "version": "7.0.95",
+  "version": "7.0.96",
   "release_date": "2025-09-25",
-  "description": "FIX: Database write permissions for case creation + comprehensive permission verification",
+  "description": "CRITICAL FIX: User role mismatch preventing case creation (administrator -> admin)",
   "build": "production"
 }
