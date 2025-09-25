@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope v7.0.97 Installation Script
+# caseScope v7.0.98 Installation Script
 # Designed for Ubuntu 24 headless server
 # Copyright 2025 Justin Dube
 
@@ -130,7 +130,7 @@ fi
 # Reload systemd to clear removed services
 systemctl daemon-reload
 
-log "Starting caseScope v7.0.97 installation..."
+log "Starting caseScope v7.0.98 installation..."
 log "Target OS: Ubuntu 24 headless server"
 log "Installation directory: /opt/casescope"
 
@@ -450,7 +450,32 @@ if [ $? -ne 0 ]; then
     # Create placeholder for chainsaw rules
     mkdir -p chainsaw-rules/rules
     echo "# Chainsaw rules placeholder" > chainsaw-rules/rules/placeholder.yml
+else
+    log "✓ Chainsaw rules repository downloaded successfully"
 fi
+
+# Download Chainsaw mapping files for Sigma rules
+log "Downloading Chainsaw mapping files..."
+mkdir -p /usr/local/bin/mappings
+cd /usr/local/bin/mappings
+
+# Download the official mapping files from Chainsaw repository
+wget -O sigma-event-logs-all.yml "https://raw.githubusercontent.com/WithSecureLabs/chainsaw/master/mappings/sigma-event-logs-all.yml" 2>&1 | tee -a /opt/casescope/logs/install.log
+if [ $? -eq 0 ]; then
+    log "✓ Downloaded sigma-event-logs-all.yml mapping file"
+else
+    log_warning "Failed to download sigma-event-logs-all.yml mapping file"
+fi
+
+# Download additional mapping files for better coverage
+wget -O sigma-event-logs-process-creation.yml "https://raw.githubusercontent.com/WithSecureLabs/chainsaw/master/mappings/sigma-event-logs-process-creation.yml" 2>&1 | tee -a /opt/casescope/logs/install.log
+if [ $? -eq 0 ]; then
+    log "✓ Downloaded sigma-event-logs-process-creation.yml mapping file"
+else
+    log_warning "Failed to download sigma-event-logs-process-creation.yml mapping file"
+fi
+
+cd /opt/casescope/rules
 
 if [ "$CHAINSAW_DOWNLOADED" = "true" ]; then
     log "Chainsaw setup completed successfully"
@@ -655,7 +680,7 @@ fi
 log "Installation framework complete. Application files will be created next."
 
 # Create version file
-echo "7.0.97" > /opt/casescope/VERSION
+echo "7.0.98" > /opt/casescope/VERSION
 
 # Verify critical binaries
 log "Verifying critical installations..."
@@ -667,10 +692,17 @@ else
     log_warning "Chainsaw binary not found at /usr/local/bin/chainsaw"
 fi
 
+# Verify mapping files
+if [ -f /usr/local/bin/mappings/sigma-event-logs-all.yml ]; then
+    log "✓ Chainsaw mapping file found at /usr/local/bin/mappings/sigma-event-logs-all.yml"
+else
+    log_warning "Chainsaw mapping file not found at /usr/local/bin/mappings/sigma-event-logs-all.yml"
+fi
+
 # Set final permissions
 chown -R casescope:casescope /opt/casescope
 
-log "caseScope v7.0.97 installation framework completed successfully!"
+log "caseScope v7.0.98 installation framework completed successfully!"
 log "Application files will be deployed next..."
 
 # Check if reboot is needed
