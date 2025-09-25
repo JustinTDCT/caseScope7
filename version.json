@@ -1,6 +1,6 @@
 {
-  "version": "7.0.93",
+  "version": "7.0.94",
   "release_date": "2025-09-25",
-  "description": "CRITICAL: Added missing bcrypt package to requirements.txt",
+  "description": "CRITICAL: Complete requirements.txt with all missing packages (APScheduler, setuptools, wheel)",
   "build": "production"
 }
