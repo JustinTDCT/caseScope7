@@ -1,6 +1,6 @@
 {
-  "version": "7.0.101",
+  "version": "7.0.102",
   "release_date": "2025-09-25",
-  "description": "FIX: Removed non-existent process-creation mapping file - only sigma-event-logs-all.yml exists",
+  "description": "FIX: Synchronized all version references to use version.json as single source of truth",
   "build": "production"
 }

@@ -24,7 +24,7 @@ log_warning() {
     echo -e "${YELLOW}[$(date '+%Y-%m-%d %H:%M:%S')] WARNING:${NC} $1"
 }
 
-echo -e "${BLUE}=== caseScope v7.0.98 Diagnostic Report ===${NC}"
+echo -e "${BLUE}=== caseScope v7.0.101 Diagnostic Report ===${NC}"
 echo ""
 
 # System Information

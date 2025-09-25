@@ -14,27 +14,27 @@ from pathlib import Path
 script_dir = Path(__file__).parent
 sys.path.insert(0, str(script_dir))
 
-try:
-    from version_utils import get_version, get_version_info
-    # Load version dynamically to ensure updates are reflected
-    def get_current_version():
-        try:
-            return get_version()
-        except:
-            return "7.0.32"
-    
-    def get_current_version_info():
-        try:
-            return get_version_info()
-        except:
-            return {"version": "7.0.32", "description": "Fallback version"}
-            
-    APP_VERSION = get_current_version()
-    VERSION_INFO = get_current_version_info()
-except ImportError:
-    # Fallback if version_utils not available
-    APP_VERSION = "7.0.32"
-    VERSION_INFO = {"version": APP_VERSION, "description": "Fallback version"}
+# Load version from version.json file  
+def get_current_version():
+    try:
+        import json
+        with open('/opt/casescope/app/version.json', 'r') as f:
+            version_data = json.load(f)
+            return version_data.get('version', '7.0.102')
+    except:
+        return "7.0.102"
+
+def get_current_version_info():
+    try:
+        import json
+        with open('/opt/casescope/app/version.json', 'r') as f:
+            version_data = json.load(f)
+            return version_data
+    except:
+        return {"version": "7.0.102", "description": "Fallback version"}
+        
+APP_VERSION = get_current_version()
+VERSION_INFO = get_current_version_info()
 import logging
 from datetime import datetime, timedelta
 from functools import wraps
@@ -272,8 +272,8 @@ def load_global_data():
         g.app_version = get_current_version()
         g.version_info = get_current_version_info()
     except:
-        g.app_version = "7.0.32"
-        g.version_info = {"version": "7.0.32", "description": "Fallback version"}
+        g.app_version = "7.0.102"
+        g.version_info = {"version": "7.0.102", "description": "Fallback version"}
     
     if current_user.is_authenticated:
         # Load recent cases for the dropdown
@@ -2194,8 +2194,8 @@ def api_version():
         current_version = get_current_version()
         current_info = get_current_version_info()
     except:
-        current_version = "7.0.32"
-        current_info = {"version": "7.0.32", "description": "API fallback"}
+        current_version = "7.0.102"
+        current_info = {"version": "7.0.102", "description": "API fallback"}
     
     return jsonify({
         'version': current_version,

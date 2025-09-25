@@ -20,7 +20,7 @@ log_error() {
     echo -e "${RED}[$(date '+%Y-%m-%d %H:%M:%S')] ERROR:${NC} $1"
 }
 
-echo -e "${BLUE}=== caseScope Emergency Recovery v7.0.98 ===${NC}"
+echo -e "${BLUE}=== caseScope Emergency Recovery v7.0.101 ===${NC}"
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
