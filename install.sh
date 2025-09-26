@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope v7.0.103 Installation Script
+# caseScope v7.0.104 Installation Script
 # Designed for Ubuntu 24 headless server
 # Copyright 2025 Justin Dube
 
@@ -672,7 +672,7 @@ fi
 log "Installation framework complete. Application files will be created next."
 
 # Create version file
-echo "7.0.103" > /opt/casescope/VERSION
+echo "7.0.104" > /opt/casescope/VERSION
 
 # Verify critical binaries
 log "Verifying critical installations..."
@@ -694,7 +694,7 @@ fi
 # Set final permissions
 chown -R casescope:casescope /opt/casescope
 
-log "caseScope v7.0.103 installation framework completed successfully!"
+log "caseScope v7.0.104 installation framework completed successfully!"
 log "Application files will be deployed next..."
 
 # Check if reboot is needed

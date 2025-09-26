@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.103')
+            return version_data.get('version', '7.0.104')
     except:
-        return "7.0.103"
+        return "7.0.104"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.103", "description": "Fallback version"}
+        return {"version": "7.0.104", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -1989,18 +1989,7 @@ def list_files():
     files = case.files.order_by(CaseFile.uploaded_at.desc()).all()
     return render_template('list_files.html', case=case, files=files)
 
-@app.route('/search')
-@login_required  
-def search():
-    # EMERGENCY: Completely bypass search due to persistent JSON parsing errors
-    logger.error(f"SEARCH ROUTE ACCESSED - Should not be reaching template rendering! URL: {request.url}, Args: {request.args}")
-    flash('Search is temporarily unavailable due to data parsing issues. Please try again later.', 'warning')
-    
-    selected_case_id = session.get('selected_case_id')
-    if selected_case_id:
-        return redirect(url_for('case_dashboard'))
-    else:
-        return redirect(url_for('system_dashboard'))
+# Emergency search route removed - replaced with proper implementation below
 
 @app.route('/rerun_rules')
 @login_required
