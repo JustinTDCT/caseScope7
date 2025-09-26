@@ -110,6 +110,15 @@ if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ]; then
 else
     log_error "Web application not responding (HTTP $HTTP_CODE)"
 fi
+
+# Test search route specifically (should redirect to login if not authenticated)
+log "Testing Search Route..."
+SEARCH_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/search 2>/dev/null || echo "000")
+if [ "$SEARCH_CODE" = "302" ] || [ "$SEARCH_CODE" = "200" ]; then
+    log "✓ Search route responding (HTTP $SEARCH_CODE)"
+else
+    log_error "Search route not responding (HTTP $SEARCH_CODE)"
+fi
 echo ""
 
 # Database Check

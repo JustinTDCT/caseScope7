@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.102')
+            return version_data.get('version', '7.0.103')
     except:
-        return "7.0.102"
+        return "7.0.103"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.102", "description": "Fallback version"}
+        return {"version": "7.0.103", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2081,6 +2081,174 @@ def clear_pending_files():
         flash('Error clearing pending files.', 'error')
     
     return redirect(url_for('list_files'))
+
+@app.route('/search')
+@login_required
+@require_role('read')
+def search():
+    """Search events in OpenSearch with proper error handling"""
+    selected_case_id = session.get('selected_case_id')
+    if not selected_case_id:
+        flash('Please select a case first.', 'error')
+        return redirect(url_for('system_dashboard'))
+    
+    case = Case.query.get(selected_case_id)
+    if not case or not case.is_active:
+        flash('Case not found or inactive.', 'error')
+        return redirect(url_for('system_dashboard'))
+    
+    # Get search parameters
+    query = request.args.get('q', '').strip()
+    rule_violations = request.args.get('rule_violations', '').lower() == 'true'
+    file_id = request.args.get('file_id', '')
+    start_time = request.args.get('start_time', '')
+    end_time = request.args.get('end_time', '')
+    
+    results = []
+    total_hits = 0
+    error_message = None
+    
+    try:
+        if query or rule_violations or file_id:
+            # Build OpenSearch query
+            search_body = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"term": {"case_id": selected_case_id}}
+                        ],
+                        "filter": []
+                    }
+                },
+                "sort": [{"@timestamp": {"order": "desc"}}],
+                "size": 100,
+                "_source": {
+                    "excludes": ["event_data.event.eventdata.data"]  # Exclude problematic nested data
+                }
+            }
+            
+            # Add file filter if specified
+            if file_id:
+                try:
+                    file_id_int = int(file_id)
+                    search_body["query"]["bool"]["must"].append({"term": {"file_id": file_id_int}})
+                except ValueError:
+                    pass
+            
+            # Add rule violations filter
+            if rule_violations:
+                search_body["query"]["bool"]["must"].append({
+                    "bool": {
+                        "should": [
+                            {"exists": {"field": "sigma_violations"}},
+                            {"exists": {"field": "chainsaw_violations"}}
+                        ],
+                        "minimum_should_match": 1
+                    }
+                })
+            
+            # Add text query if provided
+            if query:
+                # Simple text search across main fields
+                search_body["query"]["bool"]["must"].append({
+                    "multi_match": {
+                        "query": query,
+                        "fields": [
+                            "event_id^3",
+                            "event_record_id^2", 
+                            "computer_name^2",
+                            "source_name",
+                            "event_data.event.system.channel",
+                            "event_data.event.system.provider_name"
+                        ],
+                        "type": "best_fields",
+                        "fuzziness": "AUTO"
+                    }
+                })
+            
+            # Add time range filter
+            if start_time or end_time:
+                time_range = {}
+                if start_time:
+                    time_range["gte"] = start_time
+                if end_time:
+                    time_range["lte"] = end_time
+                if time_range:
+                    search_body["query"]["bool"]["filter"].append({
+                        "range": {"@timestamp": time_range}
+                    })
+            
+            logger.info(f"Executing search for case {selected_case_id}: query='{query}', rule_violations={rule_violations}, file_id={file_id}")
+            
+            # Execute search with timeout and error handling
+            response = opensearch_client.search(
+                index=f"casescope-{selected_case_id}",
+                body=search_body,
+                timeout='30s'
+            )
+            
+            total_hits = response['hits']['total']['value']
+            
+            # Process results safely
+            for hit in response['hits']['hits']:
+                try:
+                    source = hit['_source']
+                    
+                    # Clean and sanitize the result
+                    result = {
+                        'id': hit['_id'],
+                        'timestamp': source.get('@timestamp', ''),
+                        'event_id': source.get('event_id', ''),
+                        'event_record_id': source.get('event_record_id', ''),
+                        'computer_name': source.get('computer_name', ''),
+                        'source_name': source.get('source_name', ''),
+                        'file_id': source.get('file_id', ''),
+                        'sigma_violations': source.get('sigma_violations', []),
+                        'chainsaw_violations': source.get('chainsaw_violations', []),
+                        'event_data': {}
+                    }
+                    
+                    # Safely extract limited event data
+                    if 'event_data' in source and isinstance(source['event_data'], dict):
+                        event_data = source['event_data']
+                        if 'event' in event_data and isinstance(event_data['event'], dict):
+                            event = event_data['event']
+                            
+                            # Extract system information safely
+                            if 'system' in event and isinstance(event['system'], dict):
+                                system = event['system']
+                                result['event_data']['system'] = {
+                                    'channel': str(system.get('channel', ''))[:100],
+                                    'provider_name': str(system.get('provider_name', ''))[:100],
+                                    'level': str(system.get('level', ''))[:20],
+                                    'task': str(system.get('task', ''))[:50]
+                                }
+                    
+                    results.append(result)
+                    
+                except Exception as e:
+                    logger.warning(f"Error processing search result: {e}")
+                    continue
+            
+            logger.info(f"Search completed: {len(results)} results returned out of {total_hits} total hits")
+            
+    except Exception as e:
+        logger.error(f"Search error: {e}")
+        error_message = "Search failed due to an error. Please try a simpler query."
+        results = []
+        total_hits = 0
+    
+    # Render search template with results
+    return render_template('search.html',
+                         case=case,
+                         query=query,
+                         results=results,
+                         total_hits=total_hits,
+                         rule_violations=rule_violations,
+                         file_id=file_id,
+                         start_time=start_time,
+                         end_time=end_time,
+                         error_message=error_message)
 
 @app.route('/update_rules', methods=['POST'])
 @login_required

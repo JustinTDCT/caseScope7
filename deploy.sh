@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope v7.0.101 Deployment Script
+# caseScope v7.0.103 Deployment Script
 # Deploys application files after installation
 # Copyright 2025 Justin Dube
 
@@ -38,7 +38,7 @@ if [ ! -f /opt/casescope/logs/install.log ]; then
     exit 1
 fi
 
-log "Starting caseScope v7.0.101 application deployment..."
+log "Starting caseScope v7.0.103 application deployment..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -1389,7 +1389,7 @@ else
     log_error "Nginx is not running"
 fi
 
-log "caseScope v7.0.101 deployment completed successfully!"
+log "caseScope v7.0.103 deployment completed successfully!"
 echo ""
 echo -e "${GREEN}=== Deployment Summary ===${NC}"
 echo -e "${GREEN}Web Interface:${NC} http://$(hostname -I | awk '{print $1}')"

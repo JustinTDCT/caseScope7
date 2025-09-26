@@ -1,6 +1,6 @@
 {
-  "version": "7.0.102",
-  "release_date": "2025-09-25",
-  "description": "FIX: Synchronized all version references to use version.json as single source of truth",
+  "version": "7.0.103",
+  "release_date": "2025-09-26",
+  "description": "MAJOR FIX: Restored missing search functionality with robust OpenSearch integration and error handling",
   "build": "production"
 }
