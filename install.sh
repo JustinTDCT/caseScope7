@@ -570,7 +570,19 @@ systemctl enable casescope-worker
 
 # Configure system limits for OpenSearch before starting
 log "Configuring system for OpenSearch..."
-echo 'vm.max_map_count=262144' >> /etc/sysctl.conf
+# Check if vm.max_map_count is already configured
+if ! grep -q "vm.max_map_count" /etc/sysctl.conf; then
+    echo 'vm.max_map_count=262144' >> /etc/sysctl.conf
+    log "Added vm.max_map_count to sysctl.conf"
+else
+    # Update existing entry if different
+    if ! grep -q "vm.max_map_count=262144" /etc/sysctl.conf; then
+        sed -i 's/vm.max_map_count=.*/vm.max_map_count=262144/' /etc/sysctl.conf
+        log "Updated vm.max_map_count in sysctl.conf"
+    else
+        log "vm.max_map_count already correctly configured"
+    fi
+fi
 sysctl -p
 
 # Ensure Java is properly configured

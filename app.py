@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.106')
+            return version_data.get('version', '7.0.107')
     except:
-        return "7.0.106"
+        return "7.0.107"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.106", "description": "Fallback version"}
+        return {"version": "7.0.107", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -1455,6 +1455,7 @@ def process_evtx_file(file_id):
             # Second pass - process records
             logger.info(f"Starting to process {total_records} records from EVTX file")
             logger.info(f"File size: {os.path.getsize(case_file.file_path) / (1024*1024):.2f} MB")
+            logger.info(f"Will index events to: casescope-case-{case_file.case_id}")
             for record in parser.records():
                 try:
                     # Debug: Log the first few records to understand the format
@@ -1615,9 +1616,21 @@ def process_evtx_file(file_id):
             case_file.processing_progress = 100
             db.session.commit()
             
+            # Verify the index was created and has documents
+            index_name = f"casescope-case-{case_file.case_id}"
+            try:
+                index_exists = opensearch_client.indices.exists(index=index_name)
+                if index_exists:
+                    doc_count = opensearch_client.count(index=index_name)['count']
+                    logger.info(f"✓ OpenSearch index {index_name} created with {doc_count} documents")
+                else:
+                    logger.error(f"✗ OpenSearch index {index_name} was not created")
+            except Exception as e:
+                logger.error(f"Error verifying index {index_name}: {e}")
+            
             logger.info(f"Successfully processed file {file_id} (FAST MODE)")
             logger.info(f"  - EVTX records processed: {processed_records}")
-            logger.info(f"  - Individual event indexing: SKIPPED (for performance)")
+            logger.info(f"  - Documents indexed: {len(events)}")
             logger.info(f"  - Chainsaw analysis: COMPLETED")
             logger.info(f"  - Sigma violations found: {case_file.sigma_violations}")
             logger.info(f"  - Chainsaw violations found: {case_file.chainsaw_violations}")
@@ -2098,6 +2111,25 @@ def search():
     error_message = None
     
     try:
+        # First check if the index exists
+        index_name = f"casescope-case-{selected_case_id}"
+        try:
+            if not opensearch_client.indices.exists(index=index_name):
+                logger.warning(f"OpenSearch index {index_name} does not exist")
+                error_message = f"No data has been indexed for this case yet. Please upload and process files first."
+                return render_template('search.html',
+                                     case=case,
+                                     query=query,
+                                     results=[],
+                                     total_hits=0,
+                                     rule_violations=rule_violations,
+                                     file_id=file_id,
+                                     start_time=start_time,
+                                     end_time=end_time,
+                                     error_message=error_message)
+        except Exception as index_check_error:
+            logger.error(f"Error checking index existence: {index_check_error}")
+        
         if query or rule_violations or file_id:
             # Build OpenSearch query
             search_body = {
