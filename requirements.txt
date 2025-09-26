@@ -1,4 +1,4 @@
-# caseScope v7.0.105 Python Dependencies
+# caseScope Python Dependencies (version managed in version.json)
 # Core Flask Framework
 Flask==3.0.0
 Werkzeug==3.0.1

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope v7.0.105 Deployment Script
+# caseScope Deployment Script (version determined from version.json)
 # Deploys application files after installation
 # Copyright 2025 Justin Dube
 
@@ -38,7 +38,14 @@ if [ ! -f /opt/casescope/logs/install.log ]; then
     exit 1
 fi
 
-log "Starting caseScope v7.0.105 application deployment..."
+# Extract version from version.json for logging
+if [ -f "$SCRIPT_DIR/version.json" ]; then
+    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.105")
+else
+    VERSION="7.0.105"
+fi
+
+log "Starting caseScope v$VERSION application deployment..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -1389,7 +1396,7 @@ else
     log_error "Nginx is not running"
 fi
 
-log "caseScope v7.0.105 deployment completed successfully!"
+log "caseScope v$VERSION deployment completed successfully!"
 echo ""
 echo -e "${GREEN}=== Deployment Summary ===${NC}"
 echo -e "${GREEN}Web Interface:${NC} http://$(hostname -I | awk '{print $1}')"

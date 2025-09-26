@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope v7.0.105 Installation Script
+# caseScope Installation Script (version determined from version.json)
 # Designed for Ubuntu 24 headless server
 # Copyright 2025 Justin Dube
 
@@ -672,7 +672,13 @@ fi
 log "Installation framework complete. Application files will be created next."
 
 # Create version file
-echo "7.0.105" > /opt/casescope/VERSION
+# Extract version from version.json and write to VERSION file
+if [ -f "$SCRIPT_DIR/version.json" ]; then
+    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.105")
+else
+    VERSION="7.0.105"
+fi
+echo "$VERSION" > /opt/casescope/VERSION
 
 # Verify critical binaries
 log "Verifying critical installations..."
@@ -694,7 +700,7 @@ fi
 # Set final permissions
 chown -R casescope:casescope /opt/casescope
 
-log "caseScope v7.0.105 installation framework completed successfully!"
+log "caseScope v$VERSION installation framework completed successfully!"
 log "Application files will be deployed next..."
 
 # Check if reboot is needed

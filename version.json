@@ -1,6 +1,6 @@
 {
-  "version": "7.0.105",
+  "version": "7.0.106",
   "release_date": "2025-09-26",
-  "description": "URGENT FIX: Fixed OpenSearch timeout format + Jinja2 template syntax errors preventing search functionality",
+  "description": "CRITICAL FIX: Fixed OpenSearch index name mismatch + Centralized version management to version.json",
   "build": "production"
 }
