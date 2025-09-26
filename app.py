@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.107')
+            return version_data.get('version', '7.0.108')
     except:
-        return "7.0.107"
+        return "7.0.108"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.107", "description": "Fallback version"}
+        return {"version": "7.0.108", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2141,7 +2141,7 @@ def search():
                         "filter": []
                     }
                 },
-                "sort": [{"@timestamp": {"order": "desc"}}],
+                "sort": [{"timestamp": {"order": "desc"}}],
                 "size": 100,
                 "_source": {
                     "excludes": ["event_data.event.eventdata.data"]  # Exclude problematic nested data
@@ -2170,17 +2170,15 @@ def search():
             
             # Add text query if provided
             if query:
-                # Simple text search across main fields
+                # Simple text search across available fields
                 search_body["query"]["bool"]["must"].append({
                     "multi_match": {
                         "query": query,
                         "fields": [
-                            "event_id^3",
-                            "event_record_id^2", 
-                            "computer_name^2",
-                            "source_name",
-                            "event_data.event.system.channel",
-                            "event_data.event.system.provider_name"
+                            "source_file^3",
+                            "event_data.*^2", 
+                            "event_data.event.system.*^2",
+                            "event_data.event.eventdata.*"
                         ],
                         "type": "best_fields",
                         "fuzziness": "AUTO"
@@ -2196,7 +2194,7 @@ def search():
                     time_range["lte"] = end_time
                 if time_range:
                     search_body["query"]["bool"]["filter"].append({
-                        "range": {"@timestamp": time_range}
+                        "range": {"timestamp": time_range}
                     })
             
             logger.info(f"Executing search for case {selected_case_id}: query='{query}', rule_violations={rule_violations}, file_id={file_id}")
@@ -2218,31 +2216,54 @@ def search():
                     # Clean and sanitize the result
                     result = {
                         'id': hit['_id'],
-                        'timestamp': source.get('@timestamp', ''),
-                        'event_id': source.get('event_id', ''),
-                        'event_record_id': source.get('event_record_id', ''),
-                        'computer_name': source.get('computer_name', ''),
-                        'source_name': source.get('source_name', ''),
+                        'timestamp': source.get('timestamp', ''),
                         'file_id': source.get('file_id', ''),
+                        'source_file': source.get('source_file', ''),
+                        'case_id': source.get('case_id', ''),
+                        'processed_at': source.get('processed_at', ''),
                         'sigma_violations': source.get('sigma_violations', []),
                         'chainsaw_violations': source.get('chainsaw_violations', []),
-                        'event_data': {}
+                        'event_data': source.get('event_data', {}),
+                        # Extract commonly needed fields from event_data if available
+                        'event_id': '',
+                        'event_record_id': '',
+                        'computer_name': '',
+                        'source_name': ''
                     }
                     
-                    # Safely extract limited event data
-                    if 'event_data' in source and isinstance(source['event_data'], dict):
-                        event_data = source['event_data']
+                    # Try to extract event details from event_data structure
+                    event_data = source.get('event_data', {})
+                    if isinstance(event_data, dict):
+                        # Try different possible structures for event data
                         if 'event' in event_data and isinstance(event_data['event'], dict):
                             event = event_data['event']
-                            
-                            # Extract system information safely
                             if 'system' in event and isinstance(event['system'], dict):
                                 system = event['system']
-                                result['event_data']['system'] = {
-                                    'channel': str(system.get('channel', ''))[:100],
-                                    'provider_name': str(system.get('provider_name', ''))[:100],
-                                    'level': str(system.get('level', ''))[:20],
-                                    'task': str(system.get('task', ''))[:50]
+                                result['event_id'] = str(system.get('eventid', ''))
+                                result['event_record_id'] = str(system.get('eventrecordid', ''))
+                                result['computer_name'] = str(system.get('computer', ''))
+                                result['source_name'] = str(system.get('provider_name', ''))
+                        
+                        # Alternative: look for these fields at the top level of event_data
+                        result['event_id'] = result['event_id'] or str(event_data.get('eventid', ''))
+                        result['event_record_id'] = result['event_record_id'] or str(event_data.get('eventrecordid', ''))
+                        result['computer_name'] = result['computer_name'] or str(event_data.get('computer', ''))
+                        result['source_name'] = result['source_name'] or str(event_data.get('provider_name', ''))
+                    
+                    
+                    # Create a simplified event_data structure for template use
+                    if isinstance(result['event_data'], dict) and 'event' in result['event_data']:
+                        event = result['event_data']['event']
+                        if isinstance(event, dict) and 'system' in event:
+                            system = event['system']
+                            if isinstance(system, dict):
+                                result['event_data'] = {
+                                    'system': {
+                                        'channel': str(system.get('channel', ''))[:100],
+                                        'provider_name': str(system.get('provider_name', ''))[:100],
+                                        'level': str(system.get('level', ''))[:20],
+                                        'task': str(system.get('task', ''))[:50]
+                                    }
                                 }
                     
                     results.append(result)
