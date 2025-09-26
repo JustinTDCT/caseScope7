@@ -168,12 +168,12 @@
                             <div class="result-header">
                                 <div class="result-meta">
                                     <span class="result-timestamp">
-                                        {{ result._source.timestamp if result._source.timestamp else 'N/A' }}
+                                        {{ result.timestamp if result.timestamp else 'N/A' }}
                                     </span>
                                     <span class="result-source">
-                                        {{ result._source.source_file if result._source.source_file else 'Unknown' }}
+                                        {{ result.source_name if result.source_name else 'Unknown' }}
                                     </span>
-                                    {% if result._source.get('rule_violations') %}
+                                    {% if result.sigma_violations or result.chainsaw_violations %}
                                     <span class="badge badge-danger">Rule Violation</span>
                                     {% endif %}
                                 </div>
@@ -186,20 +186,15 @@
                             
                             <div class="result-summary">
                                 <div class="event-id">
-                                    {% if result._source.event_data and result._source.event_data.Event and result._source.event_data.Event.System %}
-                                    Event ID: {{ result._source.event_data.Event.System.EventID.#text if result._source.event_data.Event.System.EventID else 'N/A' }}
-                                    {% else %}
-                                    Event ID: N/A
-                                    {% endif %}
+                                    Event ID: {{ result.event_id if result.event_id else 'N/A' }}
                                 </div>
                                 <div class="event-preview">
-                                    {% if result._source.event_summary %}
-                                    {{ result._source.event_summary }}
-                                    {% elif result._source.event_data %}
-                                    <!-- Extract key information for preview -->
-                                    {{ result._source.event_data | truncate(200) }}
+                                    {% if result.event_data and result.event_data.system %}
+                                    Channel: {{ result.event_data.system.channel[:50] }}{% if result.event_data.system.channel|length > 50 %}...{% endif %}
+                                    {% elif result.computer_name %}
+                                    Computer: {{ result.computer_name }}
                                     {% else %}
-                                    No event data available
+                                    Event Record ID: {{ result.event_record_id if result.event_record_id else 'N/A' }}
                                     {% endif %}
                                 </div>
                             </div>
@@ -208,63 +203,89 @@
                                 <div class="details-tabs">
                                     <button class="tab-btn active" onclick="showTab({{ loop.index }}, 'raw')">Raw Data</button>
                                     <button class="tab-btn" onclick="showTab({{ loop.index }}, 'formatted')">Formatted</button>
-                                    {% if result._source.get('rule_violations') %}
+                                    {% if result.sigma_violations or result.chainsaw_violations %}
                                     <button class="tab-btn" onclick="showTab({{ loop.index }}, 'violations')">Violations</button>
                                     {% endif %}
                                 </div>
                                 
                                 <div class="tab-content">
                                     <div class="tab-pane active" id="raw-{{ loop.index }}">
-                                        <pre class="json-content">{% if result._source %}{{ result._source | safe_json }}{% else %}No data available{% endif %}</pre>
+                                        <pre class="json-content">{{ result | safe_json }}</pre>
                                     </div>
                                     <div class="tab-pane" id="formatted-{{ loop.index }}" style="display: none;">
                                         <div class="formatted-event">
-                                            {% if result._source.event_data and result._source.event_data.Event %}
                                             <div class="event-section">
-                                                <h4>System Information</h4>
+                                                <h4>Event Information</h4>
                                                 <div class="event-fields">
-                                                    {% if result._source.event_data.Event.System %}
-                                                    {% for key, value in result._source.event_data.Event.System.items() %}
                                                     <div class="field-item">
-                                                        <label>{{ key }}:</label>
-                                                        <span>{{ value.#text if value.#text else value }}</span>
+                                                        <label>Event ID:</label>
+                                                        <span>{{ result.event_id if result.event_id else 'N/A' }}</span>
                                                     </div>
-                                                    {% endfor %}
+                                                    <div class="field-item">
+                                                        <label>Record ID:</label>
+                                                        <span>{{ result.event_record_id if result.event_record_id else 'N/A' }}</span>
+                                                    </div>
+                                                    <div class="field-item">
+                                                        <label>Timestamp:</label>
+                                                        <span>{{ result.timestamp if result.timestamp else 'N/A' }}</span>
+                                                    </div>
+                                                    <div class="field-item">
+                                                        <label>Computer:</label>
+                                                        <span>{{ result.computer_name if result.computer_name else 'N/A' }}</span>
+                                                    </div>
+                                                    <div class="field-item">
+                                                        <label>Source:</label>
+                                                        <span>{{ result.source_name if result.source_name else 'N/A' }}</span>
+                                                    </div>
+                                                    {% if result.event_data and result.event_data.system %}
+                                                    <div class="field-item">
+                                                        <label>Channel:</label>
+                                                        <span>{{ result.event_data.system.channel if result.event_data.system.channel else 'N/A' }}</span>
+                                                    </div>
+                                                    <div class="field-item">
+                                                        <label>Provider:</label>
+                                                        <span>{{ result.event_data.system.provider_name if result.event_data.system.provider_name else 'N/A' }}</span>
+                                                    </div>
+                                                    <div class="field-item">
+                                                        <label>Level:</label>
+                                                        <span>{{ result.event_data.system.level if result.event_data.system.level else 'N/A' }}</span>
+                                                    </div>
                                                     {% endif %}
                                                 </div>
                                             </div>
                                             
-                                            {% if result._source.event_data.Event.EventData %}
-                                            <div class="event-section">
-                                                <h4>Event Data</h4>
-                                                <div class="event-fields">
-                                                    {% for key, value in result._source.event_data.Event.EventData.items() %}
-                                                    <div class="field-item">
-                                                        <label>{{ key }}:</label>
-                                                        <span>{{ value }}</span>
-                                                    </div>
-                                                    {% endfor %}
-                                                </div>
-                                            </div>
-                                            {% endif %}
-                                            {% endif %}
                                         </div>
                                     </div>
-                                    {% if result._source.get('rule_violations') %}
+                                    {% if result.sigma_violations or result.chainsaw_violations %}
                                     <div class="tab-pane" id="violations-{{ loop.index }}" style="display: none;">
                                         <div class="violations-list">
-                                            {% for violation in result._source.rule_violations %}
+                                            {% if result.sigma_violations %}
+                                            <h5>Sigma Rule Violations</h5>
+                                            {% for violation in result.sigma_violations %}
                                             <div class="violation-item">
                                                 <div class="violation-header">
-                                                    <span class="violation-type badge badge-{{ 'danger' if violation.severity == 'high' else 'warning' if violation.severity == 'medium' else 'info' }}">
-                                                        {{ violation.type.upper() }}
-                                                    </span>
-                                                    <span class="violation-severity">{{ violation.severity.title() }}</span>
+                                                    <span class="violation-type badge badge-danger">SIGMA</span>
+                                                    <span class="violation-severity">{{ violation.get('severity', 'Medium').title() }}</span>
                                                 </div>
-                                                <div class="violation-rule">{{ violation.rule_name }}</div>
-                                                <div class="violation-description">{{ violation.description }}</div>
+                                                <div class="violation-rule">{{ violation.get('rule_name', 'Unknown Rule') }}</div>
+                                                <div class="violation-description">{{ violation.get('description', 'No description available') }}</div>
                                             </div>
                                             {% endfor %}
+                                            {% endif %}
+                                            
+                                            {% if result.chainsaw_violations %}
+                                            <h5>Chainsaw Rule Violations</h5>
+                                            {% for violation in result.chainsaw_violations %}
+                                            <div class="violation-item">
+                                                <div class="violation-header">
+                                                    <span class="violation-type badge badge-warning">CHAINSAW</span>
+                                                    <span class="violation-severity">{{ violation.get('severity', 'Medium').title() }}</span>
+                                                </div>
+                                                <div class="violation-rule">{{ violation.get('rule_name', 'Unknown Rule') }}</div>
+                                                <div class="violation-description">{{ violation.get('description', 'No description available') }}</div>
+                                            </div>
+                                            {% endfor %}
+                                            {% endif %}
                                         </div>
                                     </div>
                                     {% endif %}

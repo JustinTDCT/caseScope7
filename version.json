@@ -1,6 +1,6 @@
 {
-  "version": "7.0.104",
+  "version": "7.0.105",
   "release_date": "2025-09-26",
-  "description": "CRITICAL FIX: Removed duplicate search route causing Flask endpoint conflict during deployment",
+  "description": "URGENT FIX: Fixed OpenSearch timeout format + Jinja2 template syntax errors preventing search functionality",
   "build": "production"
 }

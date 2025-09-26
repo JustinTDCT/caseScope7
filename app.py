@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.104')
+            return version_data.get('version', '7.0.105')
     except:
-        return "7.0.104"
+        return "7.0.105"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.104", "description": "Fallback version"}
+        return {"version": "7.0.105", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2173,7 +2173,7 @@ def search():
             response = opensearch_client.search(
                 index=f"casescope-{selected_case_id}",
                 body=search_body,
-                timeout='30s'
+                timeout=30
             )
             
             total_hits = response['hits']['total']['value']
