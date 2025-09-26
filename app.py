@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.109')
+            return version_data.get('version', '7.0.110')
     except:
-        return "7.0.109"
+        return "7.0.110"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.109", "description": "Fallback version"}
+        return {"version": "7.0.110", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2114,8 +2114,22 @@ def search():
         # First check if the index exists
         index_name = f"casescope-case-{selected_case_id}"
         try:
-            if not opensearch_client.indices.exists(index=index_name):
+            index_exists = opensearch_client.indices.exists(index=index_name)
+            if not index_exists:
                 logger.warning(f"OpenSearch index {index_name} does not exist")
+                
+                # Additional debugging: List all existing indices to see what's actually there
+                try:
+                    all_indices = opensearch_client.cat.indices(format='json')
+                    casescope_indices = [idx for idx in all_indices if 'casescope' in idx.get('index', '')]
+                    logger.info(f"Available caseScope indices: {[idx['index'] for idx in casescope_indices]}")
+                    
+                    # Check if case has files that should have been indexed
+                    file_count = case.files.filter_by(processing_status='completed').count()
+                    logger.info(f"Case {selected_case_id} has {file_count} completed files but no OpenSearch index")
+                except Exception as debug_error:
+                    logger.error(f"Error debugging indices: {debug_error}")
+                
                 error_message = f"No data has been indexed for this case yet. Please upload and process files first."
                 return render_template('search.html',
                                      case=case,
@@ -2127,6 +2141,14 @@ def search():
                                      start_time=start_time,
                                      end_time=end_time,
                                      error_message=error_message)
+            else:
+                # Index exists - log some basic info about it
+                try:
+                    doc_count = opensearch_client.count(index=index_name)['count']
+                    logger.info(f"OpenSearch index {index_name} exists with {doc_count} documents")
+                except Exception as count_error:
+                    logger.warning(f"Could not count documents in {index_name}: {count_error}")
+                    
         except Exception as index_check_error:
             logger.error(f"Error checking index existence: {index_check_error}")
         
