@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.110')
+            return version_data.get('version', '7.0.111')
     except:
-        return "7.0.110"
+        return "7.0.111"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.110", "description": "Fallback version"}
+        return {"version": "7.0.111", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -1452,10 +1452,29 @@ def process_evtx_file(file_id):
             # Reset parser
             parser = PyEvtxParser(case_file.file_path)
             
+            # Test OpenSearch connection before processing
+            logger.info(f"Testing OpenSearch connection before indexing...")
+            try:
+                # Test basic connectivity
+                opensearch_client.ping()
+                # Test if we can create/access indices
+                test_index = f"casescope-case-{case_file.case_id}"
+                opensearch_client.indices.create(index=test_index, ignore=400)  # ignore if already exists
+                logger.info(f"✓ OpenSearch connection verified for index: {test_index}")
+            except Exception as conn_error:
+                logger.error(f"✗ OpenSearch connection failed: {conn_error}")
+                case_file.processing_status = 'error'
+                case_file.error_message = f"OpenSearch connection failed: {str(conn_error)}"
+                db.session.commit()
+                return False
+            
             # Second pass - process records
             logger.info(f"Starting to process {total_records} records from EVTX file")
             logger.info(f"File size: {os.path.getsize(case_file.file_path) / (1024*1024):.2f} MB")
             logger.info(f"Will index events to: casescope-case-{case_file.case_id}")
+            
+            indexed_count = 0
+            failed_count = 0
             for record in parser.records():
                 try:
                     # Debug: Log the first few records to understand the format
@@ -1528,6 +1547,7 @@ def process_evtx_file(file_id):
                         doc['_id'] = response['_id']
                         events.append(doc)
                         processed_records += 1
+                        indexed_count += 1
                         
                     except Exception as index_error:
                         # Check if it's a mapping error and log appropriately
@@ -1555,10 +1575,21 @@ def process_evtx_file(file_id):
                             minimal_doc['_id'] = response['_id']
                             events.append(minimal_doc)
                             processed_records += 1
+                            indexed_count += 1
                             logger.debug(f"Used fallback indexing for record {processed_records}")
                             
                         except Exception as fallback_error:
-                            logger.debug(f"Skipping record {processed_records + 1} - both normal and fallback indexing failed")
+                            failed_count += 1
+                            logger.error(f"Both normal and fallback indexing failed for record {processed_records + 1}: {fallback_error}")
+                            
+                            # If too many consecutive failures, abort processing
+                            if failed_count > 10 and indexed_count == 0:
+                                logger.error(f"Too many indexing failures ({failed_count}) with no successes - aborting processing")
+                                case_file.processing_status = 'error'
+                                case_file.error_message = f"OpenSearch indexing completely failed - {failed_count} consecutive failures"
+                                db.session.commit()
+                                return False
+                            
                             # Skip this record but continue processing
                             continue
                     
@@ -1628,9 +1659,18 @@ def process_evtx_file(file_id):
             except Exception as e:
                 logger.error(f"Error verifying index {index_name}: {e}")
             
+            # Final validation - ensure indexing actually worked
+            if indexed_count == 0:
+                logger.error(f"CRITICAL: No documents were successfully indexed!")
+                case_file.processing_status = 'error'
+                case_file.error_message = f"Processing completed but no documents were indexed (0/{processed_records})"
+                db.session.commit()
+                return False
+            
             logger.info(f"Successfully processed file {file_id} (FAST MODE)")
             logger.info(f"  - EVTX records processed: {processed_records}")
-            logger.info(f"  - Documents indexed: {len(events)}")
+            logger.info(f"  - Documents successfully indexed: {indexed_count}")
+            logger.info(f"  - Indexing failures: {failed_count}")
             logger.info(f"  - Chainsaw analysis: COMPLETED")
             logger.info(f"  - Sigma violations found: {case_file.sigma_violations}")
             logger.info(f"  - Chainsaw violations found: {case_file.chainsaw_violations}")

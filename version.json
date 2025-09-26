@@ -1,6 +1,6 @@
 {
-  "version": "7.0.110",
+  "version": "7.0.111",
   "release_date": "2025-09-26",
-  "description": "DEBUG: Enhanced index existence debugging - added logging to show available indices when expected index missing",
+  "description": "CRITICAL FIX: Fixed silent indexing failures - added OpenSearch connection testing and proper error handling",
   "build": "production"
 }
