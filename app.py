@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.108')
+            return version_data.get('version', '7.0.109')
     except:
-        return "7.0.108"
+        return "7.0.109"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.108", "description": "Fallback version"}
+        return {"version": "7.0.109", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2170,18 +2170,35 @@ def search():
             
             # Add text query if provided
             if query:
-                # Simple text search across available fields
+                # Use a combination of exact and fuzzy searches to handle different field types
                 search_body["query"]["bool"]["must"].append({
-                    "multi_match": {
-                        "query": query,
-                        "fields": [
-                            "source_file^3",
-                            "event_data.*^2", 
-                            "event_data.event.system.*^2",
-                            "event_data.event.eventdata.*"
+                    "bool": {
+                        "should": [
+                            # Exact match on filename and text fields (no fuzziness to avoid date field issues)
+                            {
+                                "multi_match": {
+                                    "query": query,
+                                    "fields": [
+                                        "source_file^3"
+                                    ],
+                                    "type": "best_fields"
+                                }
+                            },
+                            # Simple query string for flexible searching (handles dates properly)
+                            {
+                                "query_string": {
+                                    "query": f"*{query}*",
+                                    "fields": [
+                                        "event_data.event.eventdata.*^2",
+                                        "event_data.event.system.channel^1.5",
+                                        "event_data.event.system.provider_name^1.5"
+                                    ],
+                                    "default_operator": "AND",
+                                    "analyze_wildcard": True
+                                }
+                            }
                         ],
-                        "type": "best_fields",
-                        "fuzziness": "AUTO"
+                        "minimum_should_match": 1
                     }
                 })
             

@@ -1,6 +1,6 @@
 {
-  "version": "7.0.108",
+  "version": "7.0.109",
   "release_date": "2025-09-26",
-  "description": "CRITICAL FIX: Fixed OpenSearch field mapping - @timestamp -> timestamp, aligned search fields with indexed data structure",
+  "description": "FIX: Resolved fuzzy query error on date fields - replaced problematic multi_match with proper query structure",
   "build": "production"
 }
