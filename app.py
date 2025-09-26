@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.111')
+            return version_data.get('version', '7.0.112')
     except:
-        return "7.0.111"
+        return "7.0.112"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.111", "description": "Fallback version"}
+        return {"version": "7.0.112", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2249,13 +2249,13 @@ def search():
                             # Simple query string for flexible searching (handles dates properly)
                             {
                                 "query_string": {
-                                    "query": f"*{query}*",
+                                    "query": query,  # Don't wrap with wildcards - breaks boolean operators
                                     "fields": [
                                         "event_data.event.eventdata.*^2",
                                         "event_data.event.system.channel^1.5",
                                         "event_data.event.system.provider_name^1.5"
                                     ],
-                                    "default_operator": "AND",
+                                    "default_operator": "OR",  # Changed to OR for better matching
                                     "analyze_wildcard": True
                                 }
                             }

@@ -1,6 +1,6 @@
 {
-  "version": "7.0.111",
+  "version": "7.0.112",
   "release_date": "2025-09-26",
-  "description": "CRITICAL FIX: Fixed silent indexing failures - added OpenSearch connection testing and proper error handling",
+  "description": "FINAL SEARCH FIX: Fixed query string parsing breaking boolean operators - search functionality now complete!",
   "build": "production"
 }
