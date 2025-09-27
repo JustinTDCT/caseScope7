@@ -1,6 +1,6 @@
 {
-  "version": "7.0.121",
+  "version": "7.0.122",
   "release_date": "2025-09-27",
-  "description": "MAJOR SEARCH OVERHAUL: Replaced complex field mapping with simple plain text search - eventid:4624 becomes plain text search for '4624'",
+  "description": "DEBUG: Added comprehensive document content logging to diagnose why search returns 0 results despite 120 indexed documents",
   "build": "production"
 }

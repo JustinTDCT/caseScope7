@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.121')
+            return version_data.get('version', '7.0.122')
     except:
-        return "7.0.121"
+        return "7.0.122"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.121", "description": "Fallback version"}
+        return {"version": "7.0.122", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2289,6 +2289,13 @@ def search():
                     },
                     "size": 5
                 }
+            elif query == "debug_content":
+                logger.info("Running debug query to examine actual document content")
+                search_body = {
+                    "query": {"match_all": {}},
+                    "size": 1,
+                    "_source": True  # Include full source
+                }
             else:
                 # Build OpenSearch query
                 search_body = {
@@ -2450,6 +2457,33 @@ def search():
                     continue
             
             logger.info(f"Search completed: {len(results)} results returned out of {total_hits} total hits")
+            
+            # Debug: Log actual document content for debugging queries
+            if query in ["debug_content", "test_match_all"] and results:
+                logger.info("=== DOCUMENT CONTENT DEBUG ===")
+                for i, result in enumerate(results[:1]):  # Just show first result
+                    logger.info(f"Document {i+1} full content:")
+                    logger.info(f"  _source keys: {list(result.get('_source', {}).keys())}")
+                    event_data = result.get('_source', {}).get('event_data', {})
+                    if isinstance(event_data, dict):
+                        logger.info(f"  event_data type: {type(event_data)}")
+                        logger.info(f"  event_data keys: {list(event_data.keys())}")
+                        if 'event' in event_data:
+                            event = event_data['event']
+                            logger.info(f"  event type: {type(event)}")
+                            if isinstance(event, dict):
+                                logger.info(f"  event keys: {list(event.keys())}")
+                                if 'system' in event:
+                                    system = event['system']
+                                    logger.info(f"  system type: {type(system)}")
+                                    if isinstance(system, dict):
+                                        logger.info(f"  system keys: {list(system.keys())}")
+                                        if 'eventid' in system:
+                                            logger.info(f"  eventid value: {system['eventid']} (type: {type(system['eventid'])})")
+                    else:
+                        logger.info(f"  event_data is not dict: {type(event_data)}")
+                        logger.info(f"  event_data content: {str(event_data)[:200]}...")
+                logger.info("=== END DOCUMENT DEBUG ===")
             
     except Exception as e:
         logger.error(f"Search error: {e}")
