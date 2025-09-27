@@ -88,6 +88,102 @@ fi
 
 log "✓ Application files copied successfully"
 
+# Database Migration
+log "Checking database schema..."
+CURRENT_VERSION=$(cat /opt/casescope/app/version.json | grep -o '"version": "[^"]*"' | cut -d'"' -f4)
+log "Current version: $CURRENT_VERSION"
+
+# Create migration script for v7.0.137+
+if [[ "$CURRENT_VERSION" == "7.0.137" ]] || [[ "$CURRENT_VERSION" > "7.0.137" ]]; then
+    log "Creating database migration script..."
+    cat > /opt/casescope/migrate_db.py << 'EOF'
+#!/usr/bin/env python3
+import sqlite3
+import os
+import sys
+import shutil
+from datetime import datetime
+
+def migrate_database():
+    """Migrate database schema to latest version"""
+    db_path = '/opt/casescope/data/casescope.db'
+    
+    print(f"[{datetime.now()}] Checking database schema: {db_path}")
+    
+    if not os.path.exists(db_path):
+        print("Database doesn't exist yet - will be created on first run")
+        return True
+    
+    # Create backup
+    backup_path = f"{db_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    print(f"Creating backup: {backup_path}")
+    shutil.copy2(db_path, backup_path)
+    
+    # Connect and check schema
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    try:
+        # Get current columns
+        cursor.execute("PRAGMA table_info(case_file)")
+        existing_columns = [row[1] for row in cursor.fetchall()]
+        print(f"Existing columns: {len(existing_columns)} found")
+        
+        # Define required columns (v7.0.137+)
+        required_columns = [
+            ('processing_phase', 'VARCHAR(100)', 'pending'),
+            ('processing_details', 'VARCHAR(200)', ''),
+            ('abort_requested', 'BOOLEAN', '0'),
+            ('celery_task_id', 'VARCHAR(100)', None)
+        ]
+        
+        changes_made = False
+        for col_name, col_type, default_val in required_columns:
+            if col_name not in existing_columns:
+                if default_val is None:
+                    sql = f"ALTER TABLE case_file ADD COLUMN {col_name} {col_type}"
+                else:
+                    sql = f"ALTER TABLE case_file ADD COLUMN {col_name} {col_type} DEFAULT '{default_val}'"
+                
+                print(f"Adding column: {col_name}")
+                cursor.execute(sql)
+                changes_made = True
+        
+        if changes_made:
+            conn.commit()
+            print("✅ Database schema updated successfully")
+        else:
+            print("✅ Database schema is up to date")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Migration failed: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+if __name__ == "__main__":
+    success = migrate_database()
+    sys.exit(0 if success else 1)
+EOF
+
+    # Make migration script executable
+    chmod +x /opt/casescope/migrate_db.py
+    
+    # Run migration as casescope user
+    log "Running database migration..."
+    if sudo -u casescope python3 /opt/casescope/migrate_db.py; then
+        log "✓ Database migration completed successfully"
+    else
+        log_error "Database migration failed"
+        exit 1
+    fi
+else
+    log "No database migration needed for version $CURRENT_VERSION"
+fi
+
 # Fix Flask app circular import issue
 log "Fixing Flask app circular import..."
 cd /opt/casescope/app
@@ -1418,11 +1514,14 @@ echo -e "${GREEN}Utility Scripts:${NC} /opt/casescope/"
 echo ""
 echo -e "${GREEN}=== Features Included ===${NC}"
 echo "- Enhanced file processing with detailed status tracking"
+echo "- Advanced search with Boolean operators (AND/OR) and phrase matching"
+echo "- Unlimited processing timeouts for large EVTX files"
+echo "- Real-time progress counters (e.g., '15,000/169,094 events indexed')"
+echo "- Abort functionality for stuck processing tasks"
+echo "- Automatic database schema migrations"
 echo "- Robust error handling and data sanitization"
-echo "- Search functionality with JSON parsing protection"
 echo "- Automatic nightly updates for Sigma/Chainsaw rules"
 echo "- Complete OpenSearch index management"
-echo "- Improved UI with better alignment and status display"
 echo ""
 echo -e "${YELLOW}IMPORTANT:${NC} Change the default admin password immediately after first login!"
 echo -e "${YELLOW}NOTE:${NC} The system is now ready for use with enhanced stability and features."
