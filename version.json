@@ -1,6 +1,6 @@
 {
-  "version": "7.0.131",
+  "version": "7.0.127",
   "release_date": "2025-09-27",
-  "description": "HOTFIX: Fixed OpenSearch nested query error - replaced with dot notation field search",
+  "description": "REVERT: Back to working state before service failure",
   "build": "production"
 }

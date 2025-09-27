@@ -40,9 +40,9 @@ fi
 
 # Extract version from version.json for logging
 if [ -f "$SCRIPT_DIR/version.json" ]; then
-    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.131")
+    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.127")
 else
-    VERSION="7.0.131"
+    VERSION="7.0.127"
 fi
 
 log "Starting caseScope v$VERSION application deployment..."
@@ -1087,7 +1087,7 @@ log_warning() {
     echo -e "${YELLOW}[$(date '+%Y-%m-%d %H:%M:%S')] WARNING:${NC} $1"
 }
 
-echo -e "${BLUE}=== caseScope v7.0.131 Diagnostic Report ===${NC}"
+echo -e "${BLUE}=== caseScope v7.0.127 Diagnostic Report ===${NC}"
 echo ""
 
 # System Information

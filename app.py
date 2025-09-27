@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.131')
+            return version_data.get('version', '7.0.127')
     except:
-        return "7.0.131"
+        return "7.0.127"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.131", "description": "Fallback version"}
+        return {"version": "7.0.127", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2360,8 +2360,10 @@ def search():
                     }
                 },
                 "sort": [{"timestamp": {"order": "desc"}}],
-                "size": 100
-                # Temporarily removed _source.excludes to debug empty event_data
+                "size": 100,
+                "_source": {
+                    "excludes": ["event_data.event.eventdata.data"]  # Exclude problematic nested data
+                }
             }
             
             # Add file filter if specified
@@ -2384,7 +2386,7 @@ def search():
                     }
                 })
             
-            # Add text query if provided - FIXED: Don't include case_id in search terms
+            # Add text query if provided - SIMPLIFIED approach
             if query:
                 # Add the text search to the existing query structure
                 search_body["query"]["bool"]["must"].append({
@@ -2402,8 +2404,8 @@ def search():
                             },
                             # Direct match in event data
                             {"match": {"event_data": query}},
-                            # Direct field searches for Event IDs using dot notation
-                            {"match": {"event_data.event.system.eventid": query}}
+                            # Try case_id as both string and integer for compatibility
+                            {"terms": {"case_id": [selected_case_id, str(selected_case_id)]}}
                         ],
                         "minimum_should_match": 1
                     }
