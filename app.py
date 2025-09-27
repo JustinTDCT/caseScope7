@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.128')
+            return version_data.get('version', '7.0.129')
     except:
-        return "7.0.128"
+        return "7.0.129"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.128", "description": "Fallback version"}
+        return {"version": "7.0.129", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2512,20 +2512,21 @@ def search():
                         result['source_name'] = result['source_name'] or str(event_data.get('provider_name', ''))
                     
                     
-                    # Create a simplified event_data structure for template use
+                    # KEEP THE FULL event_data - DON'T OVERWRITE IT!
+                    # Add a simplified view as a separate field if needed
                     if isinstance(result['event_data'], dict) and 'event' in result['event_data']:
                         event = result['event_data']['event']
                         if isinstance(event, dict) and 'system' in event:
                             system = event['system']
                             if isinstance(system, dict):
-                                result['event_data'] = {
-                                    'system': {
-                                        'channel': str(system.get('channel', ''))[:100],
-                                        'provider_name': str(system.get('provider_name', ''))[:100],
-                                        'level': str(system.get('level', ''))[:20],
-                                        'task': str(system.get('task', ''))[:50]
-                                    }
+                                # Create a simplified view as a separate field, don't overwrite event_data
+                                result['event_summary'] = {
+                                    'channel': str(system.get('channel', ''))[:100],
+                                    'provider_name': str(system.get('provider_name', ''))[:100],
+                                    'level': str(system.get('level', ''))[:20],
+                                    'task': str(system.get('task', ''))[:50]
                                 }
+                                # PRESERVE the original event_data - this was the critical bug!
                     
                     results.append(result)
                     

@@ -189,8 +189,8 @@
                                     Event ID: {{ result.event_id if result.event_id else 'N/A' }}
                                 </div>
                                 <div class="event-preview">
-                                    {% if result.event_data and result.event_data.system %}
-                                    Channel: {{ result.event_data.system.channel[:50] }}{% if result.event_data.system.channel|length > 50 %}...{% endif %}
+                                    {% if result.event_summary and result.event_summary.channel %}
+                                    Channel: {{ result.event_summary.channel[:50] }}{% if result.event_summary.channel|length > 50 %}...{% endif %}
                                     {% elif result.computer_name %}
                                     Computer: {{ result.computer_name }}
                                     {% else %}
@@ -237,18 +237,18 @@
                                                         <label>Source:</label>
                                                         <span>{{ result.source_name if result.source_name else 'N/A' }}</span>
                                                     </div>
-                                                    {% if result.event_data and result.event_data.system %}
+                                                    {% if result.event_summary %}
                                                     <div class="field-item">
                                                         <label>Channel:</label>
-                                                        <span>{{ result.event_data.system.channel if result.event_data.system.channel else 'N/A' }}</span>
+                                                        <span>{{ result.event_summary.channel if result.event_summary.channel else 'N/A' }}</span>
                                                     </div>
                                                     <div class="field-item">
                                                         <label>Provider:</label>
-                                                        <span>{{ result.event_data.system.provider_name if result.event_data.system.provider_name else 'N/A' }}</span>
+                                                        <span>{{ result.event_summary.provider_name if result.event_summary.provider_name else 'N/A' }}</span>
                                                     </div>
                                                     <div class="field-item">
                                                         <label>Level:</label>
-                                                        <span>{{ result.event_data.system.level if result.event_data.system.level else 'N/A' }}</span>
+                                                        <span>{{ result.event_summary.level if result.event_summary.level else 'N/A' }}</span>
                                                     </div>
                                                     {% endif %}
                                                 </div>

@@ -1,6 +1,6 @@
 {
-  "version": "7.0.128",
+  "version": "7.0.129",
   "release_date": "2025-09-27",
-  "description": "CRITICAL FIX: Removed _source.excludes causing empty event_data + Added test_raw_document debug query",
+  "description": "CRITICAL ROOT CAUSE FIX: Found and fixed result processing that was overwriting event_data with empty structure!",
   "build": "production"
 }
