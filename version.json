@@ -1,6 +1,6 @@
 {
-  "version": "7.0.130",
+  "version": "7.0.131",
   "release_date": "2025-09-27",
-  "description": "MAJOR FIX: Fixed broken query logic returning all docs + Added comprehensive raw data debugging",
+  "description": "HOTFIX: Fixed OpenSearch nested query error - replaced with dot notation field search",
   "build": "production"
 }

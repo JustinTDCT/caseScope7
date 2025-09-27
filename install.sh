@@ -355,7 +355,7 @@ fi
 # Reload systemd to clear removed services
 systemctl daemon-reload
 
-log "Starting caseScope v7.0.101 installation..."
+log "Starting caseScope v7.0.131 installation..."
 log "Target OS: Ubuntu 24 headless server"
 log "Installation directory: /opt/casescope"
 
@@ -956,9 +956,9 @@ log "Installation framework complete. Application files will be created next."
 # Create version file
 # Extract version from version.json and write to VERSION file
 if [ -f "$SCRIPT_DIR/version.json" ]; then
-    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.119")
+    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.131")
 else
-    VERSION="7.0.119"
+    VERSION="7.0.131"
 fi
 echo "$VERSION" > /opt/casescope/VERSION
 

@@ -26,7 +26,7 @@ celery==5.3.4
 gunicorn==21.2.0
 
 # EVTX Parsing
-evtx
+python-evtx==0.8.2
 
 # XML Processing
 xmltodict==0.13.0
