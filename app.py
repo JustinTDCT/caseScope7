@@ -2380,6 +2380,28 @@ def search():
                     },
                     "size": 5
                 }
+            elif query == "test_actual_eventids":
+                logger.info("=== CHECKING ACTUAL EVENT IDs IN DATA ===")
+                search_body = {
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {"term": {"case_id": selected_case_id}},
+                                {"exists": {"field": "event_data.event.system.eventid"}}
+                            ]
+                        }
+                    },
+                    "aggs": {
+                        "eventids": {
+                            "terms": {
+                                "field": "event_data.event.system.eventid",
+                                "size": 50
+                            }
+                        }
+                    },
+                    "size": 5,
+                    "_source": ["event_data.event.system.eventid", "timestamp"]
+                }
             elif query == "test_nested_structure":
                 logger.info("Running debug query to test nested field access")
                 search_body = {
