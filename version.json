@@ -1,6 +1,6 @@
 {
-  "version": "7.0.123",
+  "version": "7.0.124",
   "release_date": "2025-09-27",
-  "description": "CRITICAL FIX: Completely rebuilt search query structure - replaced complex broken query with simple working approach",
+  "description": "DEBUG: Added comprehensive verbose logging to diagnose search failures - logs exact OpenSearch queries and responses",
   "build": "production"
 }

@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.123')
+            return version_data.get('version', '7.0.124')
     except:
-        return "7.0.123"
+        return "7.0.124"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.123", "description": "Fallback version"}
+        return {"version": "7.0.124", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2274,6 +2274,13 @@ def search():
                     },
                     "size": 5
                 }
+            elif query == "test_no_case_filter":
+                logger.info("Running debug query WITHOUT case filter to see all documents")
+                search_body = {
+                    "query": {"match_all": {}},
+                    "size": 5,
+                    "_source": ["case_id", "file_id", "source_file", "timestamp"]
+                }
             elif query == "test_eventid_4624":
                 logger.info("Running debug EventID 4624 query with correct nested field")
                 search_body = {
@@ -2405,12 +2412,36 @@ def search():
             
             logger.info(f"Executing search for case {selected_case_id}: query='{query}', rule_violations={rule_violations}, file_id={file_id}")
             
+            # VERBOSE DEBUG: Log the exact search query being sent
+            logger.info("=== OPENSEARCH QUERY DEBUG ===")
+            logger.info(f"Index: casescope-case-{selected_case_id}")
+            logger.info(f"Search body: {json.dumps(search_body, indent=2)}")
+            logger.info("=== END QUERY DEBUG ===")
+            
             # Execute search with timeout and error handling
-            response = opensearch_client.search(
-                index=f"casescope-case-{selected_case_id}",
-                body=search_body,
-                timeout=30
-            )
+            try:
+                response = opensearch_client.search(
+                    index=f"casescope-case-{selected_case_id}",
+                    body=search_body,
+                    timeout=30
+                )
+                
+                # VERBOSE DEBUG: Log the response
+                logger.info("=== OPENSEARCH RESPONSE DEBUG ===")
+                logger.info(f"Response status: SUCCESS")
+                logger.info(f"Response keys: {list(response.keys())}")
+                if 'hits' in response:
+                    hits_info = response['hits']
+                    logger.info(f"Hits keys: {list(hits_info.keys())}")
+                    if 'total' in hits_info:
+                        logger.info(f"Total hits structure: {hits_info['total']}")
+                    logger.info(f"Actual hits count: {len(hits_info.get('hits', []))}")
+                logger.info("=== END RESPONSE DEBUG ===")
+                
+            except Exception as search_error:
+                logger.error(f"OpenSearch query failed: {search_error}")
+                logger.error(f"Query that failed: {json.dumps(search_body, indent=2)}")
+                raise
             
             total_hits = response['hits']['total']['value']
             
