@@ -1217,3 +1217,210 @@ body {
   animation: pulse 2s infinite;
 }
 
+/* Enhanced Event Display Styles - Timesketch/Wazuh Style */
+.formatted-event {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.event-section {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+}
+
+.event-section h4 {
+  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+  color: white;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.event-section h4 i {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.event-fields-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  padding: 1.25rem;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.field-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.field-item label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+}
+
+.field-value {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  background: var(--input-bg);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-light);
+  font-family: 'JetBrains Mono', 'Monaco', 'Consolas', monospace;
+  word-break: break-all;
+}
+
+.field-value.event-id {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: white;
+  font-weight: 600;
+}
+
+.field-value.timestamp {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+}
+
+.field-value.computer {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  color: white;
+}
+
+/* Event Data Styles */
+.event-data-container {
+  padding: 1.25rem;
+}
+
+.data-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 0.75rem;
+}
+
+.data-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: var(--input-bg);
+  padding: 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-light);
+}
+
+.data-item label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.data-value {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Monaco', 'Consolas', monospace;
+  word-break: break-all;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+/* Security Context Styles */
+.security-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+
+.security-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.1));
+  padding: 0.75rem;
+  border-radius: 6px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.security-item label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--danger-color);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.security-value {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Monaco', 'Consolas', monospace;
+  font-weight: 600;
+  word-break: break-all;
+  background: rgba(239, 68, 68, 0.1);
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .event-fields-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    padding: 1rem;
+  }
+  
+  .data-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .security-grid {
+    grid-template-columns: 1fr;
+    padding: 1rem;
+  }
+}
+
+/* Dark mode adjustments */
+[data-theme="dark"] .field-value {
+  background: rgba(55, 65, 81, 0.8);
+  border-color: rgba(75, 85, 99, 0.5);
+}
+
+[data-theme="dark"] .data-item {
+  background: rgba(55, 65, 81, 0.6);
+  border-color: rgba(75, 85, 99, 0.4);
+}
+
+[data-theme="dark"] .data-value {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+[data-theme="dark"] .security-item {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.15));
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+[data-theme="dark"] .security-value {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+

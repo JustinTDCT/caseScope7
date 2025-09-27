@@ -1,6 +1,6 @@
 {
-  "version": "7.0.141",
+  "version": "7.0.142",
   "release_date": "2025-09-27",
-  "description": "AJAX REFRESH FIX: Real-time progress updates without page reload + X/Y counters",
+  "description": "FORENSIC VIEW: Comprehensive event details like Timesketch/Wazuh + enhanced formatting",
   "build": "production"
 }

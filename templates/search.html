@@ -214,45 +214,153 @@
                                     </div>
                                     <div class="tab-pane" id="formatted-{{ loop.index }}" style="display: none;">
                                         <div class="formatted-event">
+                                            <!-- Basic Event Information -->
                                             <div class="event-section">
-                                                <h4>Event Information</h4>
-                                                <div class="event-fields">
-                                                    <div class="field-item">
-                                                        <label>Event ID:</label>
-                                                        <span>{{ result.event_id if result.event_id else 'N/A' }}</span>
+                                                <h4><i class="fas fa-info-circle"></i> Basic Event Information</h4>
+                                                <div class="event-fields-grid">
+                                                    <div class="field-group">
+                                                        <div class="field-item">
+                                                            <label>Event ID:</label>
+                                                            <span class="field-value event-id">{{ result.event_id if result.event_id else 'N/A' }}</span>
+                                                        </div>
+                                                        <div class="field-item">
+                                                            <label>Record ID:</label>
+                                                            <span class="field-value">{{ result.event_record_id if result.event_record_id else 'N/A' }}</span>
+                                                        </div>
+                                                        <div class="field-item">
+                                                            <label>Timestamp:</label>
+                                                            <span class="field-value timestamp">{{ result.timestamp if result.timestamp else 'N/A' }}</span>
+                                                        </div>
                                                     </div>
-                                                    <div class="field-item">
-                                                        <label>Record ID:</label>
-                                                        <span>{{ result.event_record_id if result.event_record_id else 'N/A' }}</span>
+                                                    <div class="field-group">
+                                                        <div class="field-item">
+                                                            <label>Computer:</label>
+                                                            <span class="field-value computer">{{ result.computer_name if result.computer_name else 'N/A' }}</span>
+                                                        </div>
+                                                        <div class="field-item">
+                                                            <label>Source File:</label>
+                                                            <span class="field-value">{{ result.source_file if result.source_file else 'N/A' }}</span>
+                                                        </div>
+                                                        <div class="field-item">
+                                                            <label>File ID:</label>
+                                                            <span class="field-value">{{ result.file_id if result.file_id else 'N/A' }}</span>
+                                                        </div>
                                                     </div>
-                                                    <div class="field-item">
-                                                        <label>Timestamp:</label>
-                                                        <span>{{ result.timestamp if result.timestamp else 'N/A' }}</span>
+                                                </div>
+                                            </div>
+
+                                            <!-- System Information -->
+                                            {% if result.event_summary or (result.event_data and result.event_data.event and result.event_data.event.system) %}
+                                            <div class="event-section">
+                                                <h4><i class="fas fa-cogs"></i> System Information</h4>
+                                                <div class="event-fields-grid">
+                                                    <div class="field-group">
+                                                        <div class="field-item">
+                                                            <label>Channel:</label>
+                                                            <span class="field-value">{{ result.event_summary.channel if result.event_summary and result.event_summary.channel else (result.event_data.event.system.channel if result.event_data and result.event_data.event and result.event_data.event.system and result.event_data.event.system.channel else 'N/A') }}</span>
+                                                        </div>
+                                                        <div class="field-item">
+                                                            <label>Provider:</label>
+                                                            <span class="field-value">{{ result.event_summary.provider_name if result.event_summary and result.event_summary.provider_name else (result.event_data.event.system.provider.name if result.event_data and result.event_data.event and result.event_data.event.system and result.event_data.event.system.provider and result.event_data.event.system.provider.name else 'N/A') }}</span>
+                                                        </div>
+                                                        <div class="field-item">
+                                                            <label>Level:</label>
+                                                            <span class="field-value">{{ result.event_summary.level if result.event_summary and result.event_summary.level else (result.event_data.event.system.level if result.event_data and result.event_data.event and result.event_data.event.system and result.event_data.event.system.level else 'N/A') }}</span>
+                                                        </div>
                                                     </div>
-                                                    <div class="field-item">
-                                                        <label>Computer:</label>
-                                                        <span>{{ result.computer_name if result.computer_name else 'N/A' }}</span>
+                                                    <div class="field-group">
+                                                        <div class="field-item">
+                                                            <label>Task:</label>
+                                                            <span class="field-value">{{ result.event_summary.task if result.event_summary and result.event_summary.task else (result.event_data.event.system.task if result.event_data and result.event_data.event and result.event_data.event.system and result.event_data.event.system.task else 'N/A') }}</span>
+                                                        </div>
+                                                        <div class="field-item">
+                                                            <label>Opcode:</label>
+                                                            <span class="field-value">{{ result.event_data.event.system.opcode if result.event_data and result.event_data.event and result.event_data.event.system and result.event_data.event.system.opcode else 'N/A' }}</span>
+                                                        </div>
+                                                        <div class="field-item">
+                                                            <label>Keywords:</label>
+                                                            <span class="field-value">{{ result.event_data.event.system.keywords if result.event_data and result.event_data.event and result.event_data.event.system and result.event_data.event.system.keywords else 'N/A' }}</span>
+                                                        </div>
                                                     </div>
-                                                    <div class="field-item">
-                                                        <label>Source:</label>
-                                                        <span>{{ result.source_name if result.source_name else 'N/A' }}</span>
-                                                    </div>
-                                                    {% if result.event_summary %}
-                                                    <div class="field-item">
-                                                        <label>Channel:</label>
-                                                        <span>{{ result.event_summary.channel if result.event_summary.channel else 'N/A' }}</span>
-                                                    </div>
-                                                    <div class="field-item">
-                                                        <label>Provider:</label>
-                                                        <span>{{ result.event_summary.provider_name if result.event_summary.provider_name else 'N/A' }}</span>
-                                                    </div>
-                                                    <div class="field-item">
-                                                        <label>Level:</label>
-                                                        <span>{{ result.event_summary.level if result.event_summary.level else 'N/A' }}</span>
-                                                    </div>
+                                                </div>
+                                            </div>
+                                            {% endif %}
+
+                                            <!-- Event Data Details -->
+                                            {% if result.event_data and result.event_data.event and result.event_data.event.eventdata %}
+                                            <div class="event-section">
+                                                <h4><i class="fas fa-database"></i> Event Data</h4>
+                                                <div class="event-data-container">
+                                                    {% set eventdata = result.event_data.event.eventdata %}
+                                                    {% if eventdata.data %}
+                                                        {% if eventdata.data is mapping %}
+                                                            <!-- Single data object -->
+                                                            <div class="data-item">
+                                                                <strong>{{ eventdata.data.name if eventdata.data.name else 'Data' }}:</strong>
+                                                                <span class="data-value">{{ eventdata.data.text if eventdata.data.text else eventdata.data }}</span>
+                                                            </div>
+                                                        {% elif eventdata.data is iterable %}
+                                                            <!-- Multiple data items -->
+                                                            <div class="data-grid">
+                                                                {% for data_item in eventdata.data %}
+                                                                    {% if data_item is mapping %}
+                                                                    <div class="data-item">
+                                                                        <label>{{ data_item.name if data_item.name else 'Data' }}:</label>
+                                                                        <span class="data-value">{{ data_item.text if data_item.text else data_item }}</span>
+                                                                    </div>
+                                                                    {% else %}
+                                                                    <div class="data-item">
+                                                                        <label>Data:</label>
+                                                                        <span class="data-value">{{ data_item }}</span>
+                                                                    </div>
+                                                                    {% endif %}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    {% else %}
+                                                        <!-- Fallback: show all eventdata fields -->
+                                                        <div class="data-grid">
+                                                            {% for key, value in eventdata.items() %}
+                                                                {% if value and key != 'data' %}
+                                                                <div class="data-item">
+                                                                    <label>{{ key|title }}:</label>
+                                                                    <span class="data-value">{{ value }}</span>
+                                                                </div>
+                                                                {% endif %}
+                                                            {% endfor %}
+                                                        </div>
                                                     {% endif %}
                                                 </div>
                                             </div>
+                                            {% endif %}
+
+                                            <!-- Security Context (for security events) -->
+                                            {% if result.event_data and result.event_data.event and result.event_data.event.eventdata %}
+                                            {% set eventdata = result.event_data.event.eventdata %}
+                                            {% if (eventdata.data and eventdata.data is iterable) %}
+                                                {% set security_fields = [] %}
+                                                {% for data_item in eventdata.data %}
+                                                    {% if data_item is mapping and data_item.name %}
+                                                        {% if data_item.name in ['SubjectUserName', 'SubjectDomainName', 'SubjectLogonId', 'TargetUserName', 'TargetDomainName', 'LogonType', 'AuthenticationPackageName', 'WorkstationName', 'IpAddress', 'ProcessName', 'CommandLine'] %}
+                                                            {% set _ = security_fields.append(data_item) %}
+                                                        {% endif %}
+                                                    {% endif %}
+                                                {% endfor %}
+                                                {% if security_fields %}
+                                                <div class="event-section">
+                                                    <h4><i class="fas fa-shield-alt"></i> Security Context</h4>
+                                                    <div class="security-grid">
+                                                        {% for field in security_fields %}
+                                                        <div class="security-item">
+                                                            <label>{{ field.name|replace('Subject', '')|replace('Target', '')|title }}:</label>
+                                                            <span class="security-value">{{ field.text if field.text else field }}</span>
+                                                        </div>
+                                                        {% endfor %}
+                                                    </div>
+                                                </div>
+                                                {% endif %}
+                                            {% endif %}
+                                            {% endif %}
                                             
                                         </div>
                                     </div>
