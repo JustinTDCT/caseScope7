@@ -1,6 +1,6 @@
 {
-  "version": "7.0.127",
+  "version": "7.0.128",
   "release_date": "2025-09-27",
-  "description": "REVERT: Back to working state before service failure",
+  "description": "DEBUG: Added test_raw_indexing query to trace indexing vs search data flow",
   "build": "production"
 }

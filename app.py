@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.127')
+            return version_data.get('version', '7.0.128')
     except:
-        return "7.0.127"
+        return "7.0.128"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.127", "description": "Fallback version"}
+        return {"version": "7.0.128", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2303,6 +2303,13 @@ def search():
                     "size": 1,
                     "_source": True  # Include everything
                 }
+            elif query == "test_raw_indexing":
+                logger.info("Testing what was actually indexed vs what we see in search")
+                search_body = {
+                    "query": {"match_all": {}},
+                    "size": 1,
+                    "_source": True
+                }
             elif query == "test_eventid_4624":
                 logger.info("Running debug EventID 4624 query with correct nested field")
                 search_body = {
@@ -2539,7 +2546,7 @@ def search():
             logger.info(f"Search completed: {len(results)} results returned out of {total_hits} total hits")
             
             # Debug: Log actual document content for debugging queries and regular searches
-            if (query in ["debug_content", "test_match_all", "test_raw_document"] or len(results) > 0) and results:
+            if (query in ["debug_content", "test_match_all", "test_raw_document", "test_raw_indexing"] or len(results) > 0) and results:
                 logger.info("=== RESULT PROCESSING DEBUG ===")
                 first_result = results[0] if results else None
                 if first_result:
@@ -2575,7 +2582,7 @@ def search():
                         logger.info(f"event_data is not dict: {str(event_data)[:200]}...")
                         
                     # For raw document test, show the OpenSearch _source data too
-                    if query == "test_raw_document" and len(response.get('hits', {}).get('hits', [])) > 0:
+                    if query in ["test_raw_document", "test_raw_indexing"] and len(response.get('hits', {}).get('hits', [])) > 0:
                         raw_hit = response['hits']['hits'][0]
                         raw_source = raw_hit.get('_source', {})
                         logger.info("=== RAW OPENSEARCH _SOURCE DEBUG ===")
