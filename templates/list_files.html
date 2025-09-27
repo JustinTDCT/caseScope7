@@ -128,7 +128,11 @@
 
                         <div class="file-status">
                             {% set status_class = 'success' if file.processing_status == 'completed' else 'warning' if file.processing_status == 'analyzing' else 'info' if file.processing_status == 'ingesting' else 'danger' if file.processing_status == 'error' else 'secondary' %}
-                            {% set status_text = 'Complete' if file.processing_status == 'completed' else 'Running Chainsaw' if file.processing_status == 'analyzing' else 'Ingesting Events' if file.processing_status == 'ingesting' else 'Error' if file.processing_status == 'error' else 'Queued' %}
+                            {% if file.processing_phase and file.processing_phase != 'pending' %}
+                                {% set status_text = file.processing_phase %}
+                            {% else %}
+                                {% set status_text = 'Complete' if file.processing_status == 'completed' else 'Running Chainsaw' if file.processing_status == 'analyzing' else 'Ingesting Events' if file.processing_status == 'ingesting' else 'Error' if file.processing_status == 'error' else 'Queued' %}
+                            {% endif %}
                             <span class="badge badge-{{ status_class }}">
                                 {{ status_text }}
                             </span>
@@ -136,7 +140,21 @@
                             <div class="progress mt-2">
                                 <div class="progress-bar" style="width: {{ file.processing_progress }}%" id="progress-{{ file.id }}"></div>
                             </div>
-                            <div class="progress-text">{{ file.processing_progress }}%</div>
+                            <div class="progress-text">
+                                {{ file.processing_progress }}%
+                                {% if file.processing_details %}
+                                    <br><small class="text-muted">{{ file.processing_details }}</small>
+                                {% endif %}
+                            </div>
+                            {% if current_user.can_write() and not file.abort_requested %}
+                            <button onclick="abortProcessing({{ file.id }})" class="btn btn-sm btn-outline-danger mt-1">
+                                <i class="fas fa-stop"></i> Abort
+                            </button>
+                            {% elif file.abort_requested %}
+                            <small class="text-warning mt-1 d-block">
+                                <i class="fas fa-exclamation-triangle"></i> Abort requested...
+                            </small>
+                            {% endif %}
                             {% endif %}
                         </div>
 
@@ -924,6 +942,37 @@ function reprocessFile(fileId) {
     }
 }
 
+function abortProcessing(fileId) {
+    if (!confirm('Are you sure you want to abort processing this file?')) {
+        return;
+    }
+    
+    console.log('Aborting processing for file:', fileId);
+    
+    fetch(`/files/${fileId}/abort`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCSRFToken()
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Abort request sent successfully');
+            // Refresh the file list to show updated status
+            setTimeout(refreshFileList, 1000);
+        } else {
+            console.error('Abort request failed:', data.error);
+            alert('Failed to abort processing: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error aborting processing:', error);
+        alert('An error occurred while aborting processing.');
+    });
+}
+
 // Expose functions globally
 window.showFileDetails = showFileDetails;
 window.reindexFile = reindexFile;
@@ -932,6 +981,7 @@ window.reprocessFile = reprocessFile;
 window.deleteFile = deleteFile;
 window.refreshFileList = refreshFileList;
 window.toggleDropdownDirect = toggleDropdownDirect;
+window.abortProcessing = abortProcessing;
 </script>
 {% endblock %}
 

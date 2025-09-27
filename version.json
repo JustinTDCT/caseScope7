@@ -1,6 +1,6 @@
 {
-  "version": "7.0.138",
+  "version": "7.0.139",
   "release_date": "2025-09-27",
-  "description": "HOTFIX: Fixed case deletion constraint error + processing upgrades",
+  "description": "UI UPGRADE: Detailed progress counters + abort buttons + case deletion fix",
   "build": "production"
 }
