@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.127')
+            return version_data.get('version', '7.0.128')
     except:
-        return "7.0.127"
+        return "7.0.128"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.127", "description": "Fallback version"}
+        return {"version": "7.0.128", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2292,6 +2292,17 @@ def search():
                     },
                     "size": 5
                 }
+            elif query == "test_raw_document":
+                logger.info("Running debug query to see complete raw document")
+                search_body = {
+                    "query": {
+                        "bool": {
+                            "must": [{"term": {"case_id": selected_case_id}}]
+                        }
+                    },
+                    "size": 1,
+                    "_source": True  # Include everything
+                }
             elif query == "test_eventid_4624":
                 logger.info("Running debug EventID 4624 query with correct nested field")
                 search_body = {
@@ -2349,10 +2360,8 @@ def search():
                     }
                 },
                 "sort": [{"timestamp": {"order": "desc"}}],
-                "size": 100,
-                "_source": {
-                    "excludes": ["event_data.event.eventdata.data"]  # Exclude problematic nested data
-                }
+                "size": 100
+                # Temporarily removed _source.excludes to debug empty event_data
             }
             
             # Add file filter if specified
@@ -2527,7 +2536,7 @@ def search():
             logger.info(f"Search completed: {len(results)} results returned out of {total_hits} total hits")
             
             # Debug: Log actual document content for debugging queries and regular searches
-            if (query in ["debug_content", "test_match_all"] or len(results) > 0) and results:
+            if (query in ["debug_content", "test_match_all", "test_raw_document"] or len(results) > 0) and results:
                 logger.info("=== RESULT PROCESSING DEBUG ===")
                 first_result = results[0] if results else None
                 if first_result:
@@ -2542,22 +2551,39 @@ def search():
                     logger.info(f"Raw event_data type: {type(event_data)}")
                     if isinstance(event_data, dict):
                         logger.info(f"Raw event_data keys: {list(event_data.keys())}")
-                        if 'event' in event_data:
-                            event = event_data['event']
-                            logger.info(f"Raw event type: {type(event)}")
-                            if isinstance(event, dict):
-                                logger.info(f"Raw event keys: {list(event.keys())}")
-                                if 'system' in event:
-                                    system = event['system']
-                                    logger.info(f"Raw system type: {type(system)}")
-                                    if isinstance(system, dict):
-                                        logger.info(f"Raw system keys: {list(system.keys())}")
-                                        logger.info(f"Raw eventid value: '{system.get('eventid')}' (type: {type(system.get('eventid'))})")
-                                        logger.info(f"Raw computer value: '{system.get('computer')}' (type: {type(system.get('computer'))})")
-                                        logger.info(f"Raw provider value: '{system.get('provider')}' (type: {type(system.get('provider'))})")
-                                        logger.info(f"Raw eventrecordid value: '{system.get('eventrecordid')}' (type: {type(system.get('eventrecordid'))})")
+                        if event_data:  # Only if not empty
+                            if 'event' in event_data:
+                                event = event_data['event']
+                                logger.info(f"Raw event type: {type(event)}")
+                                if isinstance(event, dict):
+                                    logger.info(f"Raw event keys: {list(event.keys())}")
+                                    if 'system' in event:
+                                        system = event['system']
+                                        logger.info(f"Raw system type: {type(system)}")
+                                        if isinstance(system, dict):
+                                            logger.info(f"Raw system keys: {list(system.keys())}")
+                                            logger.info(f"Raw eventid value: '{system.get('eventid')}' (type: {type(system.get('eventid'))})")
+                                            logger.info(f"Raw computer value: '{system.get('computer')}' (type: {type(system.get('computer'))})")
+                                            logger.info(f"Raw provider value: '{system.get('provider')}' (type: {type(system.get('provider'))})")
+                                            logger.info(f"Raw eventrecordid value: '{system.get('eventrecordid')}' (type: {type(system.get('eventrecordid'))})")
+                        else:
+                            logger.info("event_data is empty dict - this is the problem!")
                     else:
                         logger.info(f"event_data is not dict: {str(event_data)[:200]}...")
+                        
+                    # For raw document test, show the OpenSearch _source data too
+                    if query == "test_raw_document" and len(response.get('hits', {}).get('hits', [])) > 0:
+                        raw_hit = response['hits']['hits'][0]
+                        raw_source = raw_hit.get('_source', {})
+                        logger.info("=== RAW OPENSEARCH _SOURCE DEBUG ===")
+                        logger.info(f"Raw _source keys: {list(raw_source.keys())}")
+                        raw_event_data = raw_source.get('event_data', {})
+                        logger.info(f"Raw _source event_data type: {type(raw_event_data)}")
+                        logger.info(f"Raw _source event_data keys: {list(raw_event_data.keys()) if isinstance(raw_event_data, dict) else 'NOT_DICT'}")
+                        if isinstance(raw_event_data, dict) and raw_event_data:
+                            logger.info(f"Raw _source event_data content sample: {str(raw_event_data)[:300]}...")
+                        logger.info("=== END RAW _SOURCE DEBUG ===")
+                        
                 logger.info("=== END RESULT DEBUG ===")
             
     except Exception as e:

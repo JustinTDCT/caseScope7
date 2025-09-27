@@ -1,6 +1,6 @@
 {
-  "version": "7.0.127",
+  "version": "7.0.128",
   "release_date": "2025-09-27",
-  "description": "DEBUG: Added detailed raw event data logging to diagnose why event ID extraction returns empty strings",
+  "description": "CRITICAL FIX: Removed _source.excludes causing empty event_data + Added test_raw_document debug query",
   "build": "production"
 }
