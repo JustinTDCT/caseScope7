@@ -1,6 +1,6 @@
 {
-  "version": "7.0.113",
-  "release_date": "2025-09-26",
-  "description": "CRITICAL FIX: Removed aggressive index cleanup from deploy script that was deleting all OpenSearch data on every deploy",
+  "version": "7.0.114",
+  "release_date": "2025-09-27",
+  "description": "DEBUG: Added document structure analysis to diagnose why searches return 0 results despite indexed documents",
   "build": "production"
 }

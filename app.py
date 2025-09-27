@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.113')
+            return version_data.get('version', '7.0.114')
     except:
-        return "7.0.113"
+        return "7.0.114"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.113", "description": "Fallback version"}
+        return {"version": "7.0.114", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2203,15 +2203,47 @@ def search():
                 try:
                     doc_count = opensearch_client.count(index=index_name)['count']
                     logger.info(f"OpenSearch index {index_name} exists with {doc_count} documents")
+                    
+                    # Debug: Show sample document structure to understand field names
+                    sample_search = opensearch_client.search(
+                        index=index_name,
+                        body={"query": {"match_all": {}}, "size": 1}
+                    )
+                    if sample_search['hits']['hits']:
+                        sample_doc = sample_search['hits']['hits'][0]['_source']
+                        logger.info(f"Sample document fields: {list(sample_doc.keys())}")
+                        
+                        # Show nested structure if event_data exists
+                        if 'event_data' in sample_doc and isinstance(sample_doc['event_data'], dict):
+                            event_data = sample_doc['event_data']
+                            logger.info(f"event_data structure: {list(event_data.keys())}")
+                            
+                            if 'event' in event_data and isinstance(event_data['event'], dict):
+                                event = event_data['event']
+                                logger.info(f"event_data.event structure: {list(event.keys())}")
+                                
+                                if 'system' in event and isinstance(event['system'], dict):
+                                    system = event['system']
+                                    logger.info(f"event_data.event.system fields: {list(system.keys())}")
+                                    
+                                if 'eventdata' in event and isinstance(event['eventdata'], dict):
+                                    eventdata = event['eventdata']
+                                    logger.info(f"event_data.event.eventdata fields: {list(eventdata.keys())}")
+                    
                 except Exception as count_error:
-                    logger.warning(f"Could not count documents in {index_name}: {count_error}")
+                    logger.warning(f"Could not analyze documents in {index_name}: {count_error}")
                     
         except Exception as index_check_error:
             logger.error(f"Error checking index existence: {index_check_error}")
         
         if query or rule_violations or file_id:
-            # Build OpenSearch query
-            search_body = {
+            # Debug: Try a simple match_all query first to see if we can get any results
+            if query == "test_match_all":
+                logger.info("Running debug match_all query")
+                search_body = {"query": {"match_all": {}}, "size": 5}
+            else:
+                # Build OpenSearch query
+                search_body = {
                 "query": {
                     "bool": {
                         "must": [
