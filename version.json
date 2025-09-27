@@ -1,6 +1,6 @@
 {
-  "version": "7.0.129",
+  "version": "7.0.130",
   "release_date": "2025-09-27",
-  "description": "DIAGNOSTIC: Added comprehensive search term analysis with match explanations",
+  "description": "CRITICAL TEST: Removed _source.excludes to test if it's causing empty event_data",
   "build": "production"
 }

@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.129')
+            return version_data.get('version', '7.0.130')
     except:
-        return "7.0.129"
+        return "7.0.130"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.129", "description": "Fallback version"}
+        return {"version": "7.0.130", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2417,10 +2417,8 @@ def search():
                     }
                 },
                 "sort": [{"timestamp": {"order": "desc"}}],
-                "size": 100,
-                "_source": {
-                    "excludes": ["event_data.event.eventdata.data"]  # Exclude problematic nested data
-                }
+                "size": 100
+                # TEMPORARILY REMOVED _source.excludes to test if it's causing the empty event_data
             }
             
             # Add file filter if specified
