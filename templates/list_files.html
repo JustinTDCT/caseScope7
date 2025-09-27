@@ -731,12 +731,12 @@ function updateProcessingStatus() {
         return;
     }
 
-    // This would typically make an API call to get current status
+    // Get current status for all files
     fetch(`/api/case/{{ case.id }}/file-status`)
         .then(response => response.json())
         .then(data => {
             data.files.forEach(file => {
-                updateFileStatus(file.id, file.status, file.progress);
+                updateFileStatus(file.id, file.status, file.progress, file.phase, file.details, file.abort_requested);
             });
         })
         .catch(error => {
@@ -744,35 +744,60 @@ function updateProcessingStatus() {
         });
 }
 
-function updateFileStatus(fileId, status, progress) {
+function updateFileStatus(fileId, status, progress, phase, details, abortRequested) {
     const fileItem = document.querySelector(`[data-file-id="${fileId}"]`);
     if (!fileItem) return;
 
     const statusBadge = fileItem.querySelector('.badge');
     const progressBar = fileItem.querySelector(`#progress-${fileId}`);
     const progressText = fileItem.querySelector('.progress-text');
+    const abortButton = fileItem.querySelector('button[onclick*="abortProcessing"]');
+    const abortMessage = fileItem.querySelector('.text-warning');
 
+    // Update status badge with detailed phase information
     if (statusBadge) {
-        // Use the same status text mapping as the server-side template
-        const statusText = getStatusText(status);
-        statusBadge.textContent = statusText;
+        let displayText;
+        if (status === 'completed') {
+            displayText = 'Complete';
+        } else if (phase && phase !== 'pending' && phase !== '') {
+            displayText = phase;
+        } else {
+            displayText = getStatusText(status);
+        }
+        statusBadge.textContent = displayText;
         statusBadge.className = `badge badge-${getStatusClass(status)}`;
     }
 
+    // Update progress bar and details for active processing
     if (progressBar && (status === 'ingesting' || status === 'analyzing')) {
         progressBar.style.width = progress + '%';
-        if (progressText) {
-            progressText.textContent = progress + '%';
-        }
         progressBar.parentElement.style.display = 'block';
+        
         if (progressText) {
+            let progressHtml = progress + '%';
+            if (details && details !== '') {
+                progressHtml += '<br><small class="text-muted">' + details + '</small>';
+            }
+            progressText.innerHTML = progressHtml;
             progressText.style.display = 'block';
         }
-    } else if (progressBar && status === 'completed') {
-        progressBar.parentElement.style.display = 'none';
-        if (progressText) {
-            progressText.style.display = 'none';
+        
+        // Update abort button visibility
+        if (abortButton && abortMessage) {
+            if (abortRequested) {
+                abortButton.style.display = 'none';
+                abortMessage.style.display = 'block';
+            } else {
+                abortButton.style.display = 'inline-block';
+                abortMessage.style.display = 'none';
+            }
         }
+    } else if (status === 'completed') {
+        // Hide progress elements for completed files
+        if (progressBar) progressBar.parentElement.style.display = 'none';
+        if (progressText) progressText.style.display = 'none';
+        if (abortButton) abortButton.style.display = 'none';
+        if (abortMessage) abortMessage.style.display = 'none';
     }
 }
 
@@ -800,7 +825,8 @@ function getStatusClass(status) {
 }
 
 function refreshFileList() {
-    window.location.reload();
+    console.log('Refreshing file list...');
+    updateProcessingStatus();
 }
 
 function showFileDetails(fileId) {

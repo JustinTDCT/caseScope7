@@ -1,6 +1,6 @@
 {
-  "version": "7.0.140",
+  "version": "7.0.141",
   "release_date": "2025-09-27",
-  "description": "PROGRESS FIX: Correct status display + X/Y event counters + completion details",
+  "description": "AJAX REFRESH FIX: Real-time progress updates without page reload + X/Y counters",
   "build": "production"
 }

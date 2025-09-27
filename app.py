@@ -1841,15 +1841,16 @@ def process_evtx_file(file_id):
                 logger.info("Running Chainsaw analysis...")
                 case_file.processing_progress = 85
                 case_file.processing_phase = 'Running Chainsaw rule analysis'
-                case_file.processing_details = f'Processing {indexed_count:,} events for rule violations'
+                case_file.processing_details = f'0/{indexed_count:,} events analyzed for violations'
                 db.session.commit()
                 
                 # Run Chainsaw directly on EVTX file (much faster)
                 chainsaw_violations = run_chainsaw_directly(case_file)
                 logger.info(f"Chainsaw analysis complete: {chainsaw_violations} violations found")
                 
-                # Update progress after Chainsaw
+                # Update progress during analysis completion
                 case_file.processing_progress = 95
+                case_file.processing_details = f'{indexed_count:,}/{indexed_count:,} events analyzed - found {chainsaw_violations} violations'
                 db.session.commit()
                 
                 # Skip slow Sigma processing for now - focus on speed
@@ -3453,7 +3454,10 @@ def api_case_file_status(case_id):
             file_status.append({
                 'id': file.id,
                 'status': file.processing_status,
-                'progress': file.processing_progress
+                'progress': file.processing_progress,
+                'phase': file.processing_phase or '',
+                'details': file.processing_details or '',
+                'abort_requested': file.abort_requested or False
             })
         
         return jsonify({'files': file_status})
