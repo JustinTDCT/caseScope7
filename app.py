@@ -1841,7 +1841,7 @@ def process_evtx_file(file_id):
                 logger.info("Running Chainsaw analysis...")
                 case_file.processing_progress = 85
                 case_file.processing_phase = 'Running Chainsaw rule analysis'
-                case_file.processing_details = f'Analyzing {indexed_count:,} events for violations'
+                case_file.processing_details = f'Processing {indexed_count:,} events for rule violations'
                 db.session.commit()
                 
                 # Run Chainsaw directly on EVTX file (much faster)
@@ -1860,11 +1860,14 @@ def process_evtx_file(file_id):
                 logger.error(f"Error during rule analysis: {rule_error}")
                 # Continue processing even if rules fail
             
-            # Update final counts
+            # Update final counts and completion status
             case_file.sigma_violations = sigma_violations
             case_file.chainsaw_violations = chainsaw_violations
             case_file.processing_status = 'completed'
             case_file.processing_progress = 100
+            case_file.processing_phase = 'Complete'
+            case_file.processing_details = f'Processed {indexed_count:,} events with {chainsaw_violations} violations'
+            case_file.celery_task_id = None  # Clear task ID when complete
             db.session.commit()
             
             # Verify the index was created and has documents

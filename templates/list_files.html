@@ -128,24 +128,33 @@
 
                         <div class="file-status">
                             {% set status_class = 'success' if file.processing_status == 'completed' else 'warning' if file.processing_status == 'analyzing' else 'info' if file.processing_status == 'ingesting' else 'danger' if file.processing_status == 'error' else 'secondary' %}
-                            {% if file.processing_phase and file.processing_phase != 'pending' %}
+                            
+                            {# Show detailed phase for active processing, fallback to standard status #}
+                            {% if file.processing_status == 'completed' %}
+                                {% set status_text = 'Complete' %}
+                            {% elif file.processing_phase and file.processing_phase != 'pending' and file.processing_phase != '' %}
                                 {% set status_text = file.processing_phase %}
                             {% else %}
-                                {% set status_text = 'Complete' if file.processing_status == 'completed' else 'Running Chainsaw' if file.processing_status == 'analyzing' else 'Ingesting Events' if file.processing_status == 'ingesting' else 'Error' if file.processing_status == 'error' else 'Queued' %}
+                                {% set status_text = 'Running Chainsaw' if file.processing_status == 'analyzing' else 'Ingesting Events' if file.processing_status == 'ingesting' else 'Error' if file.processing_status == 'error' else 'Queued' %}
                             {% endif %}
+                            
                             <span class="badge badge-{{ status_class }}">
                                 {{ status_text }}
                             </span>
+                            
+                            {# Show progress bar and details for active processing #}
                             {% if file.processing_status in ['ingesting', 'analyzing'] %}
                             <div class="progress mt-2">
                                 <div class="progress-bar" style="width: {{ file.processing_progress }}%" id="progress-{{ file.id }}"></div>
                             </div>
                             <div class="progress-text">
                                 {{ file.processing_progress }}%
-                                {% if file.processing_details %}
+                                {% if file.processing_details and file.processing_details != '' %}
                                     <br><small class="text-muted">{{ file.processing_details }}</small>
                                 {% endif %}
                             </div>
+                            
+                            {# Show abort button for active processing only #}
                             {% if current_user.can_write() and not file.abort_requested %}
                             <button onclick="abortProcessing({{ file.id }})" class="btn btn-sm btn-outline-danger mt-1">
                                 <i class="fas fa-stop"></i> Abort
