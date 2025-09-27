@@ -1,6 +1,6 @@
 {
-  "version": "7.0.137",
+  "version": "7.0.138",
   "release_date": "2025-09-27",
-  "description": "PROCESSING UPGRADE: No timeouts + detailed progress counters + abort feature",
+  "description": "HOTFIX: Fixed case deletion constraint error + processing upgrades",
   "build": "production"
 }

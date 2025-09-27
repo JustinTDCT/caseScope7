@@ -3239,10 +3239,15 @@ def api_delete_case(case_id):
         case = Case.query.get_or_404(case_id)
         
         # Delete all files associated with the case
-        for file in case.files:
+        files_to_delete = list(case.files)  # Create a copy of the list
+        for file in files_to_delete:
             # Delete physical file
             if os.path.exists(file.file_path):
-                os.remove(file.file_path)
+                try:
+                    os.remove(file.file_path)
+                    logger.info(f"Deleted physical file: {file.file_path}")
+                except Exception as e:
+                    logger.warning(f"Could not delete physical file {file.file_path}: {e}")
             
             # Delete from OpenSearch
             try:
@@ -3250,14 +3255,26 @@ def api_delete_case(case_id):
                     index=f"casescope-case-{case.id}",
                     body={"query": {"term": {"file_id": file.id}}}
                 )
-            except:
-                pass  # Continue even if OpenSearch deletion fails
+                logger.info(f"Deleted OpenSearch documents for file {file.id}")
+            except Exception as e:
+                logger.warning(f"Could not delete OpenSearch documents for file {file.id}: {e}")
+            
+            # Explicitly delete the CaseFile record
+            db.session.delete(file)
         
-        # Delete the case and all related data
+        # Delete the entire OpenSearch index for this case
+        try:
+            opensearch_client.indices.delete(index=f"casescope-case-{case.id}")
+            logger.info(f"Deleted OpenSearch index: casescope-case-{case.id}")
+        except Exception as e:
+            logger.warning(f"Could not delete OpenSearch index: {e}")
+        
+        # Now delete the case itself
+        case_name = case.name  # Store name for logging
         db.session.delete(case)
         db.session.commit()
         
-        log_audit('case_deleted', f'Deleted case: {case.name}')
+        log_audit('case_deleted', f'Deleted case: {case_name}')
         return jsonify({'success': True})
         
     except Exception as e:
