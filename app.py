@@ -914,28 +914,36 @@ def clean_json_data(data):
     else:
         return data
 
-def sanitize_for_opensearch(data, max_depth=10):
+def sanitize_for_opensearch(data, max_depth=10, preserve_evtx_structure=True):
     """
     Sanitize XML parsed data for OpenSearch indexing by:
     1. Converting XML text nodes like {'#text': 'value', '@attr': 'attr_val'} to simple strings
-    2. Flattening nested structures
+    2. Preserving EVTX EventData field names (SubjectUserName, etc.)
     3. Converting all values to JSON-safe types
     """
     if max_depth <= 0:
         return str(data)[:1000]  # Prevent infinite recursion, limit string length
     
     if isinstance(data, dict):
+        # Special handling for EVTX EventData elements - preserve field names
+        if preserve_evtx_structure and 'name' in data and ('#text' in data or 'text' in data):
+            # This is an EVTX data field like {'name': 'SubjectUserName', '#text': 'Administrator'}
+            field_name = str(data['name'])
+            field_value = str(data.get('#text', data.get('text', '')))
+            return {'name': field_name, 'value': field_value}
+        
         # Handle XML text nodes: {'#text': 'value', '@attr': 'value'} -> 'value'
-        if '#text' in data:
+        if '#text' in data and len(data) <= 2:
+            # Simple text node, return the text value
             return str(data['#text'])
         
-        # Handle single-key dicts that are likely XML artifacts
-        if len(data) == 1:
+        # Handle single-key dicts that are likely XML artifacts (but not EVTX data fields)
+        if len(data) == 1 and not preserve_evtx_structure:
             key, value = next(iter(data.items()))
             if key.startswith('@'):
                 return str(value)
             # Recursively sanitize the value
-            sanitized_value = sanitize_for_opensearch(value, max_depth - 1)
+            sanitized_value = sanitize_for_opensearch(value, max_depth - 1, preserve_evtx_structure)
             # If the sanitized value is simple, return it directly
             if isinstance(sanitized_value, (str, int, float, bool)):
                 return sanitized_value
@@ -943,28 +951,35 @@ def sanitize_for_opensearch(data, max_depth=10):
         # For normal dicts, recursively sanitize each value
         sanitized = {}
         for key, value in data.items():
-            # Skip XML namespace attributes and complex XML artifacts
-            if key.startswith('@') or key.startswith('#'):
+            # Skip most XML namespace attributes but preserve important ones
+            if key.startswith('@') and key not in ['@name']:
+                continue
+            if key.startswith('#') and key not in ['#text']:
                 continue
                 
-            # Clean the key name
-            clean_key = str(key).replace('@', '').replace('#', '').replace(' ', '_').lower()
+            # Clean the key name but preserve case for EVTX field names
+            if preserve_evtx_structure and key in ['name', 'text', '#text', 'data']:
+                clean_key = key.replace('#', '')
+            else:
+                clean_key = str(key).replace('@', '').replace('#', '').replace(' ', '_')
+                # Don't lowercase if this looks like an EVTX field name
+                if not (preserve_evtx_structure and key[0].isupper()):
+                    clean_key = clean_key.lower()
+            
             if clean_key:
-                sanitized[clean_key] = sanitize_for_opensearch(value, max_depth - 1)
+                sanitized[clean_key] = sanitize_for_opensearch(value, max_depth - 1, preserve_evtx_structure)
         
         return sanitized if sanitized else str(data)[:1000]
         
     elif isinstance(data, list):
-        # For lists, sanitize each item
+        # For lists, sanitize each item and preserve EVTX data field structures
         sanitized_list = []
         for item in data[:100]:  # Limit list size to prevent memory issues
-            sanitized_item = sanitize_for_opensearch(item, max_depth - 1)
+            sanitized_item = sanitize_for_opensearch(item, max_depth - 1, preserve_evtx_structure)
             if sanitized_item is not None and sanitized_item != '':
                 sanitized_list.append(sanitized_item)
         
-        # If list has only one item and it's a simple type, return the item
-        if len(sanitized_list) == 1 and isinstance(sanitized_list[0], (str, int, float, bool)):
-            return sanitized_list[0]
+        # Don't flatten EVTX data arrays - keep them as arrays for proper field parsing
         return sanitized_list
         
     elif isinstance(data, (str, int, float, bool)):

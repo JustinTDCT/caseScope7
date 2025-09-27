@@ -304,10 +304,19 @@
                                                             <div class="data-grid">
                                                                 {% for data_item in eventdata.data %}
                                                                     {% if data_item is mapping %}
-                                                                    <div class="data-item">
-                                                                        <label>{{ data_item.name if data_item.name else 'Data' }}:</label>
-                                                                        <span class="data-value">{{ data_item.text if data_item.text else data_item }}</span>
-                                                                    </div>
+                                                                        {% if data_item.name and data_item.value %}
+                                                                            <!-- New structure with preserved field names -->
+                                                                            <div class="data-item">
+                                                                                <label>{{ data_item.name }}:</label>
+                                                                                <span class="data-value">{{ data_item.value }}</span>
+                                                                            </div>
+                                                                        {% else %}
+                                                                            <!-- Fallback for old structure -->
+                                                                            <div class="data-item">
+                                                                                <label>{{ data_item.name if data_item.name else 'Data' }}:</label>
+                                                                                <span class="data-value">{{ data_item.text if data_item.text else data_item }}</span>
+                                                                            </div>
+                                                                        {% endif %}
                                                                     {% else %}
                                                                     <div class="data-item">
                                                                         <label>Data:</label>
@@ -340,8 +349,9 @@
                                             {% if (eventdata.data and eventdata.data is iterable) %}
                                                 {% set security_fields = [] %}
                                                 {% for data_item in eventdata.data %}
-                                                    {% if data_item is mapping and data_item.name %}
-                                                        {% if data_item.name in ['SubjectUserName', 'SubjectDomainName', 'SubjectLogonId', 'TargetUserName', 'TargetDomainName', 'LogonType', 'AuthenticationPackageName', 'WorkstationName', 'IpAddress', 'ProcessName', 'CommandLine'] %}
+                                                    {% if data_item is mapping %}
+                                                        {% set field_name = data_item.name if data_item.name else '' %}
+                                                        {% if field_name in ['SubjectUserName', 'SubjectDomainName', 'SubjectLogonId', 'TargetUserName', 'TargetDomainName', 'LogonType', 'AuthenticationPackageName', 'WorkstationName', 'IpAddress', 'ProcessName', 'CommandLine'] %}
                                                             {% set _ = security_fields.append(data_item) %}
                                                         {% endif %}
                                                     {% endif %}
@@ -353,7 +363,7 @@
                                                         {% for field in security_fields %}
                                                         <div class="security-item">
                                                             <label>{{ field.name|replace('Subject', '')|replace('Target', '')|title }}:</label>
-                                                            <span class="security-value">{{ field.text if field.text else field }}</span>
+                                                            <span class="security-value">{{ field.value if field.value else (field.text if field.text else field) }}</span>
                                                         </div>
                                                         {% endfor %}
                                                     </div>

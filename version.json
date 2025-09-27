@@ -1,6 +1,6 @@
 {
-  "version": "7.0.142",
+  "version": "7.0.143",
   "release_date": "2025-09-27",
-  "description": "FORENSIC VIEW: Comprehensive event details like Timesketch/Wazuh + enhanced formatting",
+  "description": "FIELD NAMES FIX: Preserve actual EVTX field names (SubjectUserName, etc.) in display",
   "build": "production"
 }
