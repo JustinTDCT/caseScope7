@@ -1,6 +1,6 @@
 {
-  "version": "7.0.116",
+  "version": "7.0.117",
   "release_date": "2025-09-27",
-  "description": "MAJOR UX: Added user prompt for OpenSearch data preservation - users can now choose to keep or clean existing data during install",
+  "description": "CRITICAL FIX: Fixed service enable error when preserving OpenSearch + Auto-correct search field case (EventID -> eventid)",
   "build": "production"
 }

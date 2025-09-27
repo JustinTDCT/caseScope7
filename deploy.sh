@@ -40,9 +40,9 @@ fi
 
 # Extract version from version.json for logging
 if [ -f "$SCRIPT_DIR/version.json" ]; then
-    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.116")
+    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.117")
 else
-    VERSION="7.0.116"
+    VERSION="7.0.117"
 fi
 
 log "Starting caseScope v$VERSION application deployment..."

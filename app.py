@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.116')
+            return version_data.get('version', '7.0.117')
     except:
-        return "7.0.116"
+        return "7.0.117"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.116", "description": "Fallback version"}
+        return {"version": "7.0.117", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2237,6 +2237,15 @@ def search():
             logger.error(f"Error checking index existence: {index_check_error}")
         
         if query or rule_violations or file_id:
+            # Auto-correct common field name case issues
+            if query:
+                # Convert common uppercase field names to lowercase
+                query = query.replace("EventID:", "eventid:")
+                query = query.replace("EventRecordID:", "eventrecordid:")
+                query = query.replace("Computer:", "computer:")
+                query = query.replace("Channel:", "channel:")
+                logger.info(f"Processed query (case corrected): {query}")
+            
             # Debug: Try a simple match_all query first to see if we can get any results
             if query == "test_match_all":
                 logger.info("Running debug match_all query")

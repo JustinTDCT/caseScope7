@@ -666,7 +666,12 @@ fi
 log "Enabling and starting services..."
 systemctl daemon-reload
 systemctl enable redis-server
-systemctl enable opensearch
+if [ "$OPENSEARCH_ACTION" != "preserve" ]; then
+    systemctl enable opensearch
+    log "✓ OpenSearch service enabled"
+else
+    log "✓ OpenSearch service preserved (not re-enabled)"
+fi
 systemctl enable nginx
 systemctl enable casescope-web
 systemctl enable casescope-worker
@@ -789,9 +794,9 @@ log "Installation framework complete. Application files will be created next."
 # Create version file
 # Extract version from version.json and write to VERSION file
 if [ -f "$SCRIPT_DIR/version.json" ]; then
-    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.116")
+    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.117")
 else
-    VERSION="7.0.116"
+    VERSION="7.0.117"
 fi
 echo "$VERSION" > /opt/casescope/VERSION
 
