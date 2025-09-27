@@ -2458,31 +2458,45 @@ def search():
                     search_body["query"]["bool"]["must"].append({
                         "bool": {
                             "should": [
-                                # PRIORITY 1: Direct Event ID match (most specific)
+                                # PRIORITY 1: Direct Event ID exact match (numeric)
                                 {
-                                    "match": {
+                                    "term": {
                                         "event_data.event.system.eventid": {
-                                            "query": query,
-                                            "boost": 10.0  # Highest priority
+                                            "value": int(query),
+                                            "boost": 10.0
                                         }
                                     }
                                 },
-                                # PRIORITY 2: Event data content match
+                                # PRIORITY 2: Direct Event ID exact match (string)
                                 {
-                                    "query_string": {
-                                        "query": f"*{query}*",
-                                        "fields": ["event_data.*"],
-                                        "analyze_wildcard": True,
-                                        "boost": 5.0
+                                    "term": {
+                                        "event_data.event.system.eventid": {
+                                            "value": query,
+                                            "boost": 9.0
+                                        }
                                     }
                                 },
-                                # PRIORITY 3: General content match (lowest priority)
+                                # PRIORITY 3: Event data content search (text fields only)
                                 {
-                                    "query_string": {
-                                        "query": f"*{query}*",
-                                        "fields": ["*"],
-                                        "analyze_wildcard": True,
-                                        "boost": 1.0
+                                    "multi_match": {
+                                        "query": query,
+                                        "fields": [
+                                            "event_data.event.eventdata.data",
+                                            "event_data.event.system.provider.name",
+                                            "event_data.event.system.channel",
+                                            "source_file"
+                                        ],
+                                        "type": "phrase_prefix",
+                                        "boost": 3.0
+                                    }
+                                },
+                                # PRIORITY 4: Simple text match in event data
+                                {
+                                    "match": {
+                                        "event_data.event.eventdata.data": {
+                                            "query": query,
+                                            "boost": 1.0
+                                        }
                                     }
                                 }
                             ],
@@ -2490,12 +2504,33 @@ def search():
                         }
                     })
                 else:
-                    # For non-numeric queries, use general search
+                    # For non-numeric queries, use text-based search only
                     search_body["query"]["bool"]["must"].append({
-                        "query_string": {
-                            "query": f"*{query}*",
-                            "fields": ["*"],
-                            "analyze_wildcard": True
+                        "bool": {
+                            "should": [
+                                {
+                                    "multi_match": {
+                                        "query": query,
+                                        "fields": [
+                                            "event_data.event.eventdata.data",
+                                            "event_data.event.system.provider.name",
+                                            "event_data.event.system.channel",
+                                            "source_file"
+                                        ],
+                                        "type": "phrase_prefix",
+                                        "boost": 5.0
+                                    }
+                                },
+                                {
+                                    "match": {
+                                        "event_data.event.eventdata.data": {
+                                            "query": query,
+                                            "boost": 1.0
+                                        }
+                                    }
+                                }
+                            ],
+                            "minimum_should_match": 1
                         }
                     })
                 

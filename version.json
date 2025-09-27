@@ -1,5 +1,5 @@
 {
-  "version": "7.0.132",
+  "version": "7.0.133",
   "release_date": "2025-09-27",
   "description": "SEARCH FIX: Improved Event ID matching with priority scoring for numeric queries",
   "build": "production"
