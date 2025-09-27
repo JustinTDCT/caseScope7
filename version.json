@@ -1,6 +1,6 @@
 {
-  "version": "7.0.143",
+  "version": "7.0.144",
   "release_date": "2025-09-27",
-  "description": "FIELD NAMES FIX: Preserve actual EVTX field names (SubjectUserName, etc.) in display",
+  "description": "WAZUH-STYLE DISPLAY: Proper timestamps + flattened fields + clean forensic view",
   "build": "production"
 }

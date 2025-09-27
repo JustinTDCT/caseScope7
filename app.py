@@ -914,6 +914,50 @@ def clean_json_data(data):
     else:
         return data
 
+def flatten_event_data(data, prefix='', max_depth=5):
+    """
+    Flatten EVTX event data to create a structure similar to Wazuh/ELK
+    Creates paths like 'data.win.eventdata.subjectUserName' for easy access
+    """
+    flattened = {}
+    
+    if max_depth <= 0 or not isinstance(data, dict):
+        return flattened
+    
+    for key, value in data.items():
+        # Create the field path
+        field_path = f"{prefix}.{key}" if prefix else key
+        field_path = field_path.lower()  # Normalize to lowercase
+        
+        if isinstance(value, dict):
+            # Special handling for EVTX data fields with name/value structure
+            if 'name' in value and 'value' in value:
+                # This is a structured field like {'name': 'SubjectUserName', 'value': 'Administrator'}
+                field_name = value['name'].lower() if isinstance(value['name'], str) else 'unknown'
+                flattened[f"{prefix}.{field_name}" if prefix else field_name] = value['value']
+            elif len(value) == 1 and list(value.keys())[0] in ['#text', 'text']:
+                # Simple text node
+                text_key = list(value.keys())[0]
+                flattened[field_path] = value[text_key]
+            else:
+                # Recursively flatten nested dictionaries
+                nested_flat = flatten_event_data(value, field_path, max_depth - 1)
+                flattened.update(nested_flat)
+        elif isinstance(value, list):
+            # Handle arrays - flatten each item with an index
+            for i, item in enumerate(value[:20]):  # Limit to first 20 items
+                if isinstance(item, dict) and 'name' in item and 'value' in item:
+                    # EVTX data field in array
+                    field_name = item['name'].lower() if isinstance(item['name'], str) else f'item_{i}'
+                    flattened[f"{prefix}.{field_name}" if prefix else field_name] = item['value']
+                else:
+                    flattened[f"{field_path}[{i}]"] = str(item)[:200]  # Limit string length
+        else:
+            # Simple value
+            flattened[field_path] = str(value)[:200] if isinstance(value, str) else value
+    
+    return flattened
+
 def sanitize_for_opensearch(data, max_depth=10, preserve_evtx_structure=True):
     """
     Sanitize XML parsed data for OpenSearch indexing by:
@@ -1736,26 +1780,68 @@ def process_evtx_file(file_id):
                         logger.error(f"Failed to extract event data from record")
                         continue
                     
+                    # Extract actual event timestamp before sanitization
+                    event_timestamp = None
+                    try:
+                        # Try different paths to find the event timestamp
+                        if isinstance(event_data, dict):
+                            # Check Event/System/TimeCreated/@SystemTime
+                            if 'Event' in event_data and isinstance(event_data['Event'], dict):
+                                system = event_data['Event'].get('System', {})
+                                if isinstance(system, dict) and 'TimeCreated' in system:
+                                    time_created = system['TimeCreated']
+                                    if isinstance(time_created, dict) and '@SystemTime' in time_created:
+                                        event_timestamp = time_created['@SystemTime']
+                                    elif isinstance(time_created, dict) and 'SystemTime' in time_created:
+                                        event_timestamp = time_created['SystemTime']
+                                    elif isinstance(time_created, str):
+                                        event_timestamp = time_created
+                            
+                            # Alternative path for different EVTX structures
+                            if not event_timestamp and 'event' in event_data:
+                                event = event_data['event']
+                                if isinstance(event, dict) and 'system' in event:
+                                    system = event['system']
+                                    if isinstance(system, dict) and 'timecreated' in system:
+                                        time_created = system['timecreated']
+                                        if isinstance(time_created, dict):
+                                            event_timestamp = time_created.get('@systemtime') or time_created.get('systemtime')
+                                        elif isinstance(time_created, str):
+                                            event_timestamp = time_created
+                    except Exception as timestamp_error:
+                        logger.debug(f"Could not extract event timestamp: {timestamp_error}")
+                    
                     # Sanitize event data for OpenSearch compatibility
                     try:
                         sanitized_event_data = sanitize_for_opensearch(event_data)
+                        
+                        # Create a flatter structure for better field access
+                        flattened_data = {}
+                        if isinstance(sanitized_event_data, dict):
+                            # Flatten the structure to make fields more accessible
+                            flattened_data = flatten_event_data(sanitized_event_data)
                         
                         # Debug: Log problematic data structures (first 3 records only)
                         if processed_records < 3:
                             logger.info(f"Record {processed_records + 1} - Original data keys: {list(event_data.keys()) if isinstance(event_data, dict) else 'Not a dict'}")
                             logger.info(f"Record {processed_records + 1} - Sanitized data keys: {list(sanitized_event_data.keys()) if isinstance(sanitized_event_data, dict) else 'Not a dict'}")
+                            logger.info(f"Record {processed_records + 1} - Event timestamp: {event_timestamp}")
                             
                     except Exception as sanitize_error:
                         logger.error(f"Error sanitizing event data: {sanitize_error}")
                         # Fall back to string representation
                         sanitized_event_data = {'raw_data': str(event_data)[:1000]}
+                        flattened_data = {}
                     
-                    # Create OpenSearch document
+                    # Create OpenSearch document with proper timestamp
                     doc = {
                         'case_id': case_file.case_id,
                         'file_id': case_file.id,
-                        'timestamp': datetime.utcnow().isoformat(),
+                        'timestamp': event_timestamp if event_timestamp else datetime.utcnow().isoformat(),
+                        'event_timestamp': event_timestamp,  # Keep original event time
+                        'ingestion_timestamp': datetime.utcnow().isoformat(),  # Track when indexed
                         'event_data': sanitized_event_data,
+                        'event_fields': flattened_data,  # Flattened fields for easier access
                         'source_file': case_file.original_filename,
                         'processed_at': datetime.utcnow().isoformat()
                     }
