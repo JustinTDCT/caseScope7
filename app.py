@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.112')
+            return version_data.get('version', '7.0.113')
     except:
-        return "7.0.112"
+        return "7.0.113"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.112", "description": "Fallback version"}
+        return {"version": "7.0.113", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2163,6 +2163,23 @@ def search():
                     all_indices = opensearch_client.cat.indices(format='json')
                     casescope_indices = [idx for idx in all_indices if 'casescope' in idx.get('index', '')]
                     logger.info(f"Available caseScope indices: {[idx['index'] for idx in casescope_indices]}")
+                    
+                    # More detailed OpenSearch debugging
+                    try:
+                        # Check OpenSearch cluster health
+                        health = opensearch_client.cluster.health()
+                        logger.info(f"OpenSearch cluster status: {health.get('status', 'unknown')}")
+                        logger.info(f"OpenSearch active shards: {health.get('active_shards', 0)}")
+                        
+                        # Check total indices (not just caseScope)
+                        total_indices = len(all_indices) if all_indices else 0
+                        logger.info(f"Total OpenSearch indices: {total_indices}")
+                        
+                        # Check if OpenSearch data directory exists
+                        logger.info(f"OpenSearch data directory check - this will help diagnose data persistence issues")
+                        
+                    except Exception as health_error:
+                        logger.error(f"Error checking OpenSearch health: {health_error}")
                     
                     # Check if case has files that should have been indexed
                     file_count = case.files.filter_by(processing_status='completed').count()

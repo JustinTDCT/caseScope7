@@ -953,23 +953,19 @@ for i in {1..30}; do
     sleep 2
 done
 
-# Clean up any problematic OpenSearch indices to prevent mapping conflicts
-log "Cleaning up OpenSearch indices to prevent mapping conflicts..."
+# Check OpenSearch health (but don't delete indices automatically)
+log "Checking OpenSearch connectivity..."
 if curl -s "http://localhost:9200/_cluster/health" >/dev/null 2>&1; then
-    # Get all casescope indices and delete them to start fresh
+    # Check if indices exist but don't delete them automatically
     INDICES=$(curl -s "http://localhost:9200/_cat/indices/casescope*" 2>/dev/null | awk '{print $3}' | tr '\n' ' ')
     if [ -n "$INDICES" ]; then
         log "Found existing indices: $INDICES"
-        for index in $INDICES; do
-            log "Deleting index: $index"
-            curl -s -X DELETE "http://localhost:9200/$index" >/dev/null 2>&1
-        done
-        log "✓ Cleaned up existing indices to prevent mapping conflicts"
+        log "ℹ️  Existing indices preserved - only delete manually if mapping conflicts occur"
     else
         log "✓ No existing indices found - clean start"
     fi
 else
-    log_warning "Could not connect to OpenSearch for index cleanup"
+    log_warning "Could not connect to OpenSearch"
 fi
 
 systemctl restart nginx

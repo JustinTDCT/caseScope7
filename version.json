@@ -1,6 +1,6 @@
 {
-  "version": "7.0.112",
+  "version": "7.0.113",
   "release_date": "2025-09-26",
-  "description": "FINAL SEARCH FIX: Fixed query string parsing breaking boolean operators - search functionality now complete!",
+  "description": "CRITICAL FIX: Removed aggressive index cleanup from deploy script that was deleting all OpenSearch data on every deploy",
   "build": "production"
 }
