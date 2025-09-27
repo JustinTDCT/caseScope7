@@ -214,87 +214,94 @@
                                     </div>
                                     <div class="tab-pane" id="formatted-{{ loop.index }}" style="display: none;">
                                         <div class="formatted-event wazuh-style">
-                                            <!-- Event Header with Timestamp -->
+                                            <!-- Event Header with ACTUAL Event Timestamp -->
                                             <div class="event-header">
                                                 <div class="event-timestamp">
                                                     <i class="fas fa-clock"></i>
-                                                    <strong>{{ result.event_timestamp if result.event_timestamp else result.timestamp }}</strong>
+                                                    <strong>
+                                                        {% if result.event_timestamp and result.event_timestamp != result.timestamp %}
+                                                            {{ result.event_timestamp }}
+                                                        {% else %}
+                                                            {{ result.timestamp }}
+                                                        {% endif %}
+                                                    </strong>
                                                 </div>
                                                 <div class="event-id-badge">
                                                     Event ID: <span class="badge-primary">{{ result.event_id if result.event_id else 'Unknown' }}</span>
                                                 </div>
                                             </div>
 
-                                            <!-- Flattened Event Fields (Wazuh-style) -->
-                                            {% if result.event_fields %}
-                                            <div class="event-fields-flat">
-                                                {% for field_name, field_value in result.event_fields.items() %}
-                                                    {% if field_value and field_value != '' and field_value != '-' %}
-                                                    <div class="field-row">
-                                                        <span class="field-name">{{ field_name }}:</span>
-                                                        <span class="field-value">{{ field_value }}</span>
-                                                    </div>
-                                                    {% endif %}
-                                                {% endfor %}
-                                            </div>
-                                            {% endif %}
-
-                                            <!-- Core Event Data (structured fallback) -->
-                                            {% if result.event_data and result.event_data.event %}
-                                            <div class="core-event-data">
-                                                <h5><i class="fas fa-info-circle"></i> Core Event Information</h5>
-                                                <div class="core-fields">
-                                                    {% set event = result.event_data.event %}
-                                                    {% if event.system %}
-                                                        {% set system = event.system %}
-                                                        <div class="field-row">
-                                                            <span class="field-name">computer:</span>
-                                                            <span class="field-value">{{ system.computer if system.computer else 'N/A' }}</span>
-                                                        </div>
-                                                        <div class="field-row">
-                                                            <span class="field-name">channel:</span>
-                                                            <span class="field-value">{{ system.channel if system.channel else 'N/A' }}</span>
-                                                        </div>
-                                                        <div class="field-row">
-                                                            <span class="field-name">provider:</span>
-                                                            <span class="field-value">{{ system.provider.name if system.provider and system.provider.name else 'N/A' }}</span>
-                                                        </div>
-                                                        <div class="field-row">
-                                                            <span class="field-name">eventrecordid:</span>
-                                                            <span class="field-value">{{ system.eventrecordid if system.eventrecordid else 'N/A' }}</span>
-                                                        </div>
-                                                    {% endif %}
-                                                    
-                                                    <!-- EventData fields -->
-                                                    {% if event.eventdata and event.eventdata.data %}
-                                                        {% for data_item in event.eventdata.data %}
-                                                            {% if data_item is mapping and data_item.name and data_item.value %}
-                                                            <div class="field-row">
-                                                                <span class="field-name">{{ data_item.name|lower }}:</span>
-                                                                <span class="field-value">{{ data_item.value }}</span>
-                                                            </div>
+                                            <!-- Event Fields Table (Wazuh-style) -->
+                                            <div class="event-fields-table">
+                                                <table class="wazuh-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Field</th>
+                                                            <th>Value</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <!-- Flattened fields first (if available) -->
+                                                        {% if result.event_fields and result.event_fields|length > 0 %}
+                                                            {% for field_name, field_value in result.event_fields.items() %}
+                                                                {% if field_value and field_value != '' and field_value != '-' and field_value != 'N/A' %}
+                                                                <tr>
+                                                                    <td class="field-name">{{ field_name }}</td>
+                                                                    <td class="field-value">{{ field_value }}</td>
+                                                                </tr>
+                                                                {% endif %}
+                                                            {% endfor %}
+                                                        {% else %}
+                                                            <!-- Fallback: Extract from structured data -->
+                                                            {% set event = result.event_data.event if result.event_data and result.event_data.event else {} %}
+                                                            {% if event.system %}
+                                                                {% set system = event.system %}
+                                                                {% if system.computer %}
+                                                                <tr><td class="field-name">computer</td><td class="field-value">{{ system.computer }}</td></tr>
+                                                                {% endif %}
+                                                                {% if system.channel %}
+                                                                <tr><td class="field-name">channel</td><td class="field-value">{{ system.channel }}</td></tr>
+                                                                {% endif %}
+                                                                {% if system.provider and system.provider.name %}
+                                                                <tr><td class="field-name">provider</td><td class="field-value">{{ system.provider.name }}</td></tr>
+                                                                {% endif %}
+                                                                {% if system.eventrecordid %}
+                                                                <tr><td class="field-name">eventrecordid</td><td class="field-value">{{ system.eventrecordid }}</td></tr>
+                                                                {% endif %}
+                                                                {% if system.level %}
+                                                                <tr><td class="field-name">level</td><td class="field-value">{{ system.level }}</td></tr>
+                                                                {% endif %}
+                                                                {% if system.task %}
+                                                                <tr><td class="field-name">task</td><td class="field-value">{{ system.task }}</td></tr>
+                                                                {% endif %}
                                                             {% endif %}
-                                                        {% endfor %}
-                                                    {% endif %}
-                                                </div>
-                                            </div>
-                                            {% endif %}
-
-                                            <!-- Source Information -->
-                                            <div class="source-info">
-                                                <h5><i class="fas fa-file"></i> Source Information</h5>
-                                                <div class="field-row">
-                                                    <span class="field-name">source_file:</span>
-                                                    <span class="field-value">{{ result.source_file if result.source_file else 'N/A' }}</span>
-                                                </div>
-                                                <div class="field-row">
-                                                    <span class="field-name">file_id:</span>
-                                                    <span class="field-value">{{ result.file_id if result.file_id else 'N/A' }}</span>
-                                                </div>
-                                                <div class="field-row">
-                                                    <span class="field-name">ingestion_timestamp:</span>
-                                                    <span class="field-value">{{ result.ingestion_timestamp if result.ingestion_timestamp else result.processed_at }}</span>
-                                                </div>
+                                                            
+                                                            <!-- EventData fields -->
+                                                            {% if event.eventdata and event.eventdata.data %}
+                                                                {% for data_item in event.eventdata.data %}
+                                                                    {% if data_item is mapping and data_item.name and data_item.value %}
+                                                                    <tr>
+                                                                        <td class="field-name">{{ data_item.name|lower }}</td>
+                                                                        <td class="field-value">{{ data_item.value }}</td>
+                                                                    </tr>
+                                                                    {% endif %}
+                                                                {% endfor %}
+                                                            {% endif %}
+                                                        {% endif %}
+                                                        
+                                                        <!-- Source Information -->
+                                                        <tr class="source-section">
+                                                            <td colspan="2" class="section-header">
+                                                                <i class="fas fa-file"></i> Source Information
+                                                            </td>
+                                                        </tr>
+                                                        <tr><td class="field-name">source_file</td><td class="field-value">{{ result.source_file if result.source_file else 'N/A' }}</td></tr>
+                                                        <tr><td class="field-name">file_id</td><td class="field-value">{{ result.file_id if result.file_id else 'N/A' }}</td></tr>
+                                                        {% if result.ingestion_timestamp and result.ingestion_timestamp != result.timestamp %}
+                                                        <tr><td class="field-name">ingestion_timestamp</td><td class="field-value">{{ result.ingestion_timestamp }}</td></tr>
+                                                        {% endif %}
+                                                    </tbody>
+                                                </table>
                                             </div>
                                         </div>
                                     </div>

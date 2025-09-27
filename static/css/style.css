@@ -1549,6 +1549,124 @@ body {
   border-color: rgba(75, 85, 99, 0.4);
 }
 
+/* Wazuh-style Table */
+.event-fields-table {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+}
+
+.wazuh-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'JetBrains Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 0.85rem;
+}
+
+.wazuh-table thead {
+  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+  color: white;
+}
+
+.wazuh-table th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+  border: none;
+}
+
+.wazuh-table th:first-child {
+  width: 30%;
+  min-width: 200px;
+}
+
+.wazuh-table tbody tr {
+  border-bottom: 1px solid var(--border-light);
+  transition: background-color 0.2s ease;
+}
+
+.wazuh-table tbody tr:hover {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.wazuh-table tbody tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.wazuh-table td {
+  padding: 0.5rem 1rem;
+  vertical-align: top;
+  word-break: break-all;
+}
+
+.wazuh-table .field-name {
+  color: var(--primary-color);
+  font-weight: 600;
+  background: rgba(59, 130, 246, 0.05);
+  border-right: 1px solid var(--border-light);
+}
+
+.wazuh-table .field-value {
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  padding: 0.5rem 1rem;
+  font-family: inherit;
+}
+
+.wazuh-table .section-header {
+  background: var(--secondary-color);
+  color: white;
+  font-weight: 600;
+  text-align: center;
+  padding: 0.5rem;
+}
+
+.wazuh-table .source-section td {
+  border-top: 2px solid var(--primary-color);
+}
+
+/* Highlight important security fields */
+.wazuh-table tr:has(.field-name:contains("username")) {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.wazuh-table tr:has(.field-name:contains("logontype")) {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.wazuh-table tr:has(.field-name:contains("processname")) {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.wazuh-table tr:has(.field-name:contains("commandline")) {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.wazuh-table tr:has(.field-name:contains("ipaddress")) {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+/* Dark mode adjustments for table */
+[data-theme="dark"] .wazuh-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+[data-theme="dark"] .wazuh-table tbody tr:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+[data-theme="dark"] .wazuh-table .field-name {
+  background: rgba(59, 130, 246, 0.1);
+  border-right-color: rgba(75, 85, 99, 0.4);
+}
+
+[data-theme="dark"] .event-fields-table {
+  background: rgba(55, 65, 81, 0.6);
+  border-color: rgba(75, 85, 99, 0.4);
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .event-header {
@@ -1557,19 +1675,19 @@ body {
     text-align: center;
   }
   
-  .field-name {
-    min-width: 150px;
-    max-width: 150px;
+  .wazuh-table th:first-child {
+    width: 40%;
+    min-width: 120px;
+  }
+  
+  .wazuh-table th,
+  .wazuh-table td {
+    padding: 0.4rem 0.6rem;
     font-size: 0.8rem;
   }
   
-  .field-row {
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-  
-  .field-value {
-    margin-left: 0;
+  .wazuh-table {
+    font-size: 0.8rem;
   }
 }
 

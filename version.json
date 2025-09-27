@@ -1,6 +1,6 @@
 {
-  "version": "7.0.144",
+  "version": "7.0.145",
   "release_date": "2025-09-27",
-  "description": "WAZUH-STYLE DISPLAY: Proper timestamps + flattened fields + clean forensic view",
+  "description": "TABLE FORMAT: Wazuh-style table + actual event timestamps + field headers",
   "build": "production"
 }

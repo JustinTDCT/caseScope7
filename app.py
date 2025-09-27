@@ -2928,6 +2928,8 @@ def search():
                     result = {
                         'id': hit['_id'],
                         'timestamp': source.get('timestamp', ''),
+                        'event_timestamp': source.get('event_timestamp', ''),  # NEW: Actual event time
+                        'ingestion_timestamp': source.get('ingestion_timestamp', source.get('processed_at', '')),  # NEW: When indexed
                         'file_id': source.get('file_id', ''),
                         'source_file': source.get('source_file', ''),
                         'case_id': source.get('case_id', ''),
@@ -2935,6 +2937,7 @@ def search():
                         'sigma_violations': source.get('sigma_violations', []),
                         'chainsaw_violations': source.get('chainsaw_violations', []),
                         'event_data': source.get('event_data', {}),
+                        'event_fields': source.get('event_fields', {}),  # NEW: Flattened fields
                         # Extract commonly needed fields from event_data if available
                         'event_id': '',
                         'event_record_id': '',
