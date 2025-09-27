@@ -1,6 +1,6 @@
 {
-  "version": "7.0.129",
+  "version": "7.0.130",
   "release_date": "2025-09-27",
-  "description": "CRITICAL ROOT CAUSE FIX: Found and fixed result processing that was overwriting event_data with empty structure!",
+  "description": "MAJOR FIX: Fixed broken query logic returning all docs + Added comprehensive raw data debugging",
   "build": "production"
 }

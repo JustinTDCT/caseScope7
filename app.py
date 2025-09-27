@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.129')
+            return version_data.get('version', '7.0.130')
     except:
-        return "7.0.129"
+        return "7.0.130"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.129", "description": "Fallback version"}
+        return {"version": "7.0.130", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2384,7 +2384,7 @@ def search():
                     }
                 })
             
-            # Add text query if provided - SIMPLIFIED approach
+            # Add text query if provided - FIXED: Don't include case_id in search terms
             if query:
                 # Add the text search to the existing query structure
                 search_body["query"]["bool"]["must"].append({
@@ -2402,8 +2402,13 @@ def search():
                             },
                             # Direct match in event data
                             {"match": {"event_data": query}},
-                            # Try case_id as both string and integer for compatibility
-                            {"terms": {"case_id": [selected_case_id, str(selected_case_id)]}}
+                            # Specific nested field searches for Event IDs
+                            {"nested": {
+                                "path": "event_data.event",
+                                "query": {
+                                    "match": {"event_data.event.system.eventid": query}
+                                }
+                            }}
                         ],
                         "minimum_should_match": 1
                     }
@@ -2583,7 +2588,32 @@ def search():
                         logger.info(f"Raw _source event_data keys: {list(raw_event_data.keys()) if isinstance(raw_event_data, dict) else 'NOT_DICT'}")
                         if isinstance(raw_event_data, dict) and raw_event_data:
                             logger.info(f"Raw _source event_data content sample: {str(raw_event_data)[:300]}...")
+                            # Show nested structure
+                            if 'event' in raw_event_data:
+                                event = raw_event_data['event']
+                                if isinstance(event, dict) and 'system' in event:
+                                    system = event['system']
+                                    if isinstance(system, dict):
+                                        logger.info(f"Raw _source eventid: '{system.get('eventid')}'")
+                                        logger.info(f"Raw _source computer: '{system.get('computer')}'")
+                                        logger.info(f"Raw _source eventrecordid: '{system.get('eventrecordid')}'")
+                        else:
+                            logger.info("Raw _source event_data is EMPTY! This is the indexing problem!")
                         logger.info("=== END RAW _SOURCE DEBUG ===")
+                        
+                    # Always show for any query that returns results to debug the processing
+                    if len(response.get('hits', {}).get('hits', [])) > 0:
+                        raw_hit = response['hits']['hits'][0]
+                        raw_source = raw_hit.get('_source', {})
+                        raw_event_data = raw_source.get('event_data', {})
+                        logger.info(f"=== PROCESSING COMPARISON DEBUG ===")
+                        logger.info(f"Raw source event_data empty: {not raw_event_data}")
+                        logger.info(f"Processed result event_data empty: {not first_result.get('event_data', {})}")
+                        if raw_event_data and not first_result.get('event_data', {}):
+                            logger.info("DATA LOST DURING PROCESSING!")
+                        elif not raw_event_data:
+                            logger.info("DATA MISSING FROM OPENSEARCH INDEX!")
+                        logger.info("=== END PROCESSING COMPARISON ===")
                         
                 logger.info("=== END RESULT DEBUG ===")
             
