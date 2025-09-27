@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.131')
+            return version_data.get('version', '7.0.132')
     except:
-        return "7.0.131"
+        return "7.0.132"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.131", "description": "Fallback version"}
+        return {"version": "7.0.132", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2450,30 +2450,54 @@ def search():
                     }
                 })
             
-            # Add text query if provided - SIMPLIFIED approach
+            # Add text query if provided - IMPROVED for precise Event ID matching
             if query:
-                # Add the text search to the existing query structure
-                search_body["query"]["bool"]["must"].append({
-                    "bool": {
-                        "should": [
-                            # Simple match in source file
-                            {"match": {"source_file": query}},
-                            # Simple query string across all fields
-                            {
-                                "query_string": {
-                                    "query": f"*{query}*",
-                                    "fields": ["*"],
-                                    "analyze_wildcard": True
+                # Check if query looks like an Event ID (numeric)
+                if query.isdigit():
+                    # For numeric queries, prioritize Event ID field matching
+                    search_body["query"]["bool"]["must"].append({
+                        "bool": {
+                            "should": [
+                                # PRIORITY 1: Direct Event ID match (most specific)
+                                {
+                                    "match": {
+                                        "event_data.event.system.eventid": {
+                                            "query": query,
+                                            "boost": 10.0  # Highest priority
+                                        }
+                                    }
+                                },
+                                # PRIORITY 2: Event data content match
+                                {
+                                    "query_string": {
+                                        "query": f"*{query}*",
+                                        "fields": ["event_data.*"],
+                                        "analyze_wildcard": True,
+                                        "boost": 5.0
+                                    }
+                                },
+                                # PRIORITY 3: General content match (lowest priority)
+                                {
+                                    "query_string": {
+                                        "query": f"*{query}*",
+                                        "fields": ["*"],
+                                        "analyze_wildcard": True,
+                                        "boost": 1.0
+                                    }
                                 }
-                            },
-                            # Direct match in event data
-                            {"match": {"event_data": query}},
-                            # Try case_id as both string and integer for compatibility
-                            {"terms": {"case_id": [selected_case_id, str(selected_case_id)]}}
-                        ],
-                        "minimum_should_match": 1
-                    }
-                })
+                            ],
+                            "minimum_should_match": 1
+                        }
+                    })
+                else:
+                    # For non-numeric queries, use general search
+                    search_body["query"]["bool"]["must"].append({
+                        "query_string": {
+                            "query": f"*{query}*",
+                            "fields": ["*"],
+                            "analyze_wildcard": True
+                        }
+                    })
                 
                 # Also try case_id as string in the main filter
                 search_body["query"]["bool"]["must"][0] = {
