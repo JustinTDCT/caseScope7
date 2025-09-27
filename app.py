@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.124')
+            return version_data.get('version', '7.0.125')
     except:
-        return "7.0.124"
+        return "7.0.125"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.124", "description": "Fallback version"}
+        return {"version": "7.0.125", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2281,6 +2281,17 @@ def search():
                     "size": 5,
                     "_source": ["case_id", "file_id", "source_file", "timestamp"]
                 }
+            elif query == "test_simple_4624":
+                logger.info("Running simple 4624 search without case filter")
+                search_body = {
+                    "query": {
+                        "query_string": {
+                            "query": "*4624*",
+                            "fields": ["*"]
+                        }
+                    },
+                    "size": 5
+                }
             elif query == "test_eventid_4624":
                 logger.info("Running debug EventID 4624 query with correct nested field")
                 search_body = {
@@ -2366,36 +2377,38 @@ def search():
             
             # Add text query if provided - SIMPLIFIED approach
             if query:
-                # Replace the complex query structure with a simple one
-                search_body = {
-                    "query": {
-                        "bool": {
-                            "must": [
-                                {"term": {"case_id": selected_case_id}},
-                                {
-                                    "bool": {
-                                        "should": [
-                                            # Simple match in source file
-                                            {"match": {"source_file": query}},
-                                            # Simple query string across all fields
-                                            {
-                                                "query_string": {
-                                                    "query": f"*{query}*",
-                                                    "fields": ["*"],
-                                                    "analyze_wildcard": True
-                                                }
-                                            },
-                                            # Direct match in event data
-                                            {"match": {"event_data": query}}
-                                        ],
-                                        "minimum_should_match": 1
-                                    }
+                # Add the text search to the existing query structure
+                search_body["query"]["bool"]["must"].append({
+                    "bool": {
+                        "should": [
+                            # Simple match in source file
+                            {"match": {"source_file": query}},
+                            # Simple query string across all fields
+                            {
+                                "query_string": {
+                                    "query": f"*{query}*",
+                                    "fields": ["*"],
+                                    "analyze_wildcard": True
                                 }
-                            ]
-                        }
-                    },
-                    "sort": [{"timestamp": {"order": "desc"}}],
-                    "size": 100
+                            },
+                            # Direct match in event data
+                            {"match": {"event_data": query}},
+                            # Try case_id as both string and integer for compatibility
+                            {"terms": {"case_id": [selected_case_id, str(selected_case_id)]}}
+                        ],
+                        "minimum_should_match": 1
+                    }
+                })
+                
+                # Also try case_id as string in the main filter
+                search_body["query"]["bool"]["must"][0] = {
+                    "bool": {
+                        "should": [
+                            {"term": {"case_id": selected_case_id}},
+                            {"term": {"case_id": str(selected_case_id)}}
+                        ],
+                        "minimum_should_match": 1
+                    }
                 }
             
             # Add time range filter
