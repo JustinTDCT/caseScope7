@@ -1,6 +1,6 @@
 {
-  "version": "7.0.136",
+  "version": "7.0.137",
   "release_date": "2025-09-27",
-  "description": "CHAINSAW FIX: Increased timeout from 2min to 10min for large EVTX files + Advanced search",
+  "description": "PROCESSING UPGRADE: No timeouts + detailed progress counters + abort feature",
   "build": "production"
 }

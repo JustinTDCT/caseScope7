@@ -397,6 +397,10 @@ class CaseFile(db.Model):
     uploaded_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     processing_status = db.Column(db.String(50), default='pending')  # pending, ingesting, analyzing, completed, error
     processing_progress = db.Column(db.Integer, default=0)
+    processing_phase = db.Column(db.String(100), default='pending')  # Current phase description
+    processing_details = db.Column(db.String(200), default='')  # Detailed progress (e.g., "1500/5000 events")
+    abort_requested = db.Column(db.Boolean, default=False)  # Request to abort processing
+    celery_task_id = db.Column(db.String(100), nullable=True)  # Track Celery task for abort
     event_count = db.Column(db.Integer, default=0)
     sigma_violations = db.Column(db.Integer, default=0)
     chainsaw_violations = db.Column(db.Integer, default=0)
@@ -1343,7 +1347,7 @@ def run_chainsaw_directly(case_file):
             
             import time
             start_time = time.time()
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)  # 10 minute timeout for large files
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=None)  # No timeout - let it complete
             end_time = time.time()
             
             logger.info(f"Chainsaw completed in {end_time - start_time:.2f} seconds")
@@ -1541,7 +1545,7 @@ def apply_chainsaw_rules(events, case_file):
             ]
             
             logger.info(f"Running Chainsaw: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=None)  # No timeout - let it complete
             
             if result.returncode == 0:
                 logger.info("Chainsaw executed successfully")
@@ -1620,6 +1624,9 @@ def process_evtx_file(file_id):
             
             case_file.processing_status = 'ingesting'
             case_file.processing_progress = 5
+            case_file.processing_phase = 'Starting EVTX ingestion'
+            case_file.processing_details = 'Initializing...'
+            case_file.celery_task_id = process_evtx_file.request.id  # Track this task
             db.session.commit()
             
             # Verify file exists before processing
@@ -1668,7 +1675,16 @@ def process_evtx_file(file_id):
             
             indexed_count = 0
             failed_count = 0
+            last_progress_update = 0
+            
             for record in parser.records():
+                # Check for abort request
+                if case_file.abort_requested:
+                    logger.info(f"Processing aborted by user request at {processed_records}/{total_records}")
+                    case_file.processing_status = 'error'
+                    case_file.error_message = 'Processing aborted by user'
+                    db.session.commit()
+                    return False
                 try:
                     # Debug: Log the first few records to understand the format
                     if processed_records < 3:
@@ -1741,6 +1757,15 @@ def process_evtx_file(file_id):
                         events.append(doc)
                         processed_records += 1
                         indexed_count += 1
+                        
+                        # Update progress every 1000 records
+                        if processed_records - last_progress_update >= 1000:
+                            progress_percent = min(80, 15 + int((processed_records / total_records) * 65))
+                            case_file.processing_progress = progress_percent
+                            case_file.processing_details = f'{processed_records:,}/{total_records:,} events indexed'
+                            db.session.commit()
+                            last_progress_update = processed_records
+                            logger.info(f"Progress: {processed_records:,}/{total_records:,} events processed ({progress_percent}%)")
                         
                     except Exception as index_error:
                         # Check if it's a mapping error and log appropriately
@@ -1815,6 +1840,8 @@ def process_evtx_file(file_id):
             try:
                 logger.info("Running Chainsaw analysis...")
                 case_file.processing_progress = 85
+                case_file.processing_phase = 'Running Chainsaw rule analysis'
+                case_file.processing_details = f'Analyzing {indexed_count:,} events for violations'
                 db.session.commit()
                 
                 # Run Chainsaw directly on EVTX file (much faster)
@@ -2267,6 +2294,36 @@ def rerun_rules():
     log_audit('rules_rerun', f'Re-running rules for case: {case.name}')
     flash(f'Re-running rules for {len(files)} file(s) in case.', 'info')
     return redirect(url_for('list_files'))
+
+@app.route('/files/<int:file_id>/abort', methods=['POST'])
+@login_required
+@require_role('write')
+def abort_file_processing(file_id):
+    """Abort file processing"""
+    try:
+        file = CaseFile.query.get_or_404(file_id)
+        
+        # Check if user has permission to access this case
+        case = Case.query.get_or_404(file.case_id)
+        
+        # Set abort flag
+        file.abort_requested = True
+        db.session.commit()
+        
+        # Try to revoke Celery task if still running
+        if file.celery_task_id:
+            try:
+                celery.control.revoke(file.celery_task_id, terminate=True)
+                logger.info(f"Revoked Celery task {file.celery_task_id} for file {file_id}")
+            except Exception as e:
+                logger.warning(f"Could not revoke Celery task: {e}")
+        
+        flash('File processing aborted successfully.', 'success')
+        return jsonify({'success': True, 'message': 'Processing aborted'})
+        
+    except Exception as e:
+        logger.error(f"Error aborting file processing: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/clear_pending_files', methods=['POST'])
 @login_required
