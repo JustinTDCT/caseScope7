@@ -1,6 +1,6 @@
 {
-  "version": "7.0.130",
+  "version": "7.0.131",
   "release_date": "2025-09-27",
-  "description": "CRITICAL TEST: Removed _source.excludes to test if it's causing empty event_data",
+  "description": "CRITICAL FIX: Filter search to only include documents with event_data field",
   "build": "production"
 }

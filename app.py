@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.130')
+            return version_data.get('version', '7.0.131')
     except:
-        return "7.0.130"
+        return "7.0.131"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.130", "description": "Fallback version"}
+        return {"version": "7.0.131", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2354,9 +2354,16 @@ def search():
                     }
                 ]
                 
-                # We'll test the first strategy initially
+                # We'll test the first strategy initially with case_id filter
                 search_body = {
-                    "query": search_strategies[0]["query"],
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {"term": {"case_id": selected_case_id}},
+                                search_strategies[0]["query"]
+                            ]
+                        }
+                    },
                     "size": search_strategies[0]["size"],
                     "_source": True
                 }
@@ -2406,12 +2413,14 @@ def search():
                     "_source": True
                 }
             else:
-                # Build OpenSearch query
+                # Build OpenSearch query with preference for documents that have event_data
                 search_body = {
                 "query": {
                     "bool": {
                         "must": [
-                            {"term": {"case_id": selected_case_id}}
+                            {"term": {"case_id": selected_case_id}},
+                            # CRITICAL FIX: Only search documents that have event_data field
+                            {"exists": {"field": "event_data"}}
                         ],
                         "filter": []
                     }
