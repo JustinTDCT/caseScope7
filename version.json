@@ -1,6 +1,6 @@
 {
-  "version": "7.0.117",
+  "version": "7.0.119",
   "release_date": "2025-09-27",
-  "description": "CRITICAL FIX: Fixed service enable error when preserving OpenSearch + Auto-correct search field case (EventID -> eventid)",
+  "description": "MAJOR ENHANCEMENT: Added comprehensive validation for preserved OpenSearch installations with automatic fallback to clean install",
   "build": "production"
 }

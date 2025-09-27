@@ -169,8 +169,150 @@ log "OpenSearch action saved: $OPENSEARCH_ACTION"
 
 # Handle OpenSearch based on user choice
 if [ "$OPENSEARCH_ACTION" = "preserve" ]; then
-    log "Skipping OpenSearch installation - preserving existing installation"
-    log "✓ Existing OpenSearch data and configuration preserved"
+    log "Validating existing OpenSearch installation..."
+    
+    # Check if OpenSearch directory exists
+    if [ ! -d "/opt/opensearch" ]; then
+        log_error "OpenSearch directory /opt/opensearch not found!"
+        log_error "Cannot preserve non-existent installation."
+        echo ""
+        echo "Would you like to proceed with a clean installation instead? (y/n)"
+        read -p "Enter choice: " fallback_choice
+        if [ "$fallback_choice" = "y" ] || [ "$fallback_choice" = "Y" ]; then
+            log "Switching to clean OpenSearch installation..."
+            OPENSEARCH_ACTION="clean"
+            echo "$OPENSEARCH_ACTION" > "$OPENSEARCH_FLAG_FILE"
+        else
+            log_error "Installation aborted by user"
+            exit 1
+        fi
+    fi
+    
+    # Check if OpenSearch binary exists
+    if [ "$OPENSEARCH_ACTION" = "preserve" ] && [ ! -f "/opt/opensearch/bin/opensearch" ]; then
+        log_error "OpenSearch binary not found at /opt/opensearch/bin/opensearch"
+        log_error "Installation appears corrupted."
+        echo ""
+        echo "Would you like to proceed with a clean installation instead? (y/n)"
+        read -p "Enter choice: " fallback_choice
+        if [ "$fallback_choice" = "y" ] || [ "$fallback_choice" = "Y" ]; then
+            log "Switching to clean OpenSearch installation..."
+            OPENSEARCH_ACTION="clean"
+            echo "$OPENSEARCH_ACTION" > "$OPENSEARCH_FLAG_FILE"
+            systemctl stop opensearch 2>/dev/null || true
+            rm -rf /opt/opensearch
+        else
+            log_error "Installation aborted by user"
+            exit 1
+        fi
+    fi
+    
+    # Check if service file exists and recreate if needed
+    if [ "$OPENSEARCH_ACTION" = "preserve" ] && [ ! -f "/etc/systemd/system/opensearch.service" ]; then
+        log_warning "OpenSearch service file not found - recreating it"
+        
+        # Create OpenSearch systemd service file
+        cat > /etc/systemd/system/opensearch.service << 'EOF'
+[Unit]
+Description=OpenSearch
+Documentation=https://opensearch.org/docs/
+Wants=network-online.target
+After=network-online.target
+After=time-sync.target
+
+[Service]
+RuntimeDirectory=opensearch
+PrivateTmp=true
+Environment=OS_HOME=/opt/opensearch
+Environment=OS_PATH_CONF=/opt/opensearch/config
+Environment=PID_DIR=/var/run/opensearch
+Environment=OS_SD_NOTIFY=true
+EnvironmentFile=-/etc/default/opensearch
+WorkingDirectory=/opt/opensearch
+User=casescope
+Group=casescope
+ExecStart=/opt/opensearch/bin/opensearch
+StandardOutput=journal
+StandardError=inherit
+LimitNOFILE=65535
+LimitNPROC=4096
+LimitAS=infinity
+LimitFSIZE=infinity
+TimeoutStopSec=0
+KillSignal=SIGTERM
+KillMode=process
+SendSIGKILL=no
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        
+        systemctl daemon-reload
+        log "✓ OpenSearch service file recreated"
+    fi
+    
+    # Test existing OpenSearch if still preserving
+    if [ "$OPENSEARCH_ACTION" = "preserve" ]; then
+        log "Testing existing OpenSearch installation..."
+        
+        # Try to start the service if not running
+        if ! systemctl is-active --quiet opensearch; then
+            log "Starting existing OpenSearch service for validation..."
+            systemctl start opensearch 2>/dev/null || true
+            sleep 10
+        fi
+        
+        # Test connectivity
+        OPENSEARCH_WORKING=false
+        for i in {1..30}; do
+            if curl -s -m 5 "http://localhost:9200/_cluster/health" >/dev/null 2>&1; then
+                OPENSEARCH_WORKING=true
+                break
+            fi
+            sleep 2
+        done
+        
+        if [ "$OPENSEARCH_WORKING" = "true" ]; then
+            # Get cluster info
+            CLUSTER_INFO=$(curl -s -m 5 "http://localhost:9200/_cluster/health" 2>/dev/null || echo "")
+            if [ -n "$CLUSTER_INFO" ]; then
+                log "✓ Existing OpenSearch is responding"
+                log "Cluster status: $(echo "$CLUSTER_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status', 'unknown'))" 2>/dev/null || echo "unknown")"
+                
+                # Check for existing indices
+                EXISTING_INDICES=$(curl -s "http://localhost:9200/_cat/indices/casescope*" 2>/dev/null | wc -l)
+                if [ "$EXISTING_INDICES" -gt 0 ]; then
+                    log "✓ Found $EXISTING_INDICES existing caseScope indices"
+                else
+                    log "ℹ️  No existing caseScope indices found (clean preserved installation)"
+                fi
+            fi
+            log "✓ Existing OpenSearch installation validated successfully"
+        else
+            log_error "Existing OpenSearch installation is not responding!"
+            log_error "Service may be corrupted or misconfigured."
+            echo ""
+            echo "Would you like to proceed with a clean installation instead? (y/n)"
+            read -p "Enter choice: " fallback_choice
+            if [ "$fallback_choice" = "y" ] || [ "$fallback_choice" = "Y" ]; then
+                log "Switching to clean OpenSearch installation..."
+                OPENSEARCH_ACTION="clean"
+                echo "$OPENSEARCH_ACTION" > "$OPENSEARCH_FLAG_FILE"
+                systemctl stop opensearch 2>/dev/null || true
+                rm -rf /opt/opensearch
+            else
+                log_error "Installation aborted by user"
+                exit 1
+            fi
+        fi
+    fi
+    
+    if [ "$OPENSEARCH_ACTION" = "preserve" ]; then
+        log "✓ Existing OpenSearch data and configuration preserved"
+    fi
 elif [ "$OPENSEARCH_ACTION" = "clean" ]; then
     log "Performing clean OpenSearch installation..."
     systemctl stop opensearch 2>/dev/null || true
@@ -703,17 +845,34 @@ fi
 log "Starting Redis service..."
 systemctl start redis-server
 
-# Start OpenSearch service
-log "Starting OpenSearch service..."
-systemctl start opensearch
-
-# Wait for OpenSearch to start with better diagnostics
-log "Waiting for OpenSearch to start..."
-OPENSEARCH_STARTED=false
-
-for i in {1..60}; do
-    # Check if service is running
+# Start OpenSearch service (conditional based on user choice)
+if [ "$OPENSEARCH_ACTION" != "preserve" ]; then
+    log "Starting OpenSearch service..."
+    systemctl start opensearch
+else
+    log "Skipping OpenSearch service start - using preserved installation"
+    # Check if existing OpenSearch service is running
     if systemctl is-active --quiet opensearch; then
+        log "✓ Existing OpenSearch service is already running"
+    else
+        log "⚠️  Existing OpenSearch service is not running - attempting to start..."
+        systemctl start opensearch || log_warning "Could not start existing OpenSearch service"
+    fi
+fi
+
+# Wait for OpenSearch to start with better diagnostics (conditional)
+if [ "$OPENSEARCH_ACTION" != "preserve" ] || systemctl is-active --quiet opensearch; then
+    log "Waiting for OpenSearch to start..."
+    OPENSEARCH_STARTED=false
+else
+    log "Skipping OpenSearch startup wait - service not started"
+    OPENSEARCH_STARTED=true  # Skip the wait loop
+fi
+
+if [ "$OPENSEARCH_STARTED" = "false" ]; then
+    for i in {1..60}; do
+        # Check if service is running
+        if systemctl is-active --quiet opensearch; then
         log "OpenSearch service is active, checking connectivity..."
         
         # Check if port is listening
@@ -787,6 +946,9 @@ if [ "$OPENSEARCH_STARTED" = "false" ]; then
 else
     log "OpenSearch started successfully!"
 fi
+else
+    log "✓ OpenSearch startup check skipped - using preserved installation"
+fi
 
 # Create application files (will be created in next steps)
 log "Installation framework complete. Application files will be created next."
@@ -794,9 +956,9 @@ log "Installation framework complete. Application files will be created next."
 # Create version file
 # Extract version from version.json and write to VERSION file
 if [ -f "$SCRIPT_DIR/version.json" ]; then
-    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.117")
+    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.119")
 else
-    VERSION="7.0.117"
+    VERSION="7.0.119"
 fi
 echo "$VERSION" > /opt/casescope/VERSION
 
