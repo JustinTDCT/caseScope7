@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.126')
+            return version_data.get('version', '7.0.127')
     except:
-        return "7.0.126"
+        return "7.0.127"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.126", "description": "Fallback version"}
+        return {"version": "7.0.127", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2537,14 +2537,27 @@ def search():
                     logger.info(f"Computer Name: '{first_result.get('computer_name', 'NOT_FOUND')}'")
                     logger.info(f"Source Name: '{first_result.get('source_name', 'NOT_FOUND')}'")
                     
-                    # Show raw event_data structure
+                    # Show raw event_data structure in detail
                     event_data = first_result.get('event_data', {})
-                    if isinstance(event_data, dict) and 'event' in event_data:
-                        event = event_data['event']
-                        if isinstance(event, dict) and 'system' in event:
-                            system = event['system']
-                            if isinstance(system, dict):
-                                logger.info(f"Raw system data sample: eventid={system.get('eventid')}, computer={system.get('computer')}, provider={system.get('provider')}")
+                    logger.info(f"Raw event_data type: {type(event_data)}")
+                    if isinstance(event_data, dict):
+                        logger.info(f"Raw event_data keys: {list(event_data.keys())}")
+                        if 'event' in event_data:
+                            event = event_data['event']
+                            logger.info(f"Raw event type: {type(event)}")
+                            if isinstance(event, dict):
+                                logger.info(f"Raw event keys: {list(event.keys())}")
+                                if 'system' in event:
+                                    system = event['system']
+                                    logger.info(f"Raw system type: {type(system)}")
+                                    if isinstance(system, dict):
+                                        logger.info(f"Raw system keys: {list(system.keys())}")
+                                        logger.info(f"Raw eventid value: '{system.get('eventid')}' (type: {type(system.get('eventid'))})")
+                                        logger.info(f"Raw computer value: '{system.get('computer')}' (type: {type(system.get('computer'))})")
+                                        logger.info(f"Raw provider value: '{system.get('provider')}' (type: {type(system.get('provider'))})")
+                                        logger.info(f"Raw eventrecordid value: '{system.get('eventrecordid')}' (type: {type(system.get('eventrecordid'))})")
+                    else:
+                        logger.info(f"event_data is not dict: {str(event_data)[:200]}...")
                 logger.info("=== END RESULT DEBUG ===")
             
     except Exception as e:

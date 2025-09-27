@@ -1,6 +1,6 @@
 {
-  "version": "7.0.126",
+  "version": "7.0.127",
   "release_date": "2025-09-27",
-  "description": "SUCCESS: Search is working! Added result processing debug to fix Event ID display showing N/A instead of actual values",
+  "description": "DEBUG: Added detailed raw event data logging to diagnose why event ID extraction returns empty strings",
   "build": "production"
 }
