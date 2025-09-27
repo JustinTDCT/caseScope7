@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.120')
+            return version_data.get('version', '7.0.121')
     except:
-        return "7.0.120"
+        return "7.0.121"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.120", "description": "Fallback version"}
+        return {"version": "7.0.121", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2237,21 +2237,29 @@ def search():
             logger.error(f"Error checking index existence: {index_check_error}")
         
         if query or rule_violations or file_id:
-            # Auto-correct common field name case issues and map to nested structure
+            # Convert to plain text search - search for actual values in event content
             if query:
-                # Convert common field searches to proper nested field paths
                 original_query = query
-                query = query.replace("EventID:", "event_data.event.system.eventid:")
-                query = query.replace("eventid:", "event_data.event.system.eventid:")
-                query = query.replace("EventRecordID:", "event_data.event.system.eventrecordid:")
-                query = query.replace("eventrecordid:", "event_data.event.system.eventrecordid:")
-                query = query.replace("Computer:", "event_data.event.system.computer:")
-                query = query.replace("computer:", "event_data.event.system.computer:")
-                query = query.replace("Channel:", "event_data.event.system.channel:")
-                query = query.replace("channel:", "event_data.event.system.channel:")
+                
+                # Extract search values from field:value patterns for plain text search
+                # Convert "eventid:4624" to just "4624", "computer:SERVER01" to "SERVER01", etc.
+                if ":" in query:
+                    # Handle field:value patterns by extracting just the values
+                    parts = []
+                    for part in query.split():
+                        if ":" in part and not part.startswith("http"):  # Avoid breaking URLs
+                            field, value = part.split(":", 1)
+                            # For common fields, search for the actual value in the content
+                            if field.lower() in ['eventid', 'computer', 'channel', 'eventrecordid']:
+                                parts.append(value)
+                            else:
+                                parts.append(part)  # Keep other field:value patterns as-is
+                        else:
+                            parts.append(part)
+                    query = " ".join(parts)
                 
                 if query != original_query:
-                    logger.info(f"Processed query (mapped to nested fields): {original_query} → {query}")
+                    logger.info(f"Processed query (plain text search): {original_query} → {query}")
                 else:
                     logger.info(f"Query unchanged: {query}")
             
@@ -2319,36 +2327,34 @@ def search():
                     }
                 })
             
-            # Add text query if provided
+            # Add text query if provided - simple plain text search across all content
             if query:
-                # Use a combination of exact and fuzzy searches to handle different field types
                 search_body["query"]["bool"]["must"].append({
                     "bool": {
                         "should": [
-                            # Exact match on filename and text fields (no fuzziness to avoid date field issues)
+                            # Search in source file name
                             {
-                                "multi_match": {
-                                    "query": query,
-                                    "fields": [
-                                        "source_file^3"
-                                    ],
-                                    "type": "best_fields"
+                                "match": {
+                                    "source_file": {
+                                        "query": query,
+                                        "boost": 2
+                                    }
                                 }
                             },
-                            # Simple query string for flexible searching (handles dates properly)
+                            # Plain text search across all event content using simple_query_string
                             {
-                                "query_string": {
-                                    "query": query,  # Don't wrap with wildcards - breaks boolean operators
-                                    "fields": [
-                                        "source_file^3",
-                                        "event_data.event.eventdata.*^2",
-                                        "event_data.event.system.channel^2",
-                                        "event_data.event.system.computer^2",
-                                        "event_data.event.system.eventid^3",
-                                        "event_data.event.system.eventrecordid^1.5"
-                                    ],
-                                    "default_operator": "OR",
-                                    "analyze_wildcard": True
+                                "simple_query_string": {
+                                    "query": query,
+                                    "fields": ["*"],  # Search all fields
+                                    "default_operator": "and",
+                                    "analyze_wildcard": True,
+                                    "boost": 3
+                                }
+                            },
+                            # Fallback: wildcard search for exact matches
+                            {
+                                "wildcard": {
+                                    "event_data": f"*{query}*"
                                 }
                             }
                         ],
