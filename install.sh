@@ -89,10 +89,93 @@ rm -f /etc/systemd/system/casescope-web.service 2>/dev/null || true
 rm -f /etc/systemd/system/casescope-worker.service 2>/dev/null || true
 rm -f /etc/systemd/system/opensearch.service 2>/dev/null || true
 
-# Remove existing OpenSearch installation
+# Check for existing OpenSearch installation and prompt user
+OPENSEARCH_ACTION="install"  # Default action
+OPENSEARCH_FLAG_FILE="/opt/casescope/.opensearch_action"
+
 if [ -d "/opt/opensearch" ]; then
-    log "Removing existing OpenSearch installation..."
+    echo ""
+    echo "=========================================="
+    echo "🔍 EXISTING OPENSEARCH INSTALLATION FOUND"
+    echo "=========================================="
+    echo ""
+    echo "An existing OpenSearch installation was detected at /opt/opensearch"
+    
+    # Check if there's existing data
+    if [ -d "/opt/opensearch/data" ] && [ "$(ls -A /opt/opensearch/data 2>/dev/null)" ]; then
+        echo "📊 This installation contains DATA (indices, cases, files)"
+        echo ""
+        echo "⚠️  WARNING: Choosing 'Clean Install' will DELETE ALL:"
+        echo "   • All cases and uploaded files"
+        echo "   • All search indices and data"
+        echo "   • All processing history"
+        echo ""
+    else
+        echo "📁 This installation appears to be empty (no data found)"
+        echo ""
+    fi
+    
+    echo "Please choose how to proceed:"
+    echo ""
+    echo "1) PRESERVE DATA - Keep existing OpenSearch and skip reinstall"
+    echo "   ✓ Keeps all your cases, files, and search data"
+    echo "   ✓ Faster installation (skips OpenSearch setup)"
+    echo "   ⚠️  May have compatibility issues if OpenSearch version differs"
+    echo ""
+    echo "2) CLEAN INSTALL - Delete existing OpenSearch and reinstall fresh"
+    echo "   ✓ Ensures clean, compatible OpenSearch installation"
+    echo "   ✓ Fixes any OpenSearch configuration issues"
+    echo "   ❌ DELETES ALL existing data permanently"
+    echo ""
+    
+    while true; do
+        read -p "Enter your choice (1 for PRESERVE, 2 for CLEAN): " choice
+        case $choice in
+            1)
+                OPENSEARCH_ACTION="preserve"
+                log "User chose to PRESERVE existing OpenSearch data"
+                break
+                ;;
+            2)
+                OPENSEARCH_ACTION="clean"
+                log "User chose CLEAN INSTALL - will delete existing OpenSearch"
+                echo ""
+                echo "⚠️  FINAL WARNING: This will permanently delete all data!"
+                read -p "Type 'DELETE' to confirm: " confirm
+                if [ "$confirm" = "DELETE" ]; then
+                    log "Confirmed - proceeding with clean OpenSearch installation"
+                    break
+                else
+                    log "Confirmation failed - defaulting to PRESERVE data"
+                    OPENSEARCH_ACTION="preserve"
+                    break
+                fi
+                ;;
+            *)
+                echo "Invalid choice. Please enter 1 or 2."
+                ;;
+        esac
+    done
+    echo ""
+else
+    log "No existing OpenSearch found - will perform fresh installation"
+    OPENSEARCH_ACTION="install"
+fi
+
+# Create flag file to persist choice for deploy script
+mkdir -p /opt/casescope
+echo "$OPENSEARCH_ACTION" > "$OPENSEARCH_FLAG_FILE"
+log "OpenSearch action saved: $OPENSEARCH_ACTION"
+
+# Handle OpenSearch based on user choice
+if [ "$OPENSEARCH_ACTION" = "preserve" ]; then
+    log "Skipping OpenSearch installation - preserving existing installation"
+    log "✓ Existing OpenSearch data and configuration preserved"
+elif [ "$OPENSEARCH_ACTION" = "clean" ]; then
+    log "Performing clean OpenSearch installation..."
+    systemctl stop opensearch 2>/dev/null || true
     rm -rf /opt/opensearch
+    log "✓ Existing OpenSearch installation removed"
 fi
 
 # Clean up temporary files
@@ -200,17 +283,18 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Install OpenSearch
-log "Installing OpenSearch..."
-cd /tmp
+# Install OpenSearch (conditional based on user choice)
+if [ "$OPENSEARCH_ACTION" != "preserve" ]; then
+    log "Installing OpenSearch..."
+    cd /tmp
 
-# Clean up any existing files first
-rm -f opensearch-2.11.1-linux-x64.tar.gz 2>/dev/null || true
-rm -rf opensearch-2.11.1 2>/dev/null || true
+    # Clean up any existing files first
+    rm -f opensearch-2.11.1-linux-x64.tar.gz 2>/dev/null || true
+    rm -rf opensearch-2.11.1 2>/dev/null || true
 
-# Download OpenSearch
-log "Downloading OpenSearch 2.11.1..."
-wget https://artifacts.opensearch.org/releases/bundle/opensearch/2.11.1/opensearch-2.11.1-linux-x64.tar.gz
+    # Download OpenSearch
+    log "Downloading OpenSearch 2.11.1..."
+    wget https://artifacts.opensearch.org/releases/bundle/opensearch/2.11.1/opensearch-2.11.1-linux-x64.tar.gz
 if [ $? -ne 0 ]; then
     log_error "Failed to download OpenSearch"
     exit 1
@@ -227,8 +311,7 @@ fi
 # Move to final location
 log "Installing OpenSearch to /opt/opensearch..."
 if [ -d "/opt/opensearch" ]; then
-    log "Removing existing OpenSearch directory..."
-    rm -rf /opt/opensearch
+    log "OpenSearch directory already cleaned up above"
 fi
 
 mv opensearch-2.11.1 /opt/opensearch
@@ -244,6 +327,17 @@ log "Configuring OpenSearch..."
 
 # Create data and logs directories
 mkdir -p /opt/opensearch/data /opt/opensearch/logs /opt/opensearch/tmp
+
+# Restore backed up data if it exists
+if [ -d "/tmp/opensearch-data-backup" ]; then
+    log "Restoring OpenSearch data from backup..."
+    rm -rf /opt/opensearch/data
+    mv /tmp/opensearch-data-backup /opt/opensearch/data
+    log "✓ OpenSearch data restored - indices should be preserved"
+else
+    log "No existing OpenSearch data to restore - clean installation"
+fi
+
 chown -R casescope:casescope /opt/opensearch/data /opt/opensearch/logs /opt/opensearch/tmp
 
 # Configure OpenSearch with more conservative settings
@@ -332,8 +426,8 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-# Configure system limits for OpenSearch
-cat > /etc/security/limits.d/opensearch.conf << 'EOF'
+    # Configure system limits for OpenSearch
+    cat > /etc/security/limits.d/opensearch.conf << 'EOF'
 casescope soft nofile 65535
 casescope hard nofile 65535
 casescope soft nproc 4096
@@ -342,9 +436,18 @@ casescope soft memlock unlimited
 casescope hard memlock unlimited
 EOF
 
+else
+    log "Skipping OpenSearch configuration - preserving existing setup"
+fi
+
 # Set ownership
 chown -R casescope:casescope /opt/casescope
-chown -R casescope:casescope /opt/opensearch
+if [ "$OPENSEARCH_ACTION" != "preserve" ]; then
+    chown -R casescope:casescope /opt/opensearch
+    log "✓ OpenSearch installation completed"
+else
+    log "✓ OpenSearch installation skipped - using existing installation"
+fi
 
 # Download and setup Sigma rules
 log "Setting up Sigma rules..."
@@ -686,9 +789,9 @@ log "Installation framework complete. Application files will be created next."
 # Create version file
 # Extract version from version.json and write to VERSION file
 if [ -f "$SCRIPT_DIR/version.json" ]; then
-    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.105")
+    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.116")
 else
-    VERSION="7.0.105"
+    VERSION="7.0.116"
 fi
 echo "$VERSION" > /opt/casescope/VERSION
 

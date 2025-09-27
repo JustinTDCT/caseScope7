@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.114')
+            return version_data.get('version', '7.0.116')
     except:
-        return "7.0.114"
+        return "7.0.116"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.114", "description": "Fallback version"}
+        return {"version": "7.0.116", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2241,6 +2241,14 @@ def search():
             if query == "test_match_all":
                 logger.info("Running debug match_all query")
                 search_body = {"query": {"match_all": {}}, "size": 5}
+            elif query == "test_eventid_4624":
+                logger.info("Running debug EventID 4624 query with correct field name")
+                search_body = {
+                    "query": {
+                        "term": {"event_data.event.system.eventid": "4624"}
+                    },
+                    "size": 5
+                }
             else:
                 # Build OpenSearch query
                 search_body = {
@@ -2300,11 +2308,14 @@ def search():
                                 "query_string": {
                                     "query": query,  # Don't wrap with wildcards - breaks boolean operators
                                     "fields": [
+                                        "source_file^3",
                                         "event_data.event.eventdata.*^2",
-                                        "event_data.event.system.channel^1.5",
-                                        "event_data.event.system.provider_name^1.5"
+                                        "event_data.event.system.channel^2",
+                                        "event_data.event.system.computer^2",
+                                        "event_data.event.system.eventid^3",
+                                        "event_data.event.system.eventrecordid^1.5"
                                     ],
-                                    "default_operator": "OR",  # Changed to OR for better matching
+                                    "default_operator": "OR",
                                     "analyze_wildcard": True
                                 }
                             }

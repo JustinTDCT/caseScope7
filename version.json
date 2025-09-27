@@ -1,6 +1,6 @@
 {
-  "version": "7.0.114",
+  "version": "7.0.116",
   "release_date": "2025-09-27",
-  "description": "DEBUG: Added document structure analysis to diagnose why searches return 0 results despite indexed documents",
+  "description": "MAJOR UX: Added user prompt for OpenSearch data preservation - users can now choose to keep or clean existing data during install",
   "build": "production"
 }

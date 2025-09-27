@@ -40,15 +40,25 @@ fi
 
 # Extract version from version.json for logging
 if [ -f "$SCRIPT_DIR/version.json" ]; then
-    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.105")
+    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.116")
 else
-    VERSION="7.0.105"
+    VERSION="7.0.116"
 fi
 
 log "Starting caseScope v$VERSION application deployment..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Check OpenSearch action from install script
+OPENSEARCH_FLAG_FILE="/opt/casescope/.opensearch_action"
+if [ -f "$OPENSEARCH_FLAG_FILE" ]; then
+    OPENSEARCH_ACTION=$(cat "$OPENSEARCH_FLAG_FILE")
+    log "OpenSearch action from install: $OPENSEARCH_ACTION"
+else
+    OPENSEARCH_ACTION="install"
+    log "No OpenSearch action flag found - assuming fresh installation"
+fi
 
 # Create application directories first
 log "Creating application directories..."
@@ -953,19 +963,23 @@ for i in {1..30}; do
     sleep 2
 done
 
-# Check OpenSearch health (but don't delete indices automatically)
-log "Checking OpenSearch connectivity..."
-if curl -s "http://localhost:9200/_cluster/health" >/dev/null 2>&1; then
-    # Check if indices exist but don't delete them automatically
-    INDICES=$(curl -s "http://localhost:9200/_cat/indices/casescope*" 2>/dev/null | awk '{print $3}' | tr '\n' ' ')
-    if [ -n "$INDICES" ]; then
-        log "Found existing indices: $INDICES"
-        log "ℹ️  Existing indices preserved - only delete manually if mapping conflicts occur"
+# Check OpenSearch health (conditional based on installation choice)
+if [ "$OPENSEARCH_ACTION" != "preserve" ] || [ "$OPENSEARCH_ACTION" = "install" ]; then
+    log "Checking OpenSearch connectivity..."
+    if curl -s "http://localhost:9200/_cluster/health" >/dev/null 2>&1; then
+        # Check if indices exist but don't delete them automatically
+        INDICES=$(curl -s "http://localhost:9200/_cat/indices/casescope*" 2>/dev/null | awk '{print $3}' | tr '\n' ' ')
+        if [ -n "$INDICES" ]; then
+            log "Found existing indices: $INDICES"
+            log "ℹ️  Existing indices preserved - only delete manually if mapping conflicts occur"
+        else
+            log "✓ No existing indices found - clean start"
+        fi
     else
-        log "✓ No existing indices found - clean start"
+        log_warning "Could not connect to OpenSearch"
     fi
 else
-    log_warning "Could not connect to OpenSearch"
+    log "Skipping OpenSearch connectivity check - using preserved installation"
 fi
 
 systemctl restart nginx
