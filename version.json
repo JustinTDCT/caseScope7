@@ -1,6 +1,6 @@
 {
-  "version": "7.0.135",
+  "version": "7.0.136",
   "release_date": "2025-09-27",
-  "description": "ADVANCED SEARCH: Boolean operators (AND/OR), phrase matching, case-insensitive text search",
+  "description": "CHAINSAW FIX: Increased timeout from 2min to 10min for large EVTX files + Advanced search",
   "build": "production"
 }

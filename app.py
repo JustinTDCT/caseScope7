@@ -1343,7 +1343,7 @@ def run_chainsaw_directly(case_file):
             
             import time
             start_time = time.time()
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # 2 minute timeout
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)  # 10 minute timeout for large files
             end_time = time.time()
             
             logger.info(f"Chainsaw completed in {end_time - start_time:.2f} seconds")
@@ -2572,6 +2572,34 @@ def search():
                         }
                     },
                     "size": 5
+                }
+            elif query == "test_rule_processing":
+                logger.info("=== TESTING RULE PROCESSING ===")
+                logger.info(f"Case ID: {selected_case_id}")
+                
+                # Check if Chainsaw binary exists
+                chainsaw_path = Path('/usr/local/bin/chainsaw')
+                logger.info(f"Chainsaw path exists: {chainsaw_path.exists()}")
+                
+                # Check if Celery is running
+                try:
+                    import subprocess
+                    celery_check = subprocess.run(['pgrep', '-f', 'celery'], capture_output=True, text=True)
+                    if celery_check.stdout.strip():
+                        logger.info(f"Celery processes running: {celery_check.stdout.strip()}")
+                    else:
+                        logger.warning("No Celery processes found!")
+                except Exception as e:
+                    logger.error(f"Error checking Celery: {e}")
+                
+                # Check recent files for this case
+                recent_files = CaseFile.query.filter_by(case_id=selected_case_id).order_by(CaseFile.created_at.desc()).limit(3).all()
+                for f in recent_files:
+                    logger.info(f"File {f.id}: {f.original_filename} - Status: {f.processing_status} - Sigma: {f.sigma_violations} - Chainsaw: {f.chainsaw_violations}")
+                
+                search_body = {
+                    "query": {"match_all": {}},
+                    "size": 1
                 }
             elif query == "test_actual_eventids":
                 logger.info("=== CHECKING ACTUAL EVENT IDs IN DATA ===")
