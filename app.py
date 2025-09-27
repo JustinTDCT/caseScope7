@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.122')
+            return version_data.get('version', '7.0.123')
     except:
-        return "7.0.122"
+        return "7.0.123"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.122", "description": "Fallback version"}
+        return {"version": "7.0.123", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2263,15 +2263,27 @@ def search():
                 else:
                     logger.info(f"Query unchanged: {query}")
             
-            # Debug: Try a simple match_all query first to see if we can get any results
+            # Debug queries - simplified and working
             if query == "test_match_all":
                 logger.info("Running debug match_all query")
-                search_body = {"query": {"match_all": {}}, "size": 5}
+                search_body = {
+                    "query": {
+                        "bool": {
+                            "must": [{"term": {"case_id": selected_case_id}}]
+                        }
+                    },
+                    "size": 5
+                }
             elif query == "test_eventid_4624":
                 logger.info("Running debug EventID 4624 query with correct nested field")
                 search_body = {
                     "query": {
-                        "term": {"event_data.event.system.eventid": "4624"}
+                        "bool": {
+                            "must": [
+                                {"term": {"case_id": selected_case_id}},
+                                {"term": {"event_data.event.system.eventid": "4624"}}
+                            ]
+                        }
                     },
                     "size": 5
                 }
@@ -2280,10 +2292,17 @@ def search():
                 search_body = {
                     "query": {
                         "bool": {
-                            "should": [
-                                {"exists": {"field": "event_data.event.system.eventid"}},
-                                {"exists": {"field": "event_data.event.system.computer"}},
-                                {"exists": {"field": "event_data.event.system.channel"}}
+                            "must": [
+                                {"term": {"case_id": selected_case_id}},
+                                {
+                                    "bool": {
+                                        "should": [
+                                            {"exists": {"field": "event_data.event.system.eventid"}},
+                                            {"exists": {"field": "event_data.event.system.computer"}},
+                                            {"exists": {"field": "event_data.event.system.channel"}}
+                                        ]
+                                    }
+                                }
                             ]
                         }
                     },
@@ -2292,9 +2311,13 @@ def search():
             elif query == "debug_content":
                 logger.info("Running debug query to examine actual document content")
                 search_body = {
-                    "query": {"match_all": {}},
+                    "query": {
+                        "bool": {
+                            "must": [{"term": {"case_id": selected_case_id}}]
+                        }
+                    },
                     "size": 1,
-                    "_source": True  # Include full source
+                    "_source": True
                 }
             else:
                 # Build OpenSearch query
@@ -2334,40 +2357,39 @@ def search():
                     }
                 })
             
-            # Add text query if provided - simple plain text search across all content
+            # Add text query if provided - SIMPLIFIED approach
             if query:
-                search_body["query"]["bool"]["must"].append({
-                    "bool": {
-                        "should": [
-                            # Search in source file name
-                            {
-                                "match": {
-                                    "source_file": {
-                                        "query": query,
-                                        "boost": 2
+                # Replace the complex query structure with a simple one
+                search_body = {
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {"term": {"case_id": selected_case_id}},
+                                {
+                                    "bool": {
+                                        "should": [
+                                            # Simple match in source file
+                                            {"match": {"source_file": query}},
+                                            # Simple query string across all fields
+                                            {
+                                                "query_string": {
+                                                    "query": f"*{query}*",
+                                                    "fields": ["*"],
+                                                    "analyze_wildcard": True
+                                                }
+                                            },
+                                            # Direct match in event data
+                                            {"match": {"event_data": query}}
+                                        ],
+                                        "minimum_should_match": 1
                                     }
                                 }
-                            },
-                            # Plain text search across all event content using simple_query_string
-                            {
-                                "simple_query_string": {
-                                    "query": query,
-                                    "fields": ["*"],  # Search all fields
-                                    "default_operator": "and",
-                                    "analyze_wildcard": True,
-                                    "boost": 3
-                                }
-                            },
-                            # Fallback: wildcard search for exact matches
-                            {
-                                "wildcard": {
-                                    "event_data": f"*{query}*"
-                                }
-                            }
-                        ],
-                        "minimum_should_match": 1
-                    }
-                })
+                            ]
+                        }
+                    },
+                    "sort": [{"timestamp": {"order": "desc"}}],
+                    "size": 100
+                }
             
             # Add time range filter
             if start_time or end_time:
