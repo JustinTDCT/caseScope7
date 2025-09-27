@@ -1,6 +1,6 @@
 {
-  "version": "7.0.119",
+  "version": "7.0.120",
   "release_date": "2025-09-27",
-  "description": "MAJOR ENHANCEMENT: Added comprehensive validation for preserved OpenSearch installations with automatic fallback to clean install",
+  "description": "CRITICAL SEARCH FIX: Fixed nested field mapping - eventid:4624 now correctly maps to event_data.event.system.eventid:4624",
   "build": "production"
 }

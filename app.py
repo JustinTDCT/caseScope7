@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.119')
+            return version_data.get('version', '7.0.120')
     except:
-        return "7.0.119"
+        return "7.0.120"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.119", "description": "Fallback version"}
+        return {"version": "7.0.120", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2237,24 +2237,47 @@ def search():
             logger.error(f"Error checking index existence: {index_check_error}")
         
         if query or rule_violations or file_id:
-            # Auto-correct common field name case issues
+            # Auto-correct common field name case issues and map to nested structure
             if query:
-                # Convert common uppercase field names to lowercase
-                query = query.replace("EventID:", "eventid:")
-                query = query.replace("EventRecordID:", "eventrecordid:")
-                query = query.replace("Computer:", "computer:")
-                query = query.replace("Channel:", "channel:")
-                logger.info(f"Processed query (case corrected): {query}")
+                # Convert common field searches to proper nested field paths
+                original_query = query
+                query = query.replace("EventID:", "event_data.event.system.eventid:")
+                query = query.replace("eventid:", "event_data.event.system.eventid:")
+                query = query.replace("EventRecordID:", "event_data.event.system.eventrecordid:")
+                query = query.replace("eventrecordid:", "event_data.event.system.eventrecordid:")
+                query = query.replace("Computer:", "event_data.event.system.computer:")
+                query = query.replace("computer:", "event_data.event.system.computer:")
+                query = query.replace("Channel:", "event_data.event.system.channel:")
+                query = query.replace("channel:", "event_data.event.system.channel:")
+                
+                if query != original_query:
+                    logger.info(f"Processed query (mapped to nested fields): {original_query} → {query}")
+                else:
+                    logger.info(f"Query unchanged: {query}")
             
             # Debug: Try a simple match_all query first to see if we can get any results
             if query == "test_match_all":
                 logger.info("Running debug match_all query")
                 search_body = {"query": {"match_all": {}}, "size": 5}
             elif query == "test_eventid_4624":
-                logger.info("Running debug EventID 4624 query with correct field name")
+                logger.info("Running debug EventID 4624 query with correct nested field")
                 search_body = {
                     "query": {
                         "term": {"event_data.event.system.eventid": "4624"}
+                    },
+                    "size": 5
+                }
+            elif query == "test_nested_structure":
+                logger.info("Running debug query to test nested field access")
+                search_body = {
+                    "query": {
+                        "bool": {
+                            "should": [
+                                {"exists": {"field": "event_data.event.system.eventid"}},
+                                {"exists": {"field": "event_data.event.system.computer"}},
+                                {"exists": {"field": "event_data.event.system.channel"}}
+                            ]
+                        }
                     },
                     "size": 5
                 }
