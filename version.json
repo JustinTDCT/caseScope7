@@ -1,6 +1,6 @@
 {
-  "version": "7.0.125",
+  "version": "7.0.126",
   "release_date": "2025-09-27",
-  "description": "CRITICAL FIX: Fixed duplicate query structure + Added case_id type compatibility (string/integer) + New debug queries",
+  "description": "SUCCESS: Search is working! Added result processing debug to fix Event ID display showing N/A instead of actual values",
   "build": "production"
 }

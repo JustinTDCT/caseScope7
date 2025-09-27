@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.125')
+            return version_data.get('version', '7.0.126')
     except:
-        return "7.0.125"
+        return "7.0.126"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.125", "description": "Fallback version"}
+        return {"version": "7.0.126", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2492,7 +2492,9 @@ def search():
                                 result['event_id'] = str(system.get('eventid', ''))
                                 result['event_record_id'] = str(system.get('eventrecordid', ''))
                                 result['computer_name'] = str(system.get('computer', ''))
-                                result['source_name'] = str(system.get('provider_name', ''))
+                                # Try different provider field names
+                                result['source_name'] = str(system.get('provider_name', '') or 
+                                                           system.get('provider', {}).get('name', '') if isinstance(system.get('provider'), dict) else str(system.get('provider', '')))
                         
                         # Alternative: look for these fields at the top level of event_data
                         result['event_id'] = result['event_id'] or str(event_data.get('eventid', ''))
@@ -2524,32 +2526,26 @@ def search():
             
             logger.info(f"Search completed: {len(results)} results returned out of {total_hits} total hits")
             
-            # Debug: Log actual document content for debugging queries
-            if query in ["debug_content", "test_match_all"] and results:
-                logger.info("=== DOCUMENT CONTENT DEBUG ===")
-                for i, result in enumerate(results[:1]):  # Just show first result
-                    logger.info(f"Document {i+1} full content:")
-                    logger.info(f"  _source keys: {list(result.get('_source', {}).keys())}")
-                    event_data = result.get('_source', {}).get('event_data', {})
-                    if isinstance(event_data, dict):
-                        logger.info(f"  event_data type: {type(event_data)}")
-                        logger.info(f"  event_data keys: {list(event_data.keys())}")
-                        if 'event' in event_data:
-                            event = event_data['event']
-                            logger.info(f"  event type: {type(event)}")
-                            if isinstance(event, dict):
-                                logger.info(f"  event keys: {list(event.keys())}")
-                                if 'system' in event:
-                                    system = event['system']
-                                    logger.info(f"  system type: {type(system)}")
-                                    if isinstance(system, dict):
-                                        logger.info(f"  system keys: {list(system.keys())}")
-                                        if 'eventid' in system:
-                                            logger.info(f"  eventid value: {system['eventid']} (type: {type(system['eventid'])})")
-                    else:
-                        logger.info(f"  event_data is not dict: {type(event_data)}")
-                        logger.info(f"  event_data content: {str(event_data)[:200]}...")
-                logger.info("=== END DOCUMENT DEBUG ===")
+            # Debug: Log actual document content for debugging queries and regular searches
+            if (query in ["debug_content", "test_match_all"] or len(results) > 0) and results:
+                logger.info("=== RESULT PROCESSING DEBUG ===")
+                first_result = results[0] if results else None
+                if first_result:
+                    logger.info(f"First result keys: {list(first_result.keys())}")
+                    logger.info(f"Event ID extracted: '{first_result.get('event_id', 'NOT_FOUND')}'")
+                    logger.info(f"Event Record ID: '{first_result.get('event_record_id', 'NOT_FOUND')}'")
+                    logger.info(f"Computer Name: '{first_result.get('computer_name', 'NOT_FOUND')}'")
+                    logger.info(f"Source Name: '{first_result.get('source_name', 'NOT_FOUND')}'")
+                    
+                    # Show raw event_data structure
+                    event_data = first_result.get('event_data', {})
+                    if isinstance(event_data, dict) and 'event' in event_data:
+                        event = event_data['event']
+                        if isinstance(event, dict) and 'system' in event:
+                            system = event['system']
+                            if isinstance(system, dict):
+                                logger.info(f"Raw system data sample: eventid={system.get('eventid')}, computer={system.get('computer')}, provider={system.get('provider')}")
+                logger.info("=== END RESULT DEBUG ===")
             
     except Exception as e:
         logger.error(f"Search error: {e}")
