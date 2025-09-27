@@ -138,6 +138,199 @@ redis_client = redis.Redis(host='localhost', port=6379, db=0)
 # Initialize scheduler
 scheduler = BackgroundScheduler()
 
+# Search Query Parser Functions
+def parse_search_query(query):
+    """Parse search query with support for Boolean operators and phrases"""
+    import re
+    
+    # Define searchable fields
+    text_fields = [
+        "event_data.event.eventdata.data",
+        "event_data.event.system.provider.name", 
+        "event_data.event.system.channel",
+        "source_file"
+    ]
+    
+    # Handle quoted phrases first
+    phrases = re.findall(r'"([^"]*)"', query)
+    query_without_phrases = re.sub(r'"[^"]*"', '', query)
+    
+    # Split by AND/OR operators (case insensitive)
+    and_parts = re.split(r'\s+AND\s+', query_without_phrases, flags=re.IGNORECASE)
+    
+    must_clauses = []
+    
+    for and_part in and_parts:
+        if not and_part.strip():
+            continue
+            
+        # Split by OR within each AND part
+        or_parts = re.split(r'\s+OR\s+', and_part.strip(), flags=re.IGNORECASE)
+        
+        if len(or_parts) > 1:
+            # Multiple OR terms - create should clause
+            should_clauses = []
+            for or_term in or_parts:
+                should_clauses.extend(create_term_clauses(or_term.strip(), text_fields))
+            
+            must_clauses.append({
+                "bool": {
+                    "should": should_clauses,
+                    "minimum_should_match": 1
+                }
+            })
+        else:
+            # Single term - add directly to must
+            term_clauses = create_term_clauses(and_part.strip(), text_fields)
+            if len(term_clauses) == 1:
+                must_clauses.append(term_clauses[0])
+            else:
+                must_clauses.append({
+                    "bool": {
+                        "should": term_clauses,
+                        "minimum_should_match": 1
+                    }
+                })
+    
+    # Add phrase clauses
+    for phrase in phrases:
+        if phrase.strip():
+            must_clauses.append({
+                "multi_match": {
+                    "query": phrase,
+                    "fields": text_fields,
+                    "type": "phrase",
+                    "boost": 8.0
+                }
+            })
+    
+    # If no complex operators found, treat as simple search
+    if not must_clauses:
+        return create_simple_search(query, text_fields)
+    
+    return {
+        "bool": {
+            "must": must_clauses
+        }
+    }
+
+def create_term_clauses(term, text_fields):
+    """Create search clauses for a single term"""
+    clauses = []
+    
+    # Check if term is numeric (potential Event ID)
+    if term.isdigit():
+        # Event ID matches (highest priority)
+        clauses.extend([
+            {
+                "term": {
+                    "event_data.event.system.eventid": {
+                        "value": int(term),
+                        "boost": 10.0
+                    }
+                }
+            },
+            {
+                "term": {
+                    "event_data.event.system.eventid": {
+                        "value": term,
+                        "boost": 9.0
+                    }
+                }
+            }
+        ])
+    
+    # Text field matches (case insensitive)
+    clauses.append({
+        "multi_match": {
+            "query": term,
+            "fields": text_fields,
+            "type": "phrase_prefix",
+            "boost": 5.0
+        }
+    })
+    
+    # General match in event data
+    clauses.append({
+        "match": {
+            "event_data.event.eventdata.data": {
+                "query": term,
+                "boost": 2.0
+            }
+        }
+    })
+    
+    return clauses
+
+def create_simple_search(query, text_fields):
+    """Create simple search for queries without Boolean operators"""
+    if query.isdigit():
+        # Numeric query - prioritize Event ID
+        return {
+            "bool": {
+                "should": [
+                    {
+                        "term": {
+                            "event_data.event.system.eventid": {
+                                "value": int(query),
+                                "boost": 10.0
+                            }
+                        }
+                    },
+                    {
+                        "term": {
+                            "event_data.event.system.eventid": {
+                                "value": query,
+                                "boost": 9.0
+                            }
+                        }
+                    },
+                    {
+                        "multi_match": {
+                            "query": query,
+                            "fields": text_fields,
+                            "type": "phrase_prefix",
+                            "boost": 3.0
+                        }
+                    },
+                    {
+                        "match": {
+                            "event_data.event.eventdata.data": {
+                                "query": query,
+                                "boost": 1.0
+                            }
+                        }
+                    }
+                ],
+                "minimum_should_match": 1
+            }
+        }
+    else:
+        # Text query
+        return {
+            "bool": {
+                "should": [
+                    {
+                        "multi_match": {
+                            "query": query,
+                            "fields": text_fields,
+                            "type": "phrase_prefix",
+                            "boost": 5.0
+                        }
+                    },
+                    {
+                        "match": {
+                            "event_data.event.eventdata.data": {
+                                "query": query,
+                                "boost": 1.0
+                            }
+                        }
+                    }
+                ],
+                "minimum_should_match": 1
+            }
+        }
+
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -2474,90 +2667,12 @@ def search():
             
             # Add text query if provided - IMPROVED for precise Event ID matching
             if query:
-                # Check if query looks like an Event ID (numeric)
-                if query.isdigit():
-                    # For numeric queries, prioritize Event ID field matching
-                    search_body["query"]["bool"]["must"].append({
-                        "bool": {
-                            "should": [
-                                # PRIORITY 1: Direct Event ID exact match (numeric)
-                                {
-                                    "term": {
-                                        "event_data.event.system.eventid": {
-                                            "value": int(query),
-                                            "boost": 10.0
-                                        }
-                                    }
-                                },
-                                # PRIORITY 2: Direct Event ID exact match (string)
-                                {
-                                    "term": {
-                                        "event_data.event.system.eventid": {
-                                            "value": query,
-                                            "boost": 9.0
-                                        }
-                                    }
-                                },
-                                # PRIORITY 3: Event data content search (text fields only)
-                                {
-                                    "multi_match": {
-                                        "query": query,
-                                        "fields": [
-                                            "event_data.event.eventdata.data",
-                                            "event_data.event.system.provider.name",
-                                            "event_data.event.system.channel",
-                                            "source_file"
-                                        ],
-                                        "type": "phrase_prefix",
-                                        "boost": 3.0
-                                    }
-                                },
-                                # PRIORITY 4: Simple text match in event data
-                                {
-                                    "match": {
-                                        "event_data.event.eventdata.data": {
-                                            "query": query,
-                                            "boost": 1.0
-                                        }
-                                    }
-                                }
-                            ],
-                            "minimum_should_match": 1
-                        }
-                    })
-                else:
-                    # For non-numeric queries, use text-based search only
-                    search_body["query"]["bool"]["must"].append({
-                        "bool": {
-                            "should": [
-                                {
-                                    "multi_match": {
-                                        "query": query,
-                                        "fields": [
-                                            "event_data.event.eventdata.data",
-                                            "event_data.event.system.provider.name",
-                                            "event_data.event.system.channel",
-                                            "source_file"
-                                        ],
-                                        "type": "phrase_prefix",
-                                        "boost": 5.0
-                                    }
-                                },
-                                {
-                                    "match": {
-                                        "event_data.event.eventdata.data": {
-                                            "query": query,
-                                            "boost": 1.0
-                                        }
-                                    }
-                                }
-                            ],
-                            "minimum_should_match": 1
-                        }
-                    })
+                # Use advanced query parser
+                parsed_query = parse_search_query(query)
+                search_body["query"]["bool"]["must"].append(parsed_query)
                 
-                # Also try case_id as string in the main filter
-                search_body["query"]["bool"]["must"][0] = {
+            # Also try case_id as string in the main filter
+            search_body["query"]["bool"]["must"][0] = {
                     "bool": {
                         "should": [
                             {"term": {"case_id": selected_case_id}},
