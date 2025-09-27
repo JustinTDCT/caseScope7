@@ -20,9 +20,9 @@ def get_current_version():
         import json
         with open('/opt/casescope/app/version.json', 'r') as f:
             version_data = json.load(f)
-            return version_data.get('version', '7.0.128')
+            return version_data.get('version', '7.0.129')
     except:
-        return "7.0.128"
+        return "7.0.129"
 
 def get_current_version_info():
     try:
@@ -31,7 +31,7 @@ def get_current_version_info():
             version_data = json.load(f)
             return version_data
     except:
-        return {"version": "7.0.128", "description": "Fallback version"}
+        return {"version": "7.0.129", "description": "Fallback version"}
         
 APP_VERSION = get_current_version()
 VERSION_INFO = get_current_version_info()
@@ -2310,6 +2310,56 @@ def search():
                     "size": 1,
                     "_source": True
                 }
+            elif query.startswith("test_search:"):
+                # New diagnostic: test_search:TERM
+                search_term = query.split(":", 1)[1] if ":" in query else "1149"
+                logger.info(f"=== SEARCH DIAGNOSTIC FOR TERM: '{search_term}' ===")
+                logger.info(f"Case ID: {selected_case_id}")
+                logger.info(f"Index: casescope-case-{selected_case_id}")
+                
+                # Test multiple search strategies
+                search_strategies = [
+                    {
+                        "name": "Match All (to see what data exists)",
+                        "query": {"match_all": {}},
+                        "size": 3
+                    },
+                    {
+                        "name": "Query String Wildcard",
+                        "query": {
+                            "query_string": {
+                                "query": f"*{search_term}*",
+                                "fields": ["*"]
+                            }
+                        },
+                        "size": 5
+                    },
+                    {
+                        "name": "Direct Event Data Match",
+                        "query": {
+                            "match": {
+                                "event_data": search_term
+                            }
+                        },
+                        "size": 5
+                    },
+                    {
+                        "name": "Nested EventID Search",
+                        "query": {
+                            "match": {
+                                "event_data.event.system.eventid": search_term
+                            }
+                        },
+                        "size": 5
+                    }
+                ]
+                
+                # We'll test the first strategy initially
+                search_body = {
+                    "query": search_strategies[0]["query"],
+                    "size": search_strategies[0]["size"],
+                    "_source": True
+                }
             elif query == "test_eventid_4624":
                 logger.info("Running debug EventID 4624 query with correct nested field")
                 search_body = {
@@ -2546,7 +2596,7 @@ def search():
             logger.info(f"Search completed: {len(results)} results returned out of {total_hits} total hits")
             
             # Debug: Log actual document content for debugging queries and regular searches
-            if (query in ["debug_content", "test_match_all", "test_raw_document", "test_raw_indexing"] or len(results) > 0) and results:
+            if (query in ["debug_content", "test_match_all", "test_raw_document", "test_raw_indexing"] or query.startswith("test_search:") or len(results) > 0) and results:
                 logger.info("=== RESULT PROCESSING DEBUG ===")
                 first_result = results[0] if results else None
                 if first_result:
@@ -2618,6 +2668,65 @@ def search():
                         elif not raw_event_data:
                             logger.info("DATA MISSING FROM OPENSEARCH INDEX!")
                         logger.info("=== END PROCESSING COMPARISON ===")
+                    
+                    # Special diagnostic for test_search queries
+                    if query.startswith("test_search:"):
+                        search_term = query.split(":", 1)[1] if ":" in query else "1149"
+                        logger.info(f"=== SEARCH TERM ANALYSIS FOR '{search_term}' ===")
+                        
+                        # Analyze each result for the search term
+                        for i, result in enumerate(results[:3]):  # Check first 3 results
+                            logger.info(f"--- RESULT {i+1} ANALYSIS ---")
+                            
+                            # Check if search term appears in various fields
+                            found_in = []
+                            
+                            # Check raw source data
+                            if i < len(response.get('hits', {}).get('hits', [])):
+                                raw_source = response['hits']['hits'][i]['_source']
+                                
+                                # Convert to string for text search
+                                raw_source_str = str(raw_source).lower()
+                                if search_term.lower() in raw_source_str:
+                                    found_in.append("raw_source_content")
+                                
+                                # Check specific fields
+                                if search_term.lower() in str(raw_source.get('source_file', '')).lower():
+                                    found_in.append("source_file")
+                                
+                                # Check event_data structure
+                                raw_event_data = raw_source.get('event_data', {})
+                                if isinstance(raw_event_data, dict):
+                                    if search_term.lower() in str(raw_event_data).lower():
+                                        found_in.append("event_data_content")
+                                    
+                                    # Check nested event structure
+                                    if 'event' in raw_event_data:
+                                        event = raw_event_data['event']
+                                        if isinstance(event, dict) and 'system' in event:
+                                            system = event['system']
+                                            if isinstance(system, dict):
+                                                eventid = str(system.get('eventid', ''))
+                                                if eventid == search_term:
+                                                    found_in.append("event.system.eventid")
+                                                elif search_term in eventid:
+                                                    found_in.append("event.system.eventid_partial")
+                                
+                                logger.info(f"Search term '{search_term}' found in: {found_in if found_in else 'NOWHERE'}")
+                                
+                                # Show relevant data excerpts
+                                if raw_event_data:
+                                    logger.info(f"Raw event_data sample: {str(raw_event_data)[:200]}...")
+                                    if 'event' in raw_event_data and isinstance(raw_event_data['event'], dict):
+                                        if 'system' in raw_event_data['event']:
+                                            system = raw_event_data['event']['system']
+                                            if isinstance(system, dict):
+                                                logger.info(f"EventID in system: '{system.get('eventid', 'NOT_FOUND')}'")
+                                                logger.info(f"Computer in system: '{system.get('computer', 'NOT_FOUND')}'")
+                                else:
+                                    logger.info("No event_data found in raw source!")
+                        
+                        logger.info(f"=== END SEARCH TERM ANALYSIS ===")
                         
                 logger.info("=== END RESULT DEBUG ===")
             

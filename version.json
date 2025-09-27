@@ -1,6 +1,6 @@
 {
-  "version": "7.0.128",
+  "version": "7.0.129",
   "release_date": "2025-09-27",
-  "description": "DEBUG: Added test_raw_indexing query to trace indexing vs search data flow",
+  "description": "DIAGNOSTIC: Added comprehensive search term analysis with match explanations",
   "build": "production"
 }
