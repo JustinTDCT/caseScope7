@@ -1,6 +1,16 @@
 {
+<<<<<<< HEAD
   "version": "7.0.158",
   "release_date": "2025-09-27",
   "description": "SEARCH TEMPLATE FIX: Replaced old search.html with working template + fixed routing",
   "build": "production"
+=======
+  "version": "7.1.1",
+  "release_date": "2025-09-28",
+  "description": "Initial caseScope 7.1 architecture - Core system foundation",
+  "build": "production",
+  "changelog": {
+    "7.1.1": "Initial release - Core architecture, user management, case framework"
+  }
+>>>>>>> casescope-7.1
 }
