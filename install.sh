@@ -252,37 +252,46 @@ rm -f /etc/systemd/system/casescope-web.service 2>/dev/null || true
 rm -f /etc/systemd/system/casescope-worker.service 2>/dev/null || true
 rm -f /etc/systemd/system/opensearch.service 2>/dev/null || true
 
-# Check for existing OpenSearch installation and prompt user
+# OpenSearch installation handling based on selected mode
 OPENSEARCH_ACTION="install"  # Default action
 OPENSEARCH_FLAG_FILE="/opt/casescope/.opensearch_action"
 
-if [ -d "/opt/opensearch" ]; then
-    echo ""
-    echo "=========================================="
-    echo "🔍 EXISTING OPENSEARCH INSTALLATION FOUND"
-    echo "=========================================="
-    echo ""
-    echo "An existing OpenSearch installation was detected at /opt/opensearch"
-    
-    # Check if there's existing data
-    if [ -d "/opt/opensearch/data" ] && [ "$(ls -A /opt/opensearch/data 2>/dev/null)" ]; then
-        echo "📊 This installation contains DATA (indices, cases, files)"
-        echo ""
-        echo "⚠️  WARNING: Choosing 'Clean Install' will DELETE ALL:"
-        echo "   • All cases and uploaded files"
-        echo "   • All search indices and data"
-        echo "   • All processing history"
-        echo ""
-    else
-        echo "📁 This installation appears to be empty (no data found)"
-        echo ""
-    fi
-    
-    echo "Please choose how to proceed:"
-    echo ""
-    echo "1) PRESERVE DATA - Keep existing OpenSearch and skip reinstall"
-    echo "   ✓ Keeps all your cases, files, and search data"
-    echo "   ✓ Faster installation (skips OpenSearch setup)"
+# Determine OpenSearch action based on our menu selection
+case $INSTALL_MODE in
+    "clean")
+        OPENSEARCH_ACTION="clean_install"
+        echo "OpenSearch: Clean install (wiping existing installation)"
+        ;;
+    "preserve_db")
+        OPENSEARCH_ACTION="clean_install"
+        echo "OpenSearch: Clean install (wiping data as selected)"
+        ;;
+    "preserve_opensearch")
+        if [ -d "/opt/opensearch" ]; then
+            OPENSEARCH_ACTION="preserve"
+            echo "OpenSearch: Preserving existing installation"
+        else
+            OPENSEARCH_ACTION="install"
+            echo "OpenSearch: Installing (no existing installation found)"
+        fi
+        ;;
+    "update_only")
+        if [ -d "/opt/opensearch" ]; then
+            OPENSEARCH_ACTION="preserve"
+            echo "OpenSearch: Preserving existing installation"
+        else
+            OPENSEARCH_ACTION="install"
+            echo "OpenSearch: Installing (no existing installation found)"
+        fi
+        ;;
+    *)
+        OPENSEARCH_ACTION="install"
+        ;;
+esac
+
+# Skip the old interactive OpenSearch menu since we handled it in our main menu
+if false; then  # Disabled old logic
+    echo "OLD OPENSEARCH DETECTION DISABLED"
     echo "   ⚠️  May have compatibility issues if OpenSearch version differs"
     echo ""
     echo "2) CLEAN INSTALL - Delete existing OpenSearch and reinstall fresh"
@@ -323,7 +332,7 @@ if [ -d "/opt/opensearch" ]; then
 else
     log "No existing OpenSearch found - will perform fresh installation"
     OPENSEARCH_ACTION="install"
-fi
+fi  # End of disabled old logic
 
 # Create flag file to persist choice for deploy script
 mkdir -p /opt/casescope

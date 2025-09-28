@@ -1,6 +1,6 @@
 {
-  "version": "7.0.151",
+  "version": "7.0.152",
   "release_date": "2025-09-27",
-  "description": "MENU-DRIVEN INSTALL: 4 precise installation modes with clear data preservation options",
+  "description": "FIXED: Disabled old OpenSearch menu that was overriding new menu system",
   "build": "production"
 }
