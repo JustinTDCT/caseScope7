@@ -61,6 +61,51 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
+# Check for fresh install option
+FRESH_INSTALL=false
+if [[ "$1" == "--fresh" ]] || [[ "$1" == "-f" ]]; then
+    FRESH_INSTALL=true
+    echo -e "${YELLOW}Fresh install requested - this will completely wipe all existing data!${NC}"
+    echo -e "${YELLOW}This includes:${NC}"
+    echo -e "${YELLOW}  - All uploaded EVTX files${NC}"
+    echo -e "${YELLOW}  - All case data and databases${NC}"
+    echo -e "${YELLOW}  - All OpenSearch indices${NC}"
+    echo -e "${YELLOW}  - All logs and configurations${NC}"
+    echo ""
+    echo -e "${RED}Are you sure you want to proceed? (type 'YES' to confirm):${NC}"
+    read -r confirmation
+    if [[ "$confirmation" != "YES" ]]; then
+        log "Fresh install cancelled by user"
+        exit 0
+    fi
+    log "Fresh install confirmed - proceeding with complete data wipe"
+fi
+
+# Handle fresh install data wipe
+if [[ "$FRESH_INSTALL" == "true" ]]; then
+    echo "Performing fresh install - stopping services and wiping data..."
+    
+    # Stop all services
+    systemctl stop casescope-web 2>/dev/null || true
+    systemctl stop casescope-worker 2>/dev/null || true
+    systemctl stop opensearch 2>/dev/null || true
+    systemctl stop redis-server 2>/dev/null || true
+    
+    # Wipe OpenSearch data
+    rm -rf /opt/opensearch/data/* 2>/dev/null || true
+    rm -rf /var/lib/opensearch/* 2>/dev/null || true
+    
+    # Wipe Redis data
+    rm -rf /var/lib/redis/* 2>/dev/null || true
+    
+    # Wipe all caseScope data
+    rm -rf /opt/casescope/data/* 2>/dev/null || true
+    rm -rf /opt/casescope/logs/* 2>/dev/null || true
+    rm -rf /opt/casescope/tmp/* 2>/dev/null || true
+    
+    echo "✓ Fresh install data wipe completed"
+fi
+
 # Create directory structure FIRST (before any logging)
 echo "Creating caseScope directory structure..."
 mkdir -p /opt/casescope/{app,config,logs,data,rules,venv,tmp}

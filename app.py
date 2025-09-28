@@ -948,36 +948,34 @@ def process_rules_for_case(case_id):
         
         violation_updates = []
         
-        # Process each event for rule violations
-        for hit in response['hits']['hits']:
-            event_id = hit['_id']
-            source = hit['_source']
-            
-            # Run rules against this event
-            sigma_violations = []
-            chainsaw_violations = []
-            
-            # TODO: Implement actual rule processing here
-            # For now, just placeholder logic
-            
-            # If violations found, prepare update
-            if sigma_violations or chainsaw_violations:
-                update_doc = {
-                    "sigma_violations": sigma_violations,
-                    "chainsaw_violations": chainsaw_violations,
-                    "rule_tags": sigma_violations + chainsaw_violations,
-                    "has_violations": True
-                }
-                
-                violation_updates.append({
-                    "event_id": event_id,
-                    "update": update_doc
-                })
+        # For now, use a simpler approach - run Chainsaw against the case files
+        # and then match results back to indexed events
+        case = Case.query.get(case_id)
+        if not case:
+            logger.error(f"Case {case_id} not found")
+            return False
         
-        # Bulk update events with violation information
-        if violation_updates:
-            logger.info(f"Updating {len(violation_updates)} events with violation information")
-            # TODO: Implement bulk update
+        total_violations = 0
+        
+        # Process each file in the case with Chainsaw
+        for case_file in case.files.filter_by(processing_status='completed'):
+            logger.info(f"Running Chainsaw rules against file: {case_file.original_filename}")
+            
+            # Run Chainsaw directly on the file
+            chainsaw_violations = run_chainsaw_directly(case_file)
+            
+            if chainsaw_violations > 0:
+                logger.info(f"Found {chainsaw_violations} violations in {case_file.original_filename}")
+                total_violations += chainsaw_violations
+                
+                # Update the file's violation count
+                case_file.chainsaw_violations = chainsaw_violations
+                db.session.commit()
+                
+                # TODO: In the future, we could parse Chainsaw output to tag specific events
+                # For now, the violations are associated with the file
+        
+        logger.info(f"Rule processing complete for case {case_id} - found {total_violations} total violations")
         
         logger.info(f"Rule processing complete for case {case_id}")
         return True
@@ -3366,6 +3364,11 @@ def search():
         error_message = "Search failed due to an error. Please try a simpler query."
         results = []
         total_hits = 0
+    
+    # Debug logging for search results
+    logger.info(f"Search debug - Query: '{query}', Results: {len(results)}, Case: {case.name if case else 'None'}")
+    if results:
+        logger.info(f"First result sample: {list(results[0].keys()) if results[0] else 'Empty result'}")
     
     # Render search template with results
     return render_template('search_simple.html',
