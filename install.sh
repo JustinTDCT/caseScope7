@@ -3,6 +3,13 @@
 # caseScope Installation Script (version determined from version.json)
 # Designed for Ubuntu 24 headless server
 # Copyright 2025 Justin Dube
+#
+# Usage:
+#   sudo ./install.sh    # Interactive menu with 4 options:
+#                        # 1) Clean Install (wipe everything)
+#                        # 2) Preserve DB, Clean OpenSearch  
+#                        # 3) Preserve OpenSearch, Clean Indices
+#                        # 4) Update Only (preserve everything)
 
 set -e
 
@@ -61,49 +68,160 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# Check for fresh install option
-FRESH_INSTALL=false
-if [[ "$1" == "--fresh" ]] || [[ "$1" == "-f" ]]; then
-    FRESH_INSTALL=true
-    echo -e "${YELLOW}Fresh install requested - this will completely wipe all existing data!${NC}"
-    echo -e "${YELLOW}This includes:${NC}"
-    echo -e "${YELLOW}  - All uploaded EVTX files${NC}"
-    echo -e "${YELLOW}  - All case data and databases${NC}"
-    echo -e "${YELLOW}  - All OpenSearch indices${NC}"
-    echo -e "${YELLOW}  - All logs and configurations${NC}"
+# Installation mode selection
+INSTALL_MODE=""
+WIPE_DB=false
+WIPE_OPENSEARCH_DATA=false
+WIPE_OPENSEARCH_INDICES=false
+UPDATE_ONLY=false
+
+# Show help if requested
+if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
+    echo "caseScope Installation Script"
     echo ""
-    echo -e "${RED}Are you sure you want to proceed? (type 'YES' to confirm):${NC}"
-    read -r confirmation
-    if [[ "$confirmation" != "YES" ]]; then
-        log "Fresh install cancelled by user"
-        exit 0
-    fi
-    log "Fresh install confirmed - proceeding with complete data wipe"
+    echo "Usage:"
+    echo "  sudo ./install.sh    # Interactive menu-driven installation"
+    echo "  sudo ./install.sh -h # Show this help message"
+    echo ""
+    exit 0
 fi
 
-# Handle fresh install data wipe
-if [[ "$FRESH_INSTALL" == "true" ]]; then
-    echo "Performing fresh install - stopping services and wiping data..."
+# Display installation menu
+echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║                    caseScope Installation                    ║${NC}"
+echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "${YELLOW}Please select installation mode:${NC}"
+echo ""
+echo -e "${GREEN}1)${NC} Clean Install"
+echo -e "   ${YELLOW}→${NC} Wipes everything and starts over (DB, OpenSearch, files, logs)"
+echo -e "   ${RED}⚠${NC}  Complete fresh start - all data will be lost"
+echo ""
+echo -e "${GREEN}2)${NC} Preserve DB, Clean OpenSearch"
+echo -e "   ${YELLOW}→${NC} Keeps database (cases, users) but wipes all OpenSearch data"
+echo -e "   ${BLUE}ℹ${NC}  Preserves: Cases, users, file records"
+echo -e "   ${RED}⚠${NC}  Removes: All indexed events, uploaded files"
+echo ""
+echo -e "${GREEN}3)${NC} Preserve OpenSearch, Clean Indices"
+echo -e "   ${YELLOW}→${NC} Keeps OpenSearch but wipes only the indices (casescope-case-*)"
+echo -e "   ${BLUE}ℹ${NC}  Preserves: Database, OpenSearch system, uploaded files"
+echo -e "   ${RED}⚠${NC}  Removes: Only indexed event data"
+echo ""
+echo -e "${GREEN}4)${NC} Update Only"
+echo -e "   ${YELLOW}→${NC} Preserve everything, just update application files"
+echo -e "   ${BLUE}ℹ${NC}  Preserves: All data, indices, files"
+echo -e "   ${GREEN}✓${NC}  Safe update with no data loss"
+echo ""
+echo -e "${BLUE}Enter your choice (1-4):${NC} "
+read -r choice
+
+case $choice in
+    1)
+        INSTALL_MODE="clean"
+        WIPE_DB=true
+        WIPE_OPENSEARCH_DATA=true
+        echo -e "${RED}Clean Install selected - ALL data will be wiped!${NC}"
+        ;;
+    2)
+        INSTALL_MODE="preserve_db"
+        WIPE_OPENSEARCH_DATA=true
+        echo -e "${YELLOW}Preserve DB, Clean OpenSearch selected${NC}"
+        ;;
+    3)
+        INSTALL_MODE="preserve_opensearch"
+        WIPE_OPENSEARCH_INDICES=true
+        echo -e "${YELLOW}Preserve OpenSearch, Clean Indices selected${NC}"
+        ;;
+    4)
+        INSTALL_MODE="update_only"
+        UPDATE_ONLY=true
+        echo -e "${GREEN}Update Only selected - no data will be removed${NC}"
+        ;;
+    *)
+        echo -e "${RED}Invalid choice. Exiting.${NC}"
+        exit 1
+        ;;
+esac
+
+echo ""
+echo -e "${BLUE}Selected mode: ${INSTALL_MODE}${NC}"
+
+# Confirmation for destructive operations
+if [[ "$INSTALL_MODE" != "update_only" ]]; then
+    echo ""
+    echo -e "${RED}⚠ WARNING: This operation will modify or delete data!${NC}"
+    echo -e "${RED}Are you sure you want to proceed? (type 'YES' to confirm):${NC} "
+    read -r confirmation
+    if [[ "$confirmation" != "YES" ]]; then
+        echo "Installation cancelled by user"
+        exit 0
+    fi
+    echo -e "${GREEN}Confirmed. Proceeding with ${INSTALL_MODE} installation...${NC}"
+fi
+
+# Handle data wipe based on selected mode
+if [[ "$INSTALL_MODE" != "update_only" ]]; then
+    echo ""
+    echo -e "${BLUE}Stopping services for data operations...${NC}"
     
-    # Stop all services
+    # Stop all services for safe data operations
     systemctl stop casescope-web 2>/dev/null || true
     systemctl stop casescope-worker 2>/dev/null || true
     systemctl stop opensearch 2>/dev/null || true
     systemctl stop redis-server 2>/dev/null || true
     
-    # Wipe OpenSearch data
-    rm -rf /opt/opensearch/data/* 2>/dev/null || true
-    rm -rf /var/lib/opensearch/* 2>/dev/null || true
+    # Mode 1: Clean Install - Wipe everything
+    if [[ "$WIPE_DB" == "true" ]]; then
+        echo -e "${RED}Performing clean install - wiping ALL data...${NC}"
+        
+        # Wipe database
+        rm -rf /opt/casescope/data/* 2>/dev/null || true
+        echo "✓ Database wiped"
+        
+        # Wipe OpenSearch data
+        rm -rf /opt/opensearch/data/* 2>/dev/null || true
+        rm -rf /var/lib/opensearch/* 2>/dev/null || true
+        echo "✓ OpenSearch data wiped"
+        
+        # Wipe Redis data
+        rm -rf /var/lib/redis/* 2>/dev/null || true
+        echo "✓ Redis data wiped"
+        
+        # Wipe logs and temp files
+        rm -rf /opt/casescope/logs/* 2>/dev/null || true
+        rm -rf /opt/casescope/tmp/* 2>/dev/null || true
+        echo "✓ Logs and temp files wiped"
+        
+    # Mode 2: Preserve DB, Clean OpenSearch
+    elif [[ "$WIPE_OPENSEARCH_DATA" == "true" ]] && [[ "$WIPE_DB" == "false" ]]; then
+        echo -e "${YELLOW}Preserving database, wiping OpenSearch data...${NC}"
+        
+        # Wipe OpenSearch data only
+        rm -rf /opt/opensearch/data/* 2>/dev/null || true
+        rm -rf /var/lib/opensearch/* 2>/dev/null || true
+        echo "✓ OpenSearch data wiped"
+        
+        # Wipe uploaded files (they'll need to be re-indexed anyway)
+        rm -rf /opt/casescope/data/uploads/* 2>/dev/null || true
+        echo "✓ Uploaded files wiped (database records preserved)"
+        
+    # Mode 3: Preserve OpenSearch, Clean Indices
+    elif [[ "$WIPE_OPENSEARCH_INDICES" == "true" ]]; then
+        echo -e "${YELLOW}Preserving OpenSearch system, wiping indices only...${NC}"
+        
+        # Start OpenSearch temporarily to delete indices via API
+        systemctl start opensearch 2>/dev/null || true
+        sleep 10  # Wait for OpenSearch to start
+        
+        # Delete only caseScope indices
+        curl -X DELETE "localhost:9200/casescope-case-*" 2>/dev/null || true
+        echo "✓ caseScope indices wiped"
+        
+        # Stop OpenSearch again for the rest of installation
+        systemctl stop opensearch 2>/dev/null || true
+    fi
     
-    # Wipe Redis data
-    rm -rf /var/lib/redis/* 2>/dev/null || true
-    
-    # Wipe all caseScope data
-    rm -rf /opt/casescope/data/* 2>/dev/null || true
-    rm -rf /opt/casescope/logs/* 2>/dev/null || true
-    rm -rf /opt/casescope/tmp/* 2>/dev/null || true
-    
-    echo "✓ Fresh install data wipe completed"
+    echo -e "${GREEN}Data operations completed for mode: ${INSTALL_MODE}${NC}"
 fi
 
 # Create directory structure FIRST (before any logging)
@@ -1028,6 +1146,30 @@ fi
 chown -R casescope:casescope /opt/casescope
 
 log "caseScope v$VERSION installation framework completed successfully!"
+
+# Show installation summary
+echo ""
+echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║                 Installation Summary                         ║${NC}"
+echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo -e "${BLUE}Mode:${NC} $INSTALL_MODE"
+case $INSTALL_MODE in
+    "clean")
+        echo -e "${RED}✓ Complete clean install - all data wiped${NC}"
+        ;;
+    "preserve_db")
+        echo -e "${YELLOW}✓ Database preserved, OpenSearch data wiped${NC}"
+        ;;
+    "preserve_opensearch")
+        echo -e "${YELLOW}✓ OpenSearch preserved, indices wiped${NC}"
+        ;;
+    "update_only")
+        echo -e "${GREEN}✓ Update only - all data preserved${NC}"
+        ;;
+esac
+echo -e "${BLUE}Version:${NC} $VERSION"
+echo ""
+
 log "Application files will be deployed next..."
 
 # Check if reboot is needed

@@ -1,6 +1,6 @@
 {
-  "version": "7.0.149",
+  "version": "7.0.151",
   "release_date": "2025-09-27",
-  "description": "FIXES: Search interface + rule processing + fresh install option",
+  "description": "MENU-DRIVEN INSTALL: 4 precise installation modes with clear data preservation options",
   "build": "production"
 }
