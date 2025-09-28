@@ -3422,6 +3422,10 @@ def search():
         except Exception as debug_error:
             logger.error(f"Debug query failed: {debug_error}")
     
+    # Debug logging for search results
+    logger.info(f"Search debug - Query: '{query}', Results: {len(results)}, Case: {case.name if case else 'None'}")
+    logger.info(f"Search debug - Index: {index_name}, Total hits: {total_hits}")
+    
     # Render search template with results
     return render_template('search_simple.html',
                          case=case,

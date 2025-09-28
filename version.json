@@ -1,6 +1,6 @@
 {
-  "version": "7.0.154",
+  "version": "7.0.155",
   "release_date": "2025-09-27",
-  "description": "INSTALL FIX: Fixed OpenSearch installation failure due to incomplete directory cleanup",
+  "description": "SEARCH DEBUG: Added comprehensive search debugging to identify why no results are returned",
   "build": "production"
 }
