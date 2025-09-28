@@ -485,11 +485,21 @@ EOF
     if [ "$OPENSEARCH_ACTION" = "preserve" ]; then
         log "✓ Existing OpenSearch data and configuration preserved"
     fi
-elif [ "$OPENSEARCH_ACTION" = "clean" ]; then
+elif [ "$OPENSEARCH_ACTION" = "clean" ] || [ "$OPENSEARCH_ACTION" = "clean_install" ]; then
     log "Performing clean OpenSearch installation..."
     systemctl stop opensearch 2>/dev/null || true
-    rm -rf /opt/opensearch
-    log "✓ Existing OpenSearch installation removed"
+    systemctl disable opensearch 2>/dev/null || true
+    
+    # Force remove any existing OpenSearch installation
+    if [ -d "/opt/opensearch" ]; then
+        log "Forcefully removing existing OpenSearch installation..."
+        rm -rf /opt/opensearch
+        log "✓ Existing OpenSearch installation removed"
+    fi
+    
+    # Also clean up any systemd service files
+    rm -f /etc/systemd/system/opensearch.service 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
 fi
 
 # Clean up temporary files
@@ -622,15 +632,29 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Verify extraction was successful
+if [ ! -d "opensearch-2.11.1" ]; then
+    log_error "OpenSearch extraction failed - directory not found"
+    exit 1
+fi
+
 # Move to final location
 log "Installing OpenSearch to /opt/opensearch..."
+
+# Ensure target directory is completely clean
 if [ -d "/opt/opensearch" ]; then
-    log "OpenSearch directory already cleaned up above"
+    log "Removing existing OpenSearch directory for clean installation..."
+    rm -rf /opt/opensearch
 fi
+
+# Create parent directory if needed
+mkdir -p /opt
 
 mv opensearch-2.11.1 /opt/opensearch
 if [ $? -ne 0 ]; then
     log_error "Failed to move OpenSearch to /opt/opensearch"
+    log_error "Current directory contents:"
+    ls -la | tee -a /opt/casescope/logs/install.log
     exit 1
 fi
 

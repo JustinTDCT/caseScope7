@@ -1,6 +1,6 @@
 {
-  "version": "7.0.153",
+  "version": "7.0.154",
   "release_date": "2025-09-27",
-  "description": "SEARCH FIXES: Fixed query parameter + enhanced nested field indexing + comprehensive debugging",
+  "description": "INSTALL FIX: Fixed OpenSearch installation failure due to incomplete directory cleanup",
   "build": "production"
 }
