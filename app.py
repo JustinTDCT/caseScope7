@@ -2812,7 +2812,7 @@ def search():
                     logger.error(f"Error debugging indices: {debug_error}")
                 
                 error_message = f"No data has been indexed for this case yet. Please upload and process files first."
-                return render_template('search_simple.html',
+                return render_template('search.html',
                                      case=case,
                                      query=query,
                                      results=[],
@@ -3460,7 +3460,7 @@ def search():
     logger.info(f"Search debug - Index: {index_name}, Total hits: {total_hits}")
     
     # Render search template with results
-    return render_template('search_simple.html',
+    return render_template('search.html',
                          case=case,
                          query=query,
                          results=results,

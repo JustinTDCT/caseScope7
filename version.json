@@ -1,6 +1,6 @@
 {
-  "version": "7.0.157",
+  "version": "7.0.158",
   "release_date": "2025-09-27",
-  "description": "SEARCH COMPLETE: Fixed template condition + auto-select case + show all records by default",
+  "description": "SEARCH TEMPLATE FIX: Replaced old search.html with working template + fixed routing",
   "build": "production"
 }

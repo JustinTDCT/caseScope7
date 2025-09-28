@@ -1,406 +1,218 @@
 {% extends "base.html" %}
 
-{% block title %}Search - {{ case.name }} - caseScope{% endblock %}
+{% block title %}Search Events{% endblock %}
 
 {% block content %}
-<div class="search-container">
-    <div class="page-header">
-        <div class="header-info">
-            <h1>Event Search</h1>
-            <div class="case-breadcrumb">
-                <i class="fas fa-folder"></i>
-                <span>{{ case.name }}</span>
-                <span class="event-count" id="result-count">
-                    {% if results %}{{ results|length }} result{{ 's' if results|length != 1 else '' }}{% endif %}
-                </span>
-            </div>
-        </div>
-        <div class="header-actions">
-            <button class="btn btn-secondary" onclick="exportResults()">
-                <i class="fas fa-download"></i>
-                Export
-            </button>
-            <a href="{{ url_for('case_dashboard') }}" class="btn btn-secondary">
-                <i class="fas fa-arrow-left"></i>
-                Back to Case
-            </a>
-        </div>
-    </div>
-
-    <!-- Search Interface -->
-    <div class="search-interface">
-        <div class="card">
-            <div class="card-content">
-                <form class="search-form" id="search-form" method="GET">
-                    <div class="search-bar">
-                        <div class="search-input-group">
-                            <input type="text" 
-                                   name="q" 
-                                   id="search-input" 
-                                   class="search-input" 
-                                   placeholder="Search events... (e.g., EventID:4624, user:admin, process:*.exe)"
-                                   value="{{ query }}"
-                                   autocomplete="off">
-                            <button type="submit" class="search-btn" id="search-btn">
-                                <i class="fas fa-search"></i>
-                            </button>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-search"></i> Search Events</h3>
+                </div>
+                <div class="card-body">
+                    <!-- Search Form -->
+                    <form method="GET" action="{{ url_for('search') }}" class="mb-4">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="input-group">
+                                    <input type="text" 
+                                           class="form-control" 
+                                           name="q" 
+                                           value="{{ query if query else '' }}" 
+                                           placeholder="Search events... (e.g., '4625 AND administrator', 'failed logon', Event ID 1149)"
+                                           autocomplete="off">
+                                    <button class="btn btn-primary" type="submit">
+                                        <i class="fas fa-search"></i> Search
+                                    </button>
+                                </div>
+                                <small class="form-text text-muted">
+                                    Use AND, OR operators and "quotes" for phrases. Click field names to add to search.
+                                </small>
+                            </div>
+                            <div class="col-md-4">
+                                <select name="case_id" class="form-select">
+                                    <option value="{{ case.id }}" selected>{{ case.name }}</option>
+                                </select>
+                            </div>
                         </div>
-                        <button type="button" class="filters-toggle" onclick="toggleFilters()">
-                            <i class="fas fa-filter"></i>
-                            Filters
-                        </button>
-                    </div>
-                    
-                    <div class="search-filters" id="search-filters" style="display: none;">
-                        <div class="filters-grid">
-                            <div class="filter-group">
-                                <label class="filter-label">Time Range</label>
-                                <select name="time_range" class="filter-select">
-                                    <option value="">All Time</option>
-                                    <option value="1h">Last Hour</option>
-                                    <option value="24h">Last 24 Hours</option>
-                                    <option value="7d">Last 7 Days</option>
-                                    <option value="30d">Last 30 Days</option>
-                                    <option value="custom">Custom Range</option>
-                                </select>
-                            </div>
-                            
-                            <div class="filter-group">
-                                <label class="filter-label">Event Log</label>
-                                <select name="event_log" class="filter-select">
-                                    <option value="">All Logs</option>
-                                    <option value="Security">Security</option>
-                                    <option value="System">System</option>
-                                    <option value="Application">Application</option>
-                                    <option value="PowerShell">PowerShell</option>
-                                    <option value="Sysmon">Sysmon</option>
-                                </select>
-                            </div>
-                            
-                            <div class="filter-group">
-                                <label class="filter-label">Severity</label>
-                                <select name="severity" class="filter-select">
-                                    <option value="">All Severities</option>
-                                    <option value="high">High</option>
-                                    <option value="medium">Medium</option>
-                                    <option value="low">Low</option>
-                                </select>
-                            </div>
-                            
-                            <div class="filter-group">
-                                <label class="filter-label">Rule Violations</label>
-                                <select name="rule_type" class="filter-select">
-                                    <option value="">All Events</option>
-                                    <option value="sigma">Sigma Violations Only</option>
-                                    <option value="chainsaw">Chainsaw Violations Only</option>
-                                    <option value="any">Any Rule Violations</option>
-                                </select>
-                            </div>
-                            
-                            <div class="filter-group">
-                                <label class="filter-label">Source File</label>
-                                <select name="source_file" class="filter-select">
-                                    <option value="">All Files</option>
-                                    {% for file in case.files %}
-                                    <option value="{{ file.id }}">{{ file.original_filename }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            
-                            <div class="filter-group">
-                                <label class="filter-label">Results Per Page</label>
-                                <select name="limit" class="filter-select">
-                                    <option value="25">25</option>
-                                    <option value="50" selected>50</option>
-                                    <option value="100">100</option>
-                                    <option value="250">250</option>
-                                </select>
+                    </form>
+
+                    <!-- Search Results -->
+                    {% if results %}
+                    <div class="results-container">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5>Search Results ({{ results|length }} events)</h5>
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="exportResults()">
+                                    <i class="fas fa-download"></i> Export
+                                </button>
                             </div>
                         </div>
                         
-                        <div class="filter-actions">
-                            <button type="button" class="btn btn-secondary" onclick="clearFilters()">
-                                <i class="fas fa-times"></i>
-                                Clear Filters
-                            </button>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-search"></i>
-                                Apply Filters
-                            </button>
-                        </div>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Search Results -->
-    <div class="search-results-container">
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">
-                    <i class="fas fa-list"></i>
-                    Search Results
-                    {% if results %}
-                    <span class="result-summary">({{ results|length }} events)</span>
-                    {% endif %}
-                </h3>
-                <div class="results-actions">
-                    <div class="view-toggle">
-                        <button class="view-btn active" onclick="setView('list')" data-view="list">
-                            <i class="fas fa-list"></i>
-                        </button>
-                        <button class="view-btn" onclick="setView('table')" data-view="table">
-                            <i class="fas fa-table"></i>
-                        </button>
-                        <button class="view-btn" onclick="setView('timeline')" data-view="timeline">
-                            <i class="fas fa-chart-line"></i>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div class="card-content">
-                <div id="search-results">
-                    {% if query and results %}
-                    <div class="results-list" id="results-list">
-                        {% for result in results %}
-                        <div class="result-item" data-event-id="{{ loop.index }}">
-                            <div class="result-header">
-                                <div class="result-meta">
-                                    <span class="result-timestamp">
-                                        {% if result.event_timestamp and result.event_timestamp != result.timestamp %}
-                                            {{ result.event_timestamp }}
-                                        {% else %}
-                                            {{ result.timestamp }}
-                                        {% endif %}
-                                    </span>
-                                    <span class="result-source">
-                                        {{ result.source_name if result.source_name else 'Unknown' }}
-                                    </span>
-                                    {% if result.sigma_violations or result.chainsaw_violations %}
-                                    <span class="badge badge-danger">Rule Violation</span>
-                                    {% endif %}
-                                </div>
-                                <div class="result-actions">
-                                    <button class="expand-btn" onclick="toggleEventDetails({{ loop.index }})">
-                                        <i class="fas fa-chevron-down"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div class="result-summary">
-                                <div class="event-id">
-                                    Event ID: {{ result.event_id if result.event_id else 'N/A' }}
-                                </div>
-                                <div class="event-preview">
-                                    {% if result.event_summary and result.event_summary.channel %}
-                                    Channel: {{ result.event_summary.channel[:50] }}{% if result.event_summary.channel|length > 50 %}...{% endif %}
-                                    {% elif result.computer_name %}
-                                    Computer: {{ result.computer_name }}
-                                    {% else %}
-                                    Event Record ID: {{ result.event_record_id if result.event_record_id else 'N/A' }}
-                                    {% endif %}
-                                </div>
-                            </div>
-                            
-                            <div class="result-details" id="details-{{ loop.index }}" style="display: none;">
-                                <div class="details-tabs">
-                                    <button class="tab-btn active" onclick="showTab({{ loop.index }}, 'raw')">Raw Data</button>
-                                    <button class="tab-btn" onclick="showTab({{ loop.index }}, 'formatted')">Formatted</button>
-                                    {% if result.sigma_violations or result.chainsaw_violations %}
-                                    <button class="tab-btn" onclick="showTab({{ loop.index }}, 'violations')">Violations</button>
-                                    {% endif %}
-                                </div>
-                                
-                                <div class="tab-content">
-                                    <div class="tab-pane active" id="raw-{{ loop.index }}">
-                                        <pre class="json-content">{{ result | safe_json }}</pre>
-                                    </div>
-                                    <div class="tab-pane" id="formatted-{{ loop.index }}" style="display: none;">
-                                        <div class="formatted-event wazuh-style">
-                                            <!-- Event Header with ACTUAL Event Timestamp -->
-                                            <div class="event-header">
-                                                <div class="event-timestamp">
-                                                    <i class="fas fa-clock"></i>
-                                                    <strong>
-                                                        {% if result.event_timestamp and result.event_timestamp != result.timestamp %}
-                                                            {{ result.event_timestamp }} <small style="color: #4caf50;">(Event Time)</small>
-                                                        {% else %}
-                                                            {{ result.timestamp }} <small style="color: #ff9800;">(Ingestion Time)</small>
-                                                        {% endif %}
-                                                    </strong>
-                                                </div>
-                                                <div class="event-id-badge">
-                                                    Event ID: <span class="badge-primary">{{ result.event_id if result.event_id else 'Unknown' }}</span>
-                                                </div>
+                        <!-- Simple Table View -->
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover" id="events-table">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th style="width: 15%;">Event Date</th>
+                                        <th style="width: 10%;">Event ID</th>
+                                        <th style="width: 40%;">Summary</th>
+                                        <th style="width: 15%;">Computer</th>
+                                        <th style="width: 10%;">Violations</th>
+                                        <th style="width: 10%;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for result in results %}
+                                    <tr class="result-row" data-event-id="{{ loop.index }}">
+                                        <td class="event-timestamp">
+                                            <small class="text-muted">
+                                                {% if result.event_timestamp and result.event_timestamp != result.timestamp %}
+                                                    {{ result.event_timestamp[:19] }}
+                                                {% else %}
+                                                    {{ result.timestamp[:19] }}
+                                                {% endif %}
+                                            </small>
+                                        </td>
+                                        <td class="event-id">
+                                            <span class="badge bg-primary clickable-field" 
+                                                  data-field="event_id" 
+                                                  data-value="{{ result.event_id }}">
+                                                {{ result.event_id if result.event_id else 'Unknown' }}
+                                            </span>
+                                        </td>
+                                        <td class="event-summary">
+                                            <div class="summary-text">
+                                                {{ result.event_summary if result.event_summary else 'No summary available' }}
                                             </div>
-
-                                            <!-- Event Fields Table (Wazuh-style) -->
-                                            <div class="event-fields-table">
-                                                <table class="wazuh-table">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>Field</th>
-                                                            <th>Value</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        <!-- Debug info for troubleshooting -->
-                                                        {% if result.event_fields %}
-                                                        <tr><td colspan="2" style="background: #e3f2fd; color: #1976d2; font-weight: bold;">✓ Using flattened fields ({{ result.event_fields|length }} fields)</td></tr>
-                                                        {% else %}
-                                                        <tr><td colspan="2" style="background: #fff3e0; color: #f57c00; font-weight: bold;">⚠ Using fallback extraction</td></tr>
-                                                        {% endif %}
-
-                                                        <!-- Flattened fields first (if available) -->
-                                                        {% if result.event_fields and result.event_fields|length > 0 %}
-                                                            {% for field_name, field_value in result.event_fields.items() %}
-                                                                {% if field_value and field_value != '' and field_value != '-' and field_value != 'N/A' %}
-                                                                <tr>
-                                                                    <td class="field-name">{{ field_name }}</td>
-                                                                    <td class="field-value">{{ field_value }}</td>
-                                                                </tr>
-                                                                {% endif %}
-                                                            {% endfor %}
-                                                        {% else %}
-                                                            <!-- Fallback: Extract from structured data -->
-                                                            {% set event = result.event_data.event if result.event_data and result.event_data.event else {} %}
-                                                            
-                                                            <!-- Basic info that should always be available -->
-                                                            {% if result.event_id %}
-                                                            <tr><td class="field-name">event_id</td><td class="field-value">{{ result.event_id }}</td></tr>
-                                                            {% endif %}
-                                                            {% if result.computer_name %}
-                                                            <tr><td class="field-name">computer</td><td class="field-value">{{ result.computer_name }}</td></tr>
-                                                            {% endif %}
-                                                            {% if result.source_name %}
-                                                            <tr><td class="field-name">provider</td><td class="field-value">{{ result.source_name }}</td></tr>
-                                                            {% endif %}
-                                                            {% if result.event_record_id %}
-                                                            <tr><td class="field-name">eventrecordid</td><td class="field-value">{{ result.event_record_id }}</td></tr>
-                                                            {% endif %}
-
-                                                            <!-- Extract from event.system if available -->
-                                                            {% if event.system %}
-                                                                {% set system = event.system %}
-                                                                {% if system.channel and system.channel != result.computer_name %}
-                                                                <tr><td class="field-name">channel</td><td class="field-value">{{ system.channel }}</td></tr>
-                                                                {% endif %}
-                                                                {% if system.level %}
-                                                                <tr><td class="field-name">level</td><td class="field-value">{{ system.level }}</td></tr>
-                                                                {% endif %}
-                                                                {% if system.task %}
-                                                                <tr><td class="field-name">task</td><td class="field-value">{{ system.task }}</td></tr>
-                                                                {% endif %}
-                                                                {% if system.keywords %}
-                                                                <tr><td class="field-name">keywords</td><td class="field-value">{{ system.keywords }}</td></tr>
-                                                                {% endif %}
-                                                            {% endif %}
-                                                            
-                                                            <!-- EventData fields with better parsing -->
-                                                            {% if event.eventdata and event.eventdata.data %}
-                                                                {% for data_item in event.eventdata.data %}
-                                                                    {% if data_item is mapping %}
-                                                                        {% if data_item.name and data_item.value %}
+                                        </td>
+                                        <td class="computer-name">
+                                            <span class="clickable-field" 
+                                                  data-field="computer" 
+                                                  data-value="{{ result.computer_name }}">
+                                                {{ result.computer_name if result.computer_name else 'Unknown' }}
+                                            </span>
+                                        </td>
+                                        <td class="rule-violations">
+                                            {% if result.sigma_violations or result.chainsaw_violations %}
+                                                <span class="badge bg-danger">
+                                                    <i class="fas fa-exclamation-triangle"></i> 
+                                                    {{ (result.sigma_violations|length) + (result.chainsaw_violations|length) }}
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="actions">
+                                            <button class="btn btn-sm btn-outline-primary toggle-details" 
+                                                    data-bs-toggle="collapse" 
+                                                    data-bs-target="#details-{{ loop.index }}">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <!-- Collapsible Details Row -->
+                                    <tr class="collapse" id="details-{{ loop.index }}">
+                                        <td colspan="6" class="details-content p-0">
+                                            <div class="card border-0">
+                                                <div class="card-body">
+                                                    <div class="row">
+                                                        <!-- Event Fields -->
+                                                        <div class="col-md-8">
+                                                            <h6><i class="fas fa-list"></i> Event Details</h6>
+                                                            <div class="table-responsive">
+                                                                <table class="table table-sm table-bordered">
+                                                                    <thead>
                                                                         <tr>
-                                                                            <td class="field-name">{{ data_item.name|lower }}</td>
-                                                                            <td class="field-value">{{ data_item.value }}</td>
+                                                                            <th style="width: 30%;">Field</th>
+                                                                            <th style="width: 70%;">Value</th>
                                                                         </tr>
-                                                                        {% elif data_item.name and data_item.text %}
-                                                                        <tr>
-                                                                            <td class="field-name">{{ data_item.name|lower }}</td>
-                                                                            <td class="field-value">{{ data_item.text }}</td>
-                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        {% if result.event_fields and result.event_fields|length > 0 %}
+                                                                            {% for field_name, field_value in result.event_fields.items() %}
+                                                                                {% if field_value and field_value != '' and field_value != 'None' %}
+                                                                                <tr>
+                                                                                    <td class="field-name">
+                                                                                        <span class="clickable-field fw-bold" 
+                                                                                              data-field="{{ field_name }}" 
+                                                                                              data-value="{{ field_value }}"
+                                                                                              title="Click to add to search">
+                                                                                            {{ field_name }}
+                                                                                        </span>
+                                                                                    </td>
+                                                                                    <td class="field-value">
+                                                                                        <span class="clickable-field" 
+                                                                                              data-field="{{ field_name }}" 
+                                                                                              data-value="{{ field_value }}"
+                                                                                              title="Click to add to search">
+                                                                                            {{ field_value }}
+                                                                                        </span>
+                                                                                    </td>
+                                                                                </tr>
+                                                                                {% endif %}
+                                                                            {% endfor %}
+                                                                        {% else %}
+                                                                            <tr>
+                                                                                <td colspan="2" class="text-muted">No detailed fields available</td>
+                                                                            </tr>
                                                                         {% endif %}
-                                                                    {% elif data_item is string and data_item != '-' and data_item != '' %}
-                                                                    <tr>
-                                                                        <td class="field-name">data</td>
-                                                                        <td class="field-value">{{ data_item }}</td>
-                                                                    </tr>
-                                                                    {% endif %}
-                                                                {% endfor %}
-                                                            {% endif %}
-
-                                                            <!-- If no structured data, show what we have -->
-                                                            {% if not event %}
-                                                            <tr><td colspan="2" style="color: #f44336;">No structured event data available</td></tr>
-                                                            {% endif %}
-                                                        {% endif %}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
                                                         
-                                                        <!-- Source Information -->
-                                                        <tr class="source-section">
-                                                            <td colspan="2" class="section-header">
-                                                                <i class="fas fa-file"></i> Source Information
-                                                            </td>
-                                                        </tr>
-                                                        <tr><td class="field-name">source_file</td><td class="field-value">{{ result.source_file if result.source_file else 'N/A' }}</td></tr>
-                                                        <tr><td class="field-name">file_id</td><td class="field-value">{{ result.file_id if result.file_id else 'N/A' }}</td></tr>
-                                                        {% if result.ingestion_timestamp and result.ingestion_timestamp != result.timestamp %}
-                                                        <tr><td class="field-name">ingestion_timestamp</td><td class="field-value">{{ result.ingestion_timestamp }}</td></tr>
-                                                        {% endif %}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {% if result.sigma_violations or result.chainsaw_violations %}
-                                    <div class="tab-pane" id="violations-{{ loop.index }}" style="display: none;">
-                                        <div class="violations-list">
-                                            {% if result.sigma_violations %}
-                                            <h5>Sigma Rule Violations</h5>
-                                            {% for violation in result.sigma_violations %}
-                                            <div class="violation-item">
-                                                <div class="violation-header">
-                                                    <span class="violation-type badge badge-danger">SIGMA</span>
-                                                    <span class="violation-severity">{{ violation.get('severity', 'Medium').title() }}</span>
+                                                        <!-- Source & Violations -->
+                                                        <div class="col-md-4">
+                                                            <h6><i class="fas fa-file"></i> Source Information</h6>
+                                                            <table class="table table-sm">
+                                                                <tr><td><strong>Source File:</strong></td><td>{{ result.source_file }}</td></tr>
+                                                                <tr><td><strong>File ID:</strong></td><td>{{ result.file_id }}</td></tr>
+                                                                <tr><td><strong>Ingestion:</strong></td><td>{{ result.ingestion_timestamp[:19] if result.ingestion_timestamp else 'N/A' }}</td></tr>
+                                                            </table>
+                                                            
+                                                            {% if result.sigma_violations or result.chainsaw_violations %}
+                                                            <h6><i class="fas fa-shield-alt"></i> Rule Violations</h6>
+                                                            {% if result.sigma_violations %}
+                                                                <div class="alert alert-warning alert-sm">
+                                                                    <strong>Sigma Rules:</strong>
+                                                                    <ul class="mb-0">
+                                                                        {% for violation in result.sigma_violations %}
+                                                                        <li>{{ violation }}</li>
+                                                                        {% endfor %}
+                                                                    </ul>
+                                                                </div>
+                                                            {% endif %}
+                                                            {% if result.chainsaw_violations %}
+                                                                <div class="alert alert-danger alert-sm">
+                                                                    <strong>Chainsaw Rules:</strong>
+                                                                    <ul class="mb-0">
+                                                                        {% for violation in result.chainsaw_violations %}
+                                                                        <li>{{ violation }}</li>
+                                                                        {% endfor %}
+                                                                    </ul>
+                                                                </div>
+                                                            {% endif %}
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div class="violation-rule">{{ violation.get('rule_name', 'Unknown Rule') }}</div>
-                                                <div class="violation-description">{{ violation.get('description', 'No description available') }}</div>
                                             </div>
-                                            {% endfor %}
-                                            {% endif %}
-                                            
-                                            {% if result.chainsaw_violations %}
-                                            <h5>Chainsaw Rule Violations</h5>
-                                            {% for violation in result.chainsaw_violations %}
-                                            <div class="violation-item">
-                                                <div class="violation-header">
-                                                    <span class="violation-type badge badge-warning">CHAINSAW</span>
-                                                    <span class="violation-severity">{{ violation.get('severity', 'Medium').title() }}</span>
-                                                </div>
-                                                <div class="violation-rule">{{ violation.get('rule_name', 'Unknown Rule') }}</div>
-                                                <div class="violation-description">{{ violation.get('description', 'No description available') }}</div>
-                                            </div>
-                                            {% endfor %}
-                                            {% endif %}
-                                        </div>
-                                    </div>
-                                    {% endif %}
-                                </div>
-                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
-                        {% endfor %}
                     </div>
                     {% elif query %}
-                    <div class="no-results">
-                        <i class="fas fa-search"></i>
-                        <h4>No Results Found</h4>
-                        <p>No events match your search criteria. Try adjusting your search terms or filters.</p>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> No events found matching your search criteria.
                     </div>
                     {% else %}
-                    <div class="search-prompt">
-                        <i class="fas fa-search"></i>
-                        <h4>Search Events</h4>
-                        <p>Enter search terms above to find events in this case.</p>
-                        <div class="search-examples">
-                            <h5>Example Searches:</h5>
-                            <div class="example-tags">
-                                <span class="example-tag" onclick="setSearchQuery('EventID:4624')">EventID:4624</span>
-                                <span class="example-tag" onclick="setSearchQuery('process:powershell.exe')">process:powershell.exe</span>
-                                <span class="example-tag" onclick="setSearchQuery('user:administrator')">user:administrator</span>
-                                <span class="example-tag" onclick="setSearchQuery('network OR connection')">network OR connection</span>
-                            </div>
-                        </div>
+                    <div class="alert alert-secondary">
+                        <i class="fas fa-search"></i> Enter a search query to find events.
                     </div>
                     {% endif %}
                 </div>
@@ -410,741 +222,119 @@
 </div>
 
 <style>
-.search-container {
-    max-width: 1400px;
-    margin: 0 auto;
+.clickable-field {
+    cursor: pointer;
+    color: #0066cc;
+    text-decoration: none;
+    border-radius: 3px;
+    padding: 1px 3px;
+    transition: background-color 0.2s;
 }
 
-.page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 2rem;
-    padding: 1.5rem;
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
+.clickable-field:hover {
+    background-color: #e3f2fd;
+    text-decoration: underline;
 }
 
-.header-info h1 {
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    margin: 0 0 0.5rem 0;
-}
-
-.case-breadcrumb {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    color: var(--text-secondary);
+.summary-text {
     font-size: 0.9rem;
+    line-height: 1.3;
 }
 
-.case-breadcrumb i {
-    color: var(--primary-color);
-}
-
-.event-count {
-    padding: 0.25rem 0.75rem;
-    background: var(--bg-secondary);
-    border-radius: 16px;
-    font-size: 0.8rem;
-    font-weight: 600;
-}
-
-.header-actions {
-    display: flex;
-    gap: 1rem;
-    flex-shrink: 0;
-}
-
-.search-interface {
-    margin-bottom: 1.5rem;
-}
-
-.search-form {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-.search-bar {
-    display: flex;
-    gap: 1rem;
-    align-items: center;
-}
-
-.search-input-group {
-    flex: 1;
-    display: flex;
-    position: relative;
-}
-
-.search-input {
-    flex: 1;
-    padding: 1rem 1.5rem;
-    border: 2px solid var(--border-color);
-    border-radius: 12px;
-    background: var(--input-bg);
-    color: var(--text-primary);
-    font-size: 1rem;
-    transition: all 0.3s ease;
-    padding-right: 60px;
-}
-
-.search-input:focus {
-    outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 4px rgba(66, 153, 225, 0.2);
-}
-
-.search-btn {
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 0.75rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.search-btn:hover {
-    background: var(--primary-hover);
-}
-
-.filters-toggle {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    padding: 1rem 1.5rem;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    white-space: nowrap;
-}
-
-.filters-toggle:hover {
-    background: var(--bg-tertiary);
-    border-color: var(--primary-color);
-}
-
-.search-filters {
-    padding: 1.5rem;
-    background: var(--bg-secondary);
-    border-radius: 12px;
-    border: 1px solid var(--border-color);
-}
-
-.filters-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
-.filter-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.filter-label {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.filter-select {
-    padding: 0.75rem;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background: var(--input-bg);
-    color: var(--text-primary);
-    transition: all 0.3s ease;
-}
-
-.filter-select:focus {
-    outline: none;
-    border-color: var(--primary-color);
-}
-
-.filter-actions {
-    display: flex;
-    gap: 1rem;
-    justify-content: flex-end;
-    padding-top: 1rem;
-    border-top: 1px solid var(--border-color);
-}
-
-.results-actions {
-    display: flex;
-    gap: 1rem;
-    align-items: center;
-}
-
-.view-toggle {
-    display: flex;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-.view-btn {
-    background: var(--bg-secondary);
-    border: none;
-    color: var(--text-primary);
-    padding: 0.5rem 0.75rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    border-right: 1px solid var(--border-color);
-}
-
-.view-btn:last-child {
-    border-right: none;
-}
-
-.view-btn:hover {
-    background: var(--bg-tertiary);
-}
-
-.view-btn.active {
-    background: var(--primary-color);
-    color: white;
-}
-
-.result-summary {
-    color: var(--text-secondary);
-    font-size: 0.875rem;
-}
-
-.results-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-.result-item {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    overflow: hidden;
-    transition: all 0.3s ease;
-}
-
-.result-item:hover {
-    border-color: var(--primary-color);
-}
-
-.result-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem 1.5rem;
-    background: var(--card-bg);
-    border-bottom: 1px solid var(--border-color);
-}
-
-.result-meta {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-}
-
-.result-timestamp {
-    font-family: 'Courier New', monospace;
-    font-size: 0.9rem;
-    color: var(--text-primary);
-    font-weight: 600;
-}
-
-.result-source {
-    color: var(--text-secondary);
-    font-size: 0.875rem;
-}
-
-.result-actions {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.expand-btn {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    padding: 0.5rem;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.expand-btn:hover {
-    background: var(--bg-tertiary);
-}
-
-.result-summary {
-    padding: 1rem 1.5rem;
-}
-
-.event-id {
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 0.5rem;
-}
-
-.event-preview {
-    color: var(--text-secondary);
-    line-height: 1.5;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-}
-
-.result-details {
-    border-top: 1px solid var(--border-color);
-    background: var(--card-bg);
-}
-
-.details-tabs {
-    display: flex;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-color);
-}
-
-.tab-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    padding: 1rem 1.5rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    border-bottom: 2px solid transparent;
-}
-
-.tab-btn:hover {
-    color: var(--text-primary);
-    background: var(--bg-tertiary);
-}
-
-.tab-btn.active {
-    color: var(--primary-color);
-    border-bottom-color: var(--primary-color);
-    background: var(--card-bg);
-}
-
-.tab-content {
-    padding: 1.5rem;
-}
-
-.json-content {
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 1rem;
-    overflow-x: auto;
+.event-timestamp {
     font-family: 'Courier New', monospace;
     font-size: 0.85rem;
-    line-height: 1.4;
-    color: var(--text-primary);
-    max-height: 400px;
-    overflow-y: auto;
 }
 
-.formatted-event {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
+.details-content {
+    background-color: #f8f9fa;
 }
 
-.event-section h4 {
-    margin: 0 0 1rem 0;
-    color: var(--text-primary);
-    font-size: 1.1rem;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 0.5rem;
+.alert-sm {
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
 }
 
-.event-fields {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 0.75rem;
-}
-
-.field-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-.field-item label {
-    font-size: 0.8rem;
+.table th {
     font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    font-size: 0.9rem;
 }
 
-.field-item span {
-    color: var(--text-primary);
-    word-break: break-word;
+.table td {
+    font-size: 0.9rem;
+    vertical-align: middle;
 }
 
-.violations-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-.violation-item {
-    padding: 1rem;
-    background: var(--bg-secondary);
-    border-radius: 8px;
-    border-left: 4px solid var(--error-color);
-}
-
-.violation-header {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 0.5rem;
-}
-
-.violation-severity {
-    color: var(--text-secondary);
-    font-size: 0.875rem;
-    text-transform: capitalize;
-}
-
-.violation-rule {
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 0.5rem;
-}
-
-.violation-description {
-    color: var(--text-secondary);
-    line-height: 1.5;
-}
-
-.no-results,
-.search-prompt {
-    text-align: center;
-    padding: 4rem 2rem;
-    color: var(--text-secondary);
-}
-
-.no-results i,
-.search-prompt i {
-    font-size: 4rem;
-    margin-bottom: 1rem;
-    color: var(--text-muted);
-}
-
-.no-results h4,
-.search-prompt h4 {
-    font-size: 1.5rem;
-    margin-bottom: 0.5rem;
-    color: var(--text-primary);
-}
-
-.no-results p,
-.search-prompt p {
-    margin-bottom: 2rem;
-}
-
-.search-examples {
-    margin-top: 2rem;
-}
-
-.search-examples h5 {
-    margin-bottom: 1rem;
-    color: var(--text-primary);
-}
-
-.example-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    justify-content: center;
-}
-
-.example-tag {
-    display: inline-block;
-    padding: 0.5rem 1rem;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 16px;
-    font-size: 0.875rem;
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-family: 'Courier New', monospace;
-}
-
-.example-tag:hover {
-    background: var(--primary-color);
-    color: white;
-    transform: translateY(-1px);
-}
-
-@media (max-width: 768px) {
-    .page-header {
-        flex-direction: column;
-        gap: 1rem;
-        align-items: stretch;
-    }
-    
-    .header-actions {
-        justify-content: center;
-    }
-    
-    .search-bar {
-        flex-direction: column;
-    }
-    
-    .filters-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .filter-actions {
-        flex-direction: column;
-    }
-    
-    .result-header {
-        flex-direction: column;
-        gap: 1rem;
-        align-items: flex-start;
-    }
-    
-    .result-meta {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.5rem;
-    }
-    
-    .details-tabs {
-        flex-wrap: wrap;
-    }
-    
-    .event-fields {
-        grid-template-columns: 1fr;
-    }
+.field-name {
+    background-color: #f1f3f4;
+    font-weight: 500;
 }
 </style>
-{% endblock %}
 
-{% block extra_js %}
 <script>
-let currentView = 'list';
-
+// Add field to search when clicked
 document.addEventListener('DOMContentLoaded', function() {
-    initializeSearch();
+    document.querySelectorAll('.clickable-field').forEach(function(element) {
+        element.addEventListener('click', function() {
+            const field = this.getAttribute('data-field');
+            const value = this.getAttribute('data-value');
+            
+            if (field && value) {
+                const searchInput = document.querySelector('input[name="q"]');
+                const currentQuery = searchInput.value.trim();
+                
+                // Create search term
+                let searchTerm = '';
+                if (field === 'event_id') {
+                    searchTerm = value;
+                } else {
+                    searchTerm = `${field}:"${value}"`;
+                }
+                
+                // Add to existing query
+                if (currentQuery) {
+                    searchInput.value = currentQuery + ' AND ' + searchTerm;
+                } else {
+                    searchInput.value = searchTerm;
+                }
+                
+                // Visual feedback
+                this.style.backgroundColor = '#4caf50';
+                this.style.color = 'white';
+                setTimeout(() => {
+                    this.style.backgroundColor = '';
+                    this.style.color = '';
+                }, 500);
+            }
+        });
+    });
 });
 
-function initializeSearch() {
-    const searchForm = document.getElementById('search-form');
-    const searchInput = document.getElementById('search-input');
-
-    // Auto-focus search input
-    searchInput.focus();
-
-    // Handle form submission
-    searchForm.addEventListener('submit', function(e) {
-        const query = searchInput.value.trim();
-        if (!query) {
-            e.preventDefault();
-            showAlert('warning', 'Please enter a search query.');
-            return;
-        }
-        
-        // Show loading state
-        const searchBtn = document.getElementById('search-btn');
-        searchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-        searchBtn.disabled = true;
-    });
-
-    // Auto-complete suggestions (would be implemented with real data)
-    searchInput.addEventListener('input', function() {
-        // Implement auto-complete logic here
-    });
-
-    debugLog('Search interface initialized');
-}
-
-function toggleFilters() {
-    const filters = document.getElementById('search-filters');
-    const isVisible = filters.style.display !== 'none';
-    filters.style.display = isVisible ? 'none' : 'block';
-    
-    if (!isVisible) {
-        filters.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-}
-
-function clearFilters() {
-    const form = document.getElementById('search-form');
-    const selects = form.querySelectorAll('select');
-    selects.forEach(select => {
-        select.value = '';
-    });
-    
-    // Keep the search query but clear filters
-    form.submit();
-}
-
-function setSearchQuery(query) {
-    const searchInput = document.getElementById('search-input');
-    searchInput.value = query;
-    searchInput.focus();
-    
-    // Optionally submit immediately
-    document.getElementById('search-form').submit();
-}
-
-function setView(view) {
-    currentView = view;
-    
-    // Update view buttons
-    const viewBtns = document.querySelectorAll('.view-btn');
-    viewBtns.forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.dataset.view === view) {
-            btn.classList.add('active');
-        }
-    });
-    
-    // Update results display (would implement different views)
-    switch (view) {
-        case 'list':
-            showListView();
-            break;
-        case 'table':
-            showTableView();
-            break;
-        case 'timeline':
-            showTimelineView();
-            break;
-    }
-    
-    debugLog(`Switched to ${view} view`);
-}
-
-function showListView() {
-    // Current default view
-    const resultsList = document.getElementById('results-list');
-    if (resultsList) {
-        resultsList.style.display = 'flex';
-    }
-}
-
-function showTableView() {
-    // Would implement table view
-    showAlert('info', 'Table view not yet implemented.');
-}
-
-function showTimelineView() {
-    // Would implement timeline view
-    showAlert('info', 'Timeline view not yet implemented.');
-}
-
-function toggleEventDetails(eventId) {
-    const details = document.getElementById(`details-${eventId}`);
-    const expandBtn = document.querySelector(`[data-event-id="${eventId}"] .expand-btn i`);
-    
-    if (details.style.display === 'none') {
-        details.style.display = 'block';
-        expandBtn.className = 'fas fa-chevron-up';
-        details.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    } else {
-        details.style.display = 'none';
-        expandBtn.className = 'fas fa-chevron-down';
-    }
-}
-
-function showTab(eventId, tabName) {
-    const eventDetails = document.getElementById(`details-${eventId}`);
-    const tabBtns = eventDetails.querySelectorAll('.tab-btn');
-    const tabPanes = eventDetails.querySelectorAll('.tab-pane');
-    
-    // Update tab buttons
-    tabBtns.forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
-    
-    // Update tab panes
-    tabPanes.forEach(pane => {
-        pane.style.display = 'none';
-    });
-    
-    const targetPane = document.getElementById(`${tabName}-${eventId}`);
-    if (targetPane) {
-        targetPane.style.display = 'block';
-    }
-}
-
 function exportResults() {
-    const results = document.querySelectorAll('.result-item');
-    if (results.length === 0) {
-        showAlert('warning', 'No results to export.');
-        return;
-    }
+    // Simple CSV export
+    const table = document.getElementById('events-table');
+    let csv = 'Event Date,Event ID,Summary,Computer,Violations\n';
     
-    // Would implement export functionality
-    showAlert('info', 'Export functionality not yet implemented.');
-    debugLog('Export results requested');
-}
-
-function highlightSearchTerms(text, query) {
-    if (!query) return text;
-    
-    const terms = query.split(/\s+/).filter(term => 
-        !term.includes(':') && term.length > 2
-    );
-    
-    let highlightedText = text;
-    terms.forEach(term => {
-        const regex = new RegExp(`(${term})`, 'gi');
-        highlightedText = highlightedText.replace(regex, '<mark>$1</mark>');
+    table.querySelectorAll('tbody tr.result-row').forEach(function(row) {
+        const cells = row.querySelectorAll('td');
+        const rowData = [
+            cells[0].textContent.trim(),
+            cells[1].textContent.trim(),
+            cells[2].textContent.trim().replace(/"/g, '""'),
+            cells[3].textContent.trim(),
+            cells[4].textContent.trim()
+        ];
+        csv += '"' + rowData.join('","') + '"\n';
     });
     
-    return highlightedText;
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'search_results.csv';
+    a.click();
+    window.URL.revokeObjectURL(url);
 }
-
-// Real-time search suggestions (would be implemented with server-side support)
-function loadSearchSuggestions(query) {
-    // This would make an API call to get search suggestions
-    return [];
-}
-
-// Advanced search helpers
-function buildAdvancedQuery() {
-    // Would help users build complex queries
-}
-
-function saveSearch() {
-    // Would allow users to save search queries
-    showAlert('info', 'Save search functionality not yet implemented.');
-}
-
-// Expose functions globally
-window.toggleFilters = toggleFilters;
-window.clearFilters = clearFilters;
-window.setSearchQuery = setSearchQuery;
-window.setView = setView;
-window.toggleEventDetails = toggleEventDetails;
-window.showTab = showTab;
-window.exportResults = exportResults;
 </script>
 {% endblock %}
-
