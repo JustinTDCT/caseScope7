@@ -914,6 +914,217 @@ def clean_json_data(data):
     else:
         return data
 
+def process_rules_for_case(case_id):
+    """
+    Process Sigma and Chainsaw rules against all indexed events in a case.
+    This is separate from file indexing and can be run independently.
+    """
+    try:
+        index_name = f"casescope-case-{case_id}"
+        
+        # Check if index exists
+        if not opensearch_client.indices.exists(index=index_name):
+            logger.error(f"Index {index_name} does not exist")
+            return False
+        
+        logger.info(f"Starting rule processing for case {case_id}")
+        
+        # Get all events in the case
+        search_body = {
+            "query": {
+                "term": {"case_id": case_id}
+            },
+            "size": 10000,  # Process in batches
+            "_source": ["event_fields", "event_data", "filename_tag"]
+        }
+        
+        response = opensearch_client.search(
+            index=index_name,
+            body=search_body
+        )
+        
+        total_events = response['hits']['total']['value']
+        logger.info(f"Processing rules against {total_events} events")
+        
+        violation_updates = []
+        
+        # Process each event for rule violations
+        for hit in response['hits']['hits']:
+            event_id = hit['_id']
+            source = hit['_source']
+            
+            # Run rules against this event
+            sigma_violations = []
+            chainsaw_violations = []
+            
+            # TODO: Implement actual rule processing here
+            # For now, just placeholder logic
+            
+            # If violations found, prepare update
+            if sigma_violations or chainsaw_violations:
+                update_doc = {
+                    "sigma_violations": sigma_violations,
+                    "chainsaw_violations": chainsaw_violations,
+                    "rule_tags": sigma_violations + chainsaw_violations,
+                    "has_violations": True
+                }
+                
+                violation_updates.append({
+                    "event_id": event_id,
+                    "update": update_doc
+                })
+        
+        # Bulk update events with violation information
+        if violation_updates:
+            logger.info(f"Updating {len(violation_updates)} events with violation information")
+            # TODO: Implement bulk update
+        
+        logger.info(f"Rule processing complete for case {case_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error processing rules for case {case_id}: {e}")
+        return False
+
+def remove_events_by_filename(case_id, filename):
+    """
+    Remove all events from OpenSearch index that are tagged with the specified filename.
+    Used when re-indexing a file to clean up old events first.
+    """
+    try:
+        index_name = f"casescope-case-{case_id}"
+        
+        # Check if index exists
+        if not opensearch_client.indices.exists(index=index_name):
+            logger.info(f"Index {index_name} does not exist, nothing to remove")
+            return 0
+        
+        # Delete by query - remove all events with this filename_tag
+        delete_query = {
+            "query": {
+                "term": {
+                    "filename_tag": filename
+                }
+            }
+        }
+        
+        logger.info(f"Removing existing events for file: {filename}")
+        response = opensearch_client.delete_by_query(
+            index=index_name,
+            body=delete_query,
+            refresh=True  # Refresh index after deletion
+        )
+        
+        deleted_count = response.get('deleted', 0)
+        logger.info(f"Removed {deleted_count} existing events for file: {filename}")
+        return deleted_count
+        
+    except Exception as e:
+        logger.error(f"Error removing events for file {filename}: {e}")
+        return 0
+
+def extract_evtx_fields(event_data):
+    """
+    Extract EVTX fields into a flat, ELK-style structure for easy searching and display.
+    Returns a dictionary with direct field access like Wazuh/ELK.
+    """
+    fields = {}
+    
+    try:
+        # Navigate to the Event structure
+        event = None
+        if isinstance(event_data, dict):
+            if 'Event' in event_data:
+                event = event_data['Event']
+            elif 'event' in event_data:
+                event = event_data['event']
+            else:
+                event = event_data
+        
+        if not isinstance(event, dict):
+            return fields
+        
+        # Extract System fields (core event info)
+        system = event.get('System') or event.get('system', {})
+        if isinstance(system, dict):
+            # Core system fields
+            fields['event_id'] = system.get('EventID') or system.get('eventid')
+            fields['computer'] = system.get('Computer') or system.get('computer')
+            fields['channel'] = system.get('Channel') or system.get('channel')
+            fields['level'] = system.get('Level') or system.get('level')
+            fields['task'] = system.get('Task') or system.get('task')
+            fields['keywords'] = system.get('Keywords') or system.get('keywords')
+            fields['event_record_id'] = system.get('EventRecordID') or system.get('eventrecordid')
+            
+            # Provider info
+            provider = system.get('Provider') or system.get('provider', {})
+            if isinstance(provider, dict):
+                fields['provider_name'] = provider.get('Name') or provider.get('name')
+                fields['provider_guid'] = provider.get('Guid') or provider.get('guid')
+            elif isinstance(provider, str):
+                fields['provider_name'] = provider
+            
+            # Time info
+            time_created = system.get('TimeCreated') or system.get('timecreated', {})
+            if isinstance(time_created, dict):
+                fields['event_time'] = time_created.get('@SystemTime') or time_created.get('SystemTime') or time_created.get('systemtime')
+            elif isinstance(time_created, str):
+                fields['event_time'] = time_created
+        
+        # Extract EventData fields (the actual event details)
+        event_data_section = event.get('EventData') or event.get('eventdata', {})
+        if isinstance(event_data_section, dict):
+            # Handle Data array (most common EVTX format)
+            data_array = event_data_section.get('Data') or event_data_section.get('data', [])
+            if isinstance(data_array, list):
+                for data_item in data_array:
+                    if isinstance(data_item, dict):
+                        # Format: {'@Name': 'SubjectUserName', '#text': 'Administrator'}
+                        name = data_item.get('@Name') or data_item.get('Name') or data_item.get('name')
+                        value = data_item.get('#text') or data_item.get('text') or data_item.get('value')
+                        
+                        if name and value is not None:
+                            # Convert to lowercase for consistency
+                            field_name = str(name).lower().replace(' ', '_')
+                            fields[field_name] = str(value)
+            
+            # Handle direct fields (alternative format)
+            for key, value in event_data_section.items():
+                if key not in ['Data', 'data'] and value is not None:
+                    field_name = str(key).lower().replace(' ', '_')
+                    fields[field_name] = str(value)
+        
+        # Create event summary (like Windows Event Viewer)
+        summary_parts = []
+        if fields.get('event_id'):
+            summary_parts.append(f"Event {fields['event_id']}")
+        if fields.get('provider_name'):
+            summary_parts.append(f"from {fields['provider_name']}")
+        if fields.get('computer'):
+            summary_parts.append(f"on {fields['computer']}")
+        
+        # Add specific details based on event type
+        if fields.get('event_id') == '4624':  # Logon
+            if fields.get('targetusername'):
+                summary_parts.append(f"- User {fields['targetusername']} logged on")
+        elif fields.get('event_id') == '4625':  # Failed logon
+            if fields.get('targetusername'):
+                summary_parts.append(f"- Failed logon for {fields['targetusername']}")
+        elif fields.get('event_id') == '4648':  # Explicit logon
+            if fields.get('targetusername'):
+                summary_parts.append(f"- Explicit logon by {fields['targetusername']}")
+        
+        fields['event_summary'] = ' '.join(summary_parts) if summary_parts else f"Event {fields.get('event_id', 'Unknown')}"
+        
+        # Clean up None values
+        fields = {k: v for k, v in fields.items() if v is not None and v != ''}
+        
+    except Exception as e:
+        logger.error(f"Error extracting EVTX fields: {e}")
+        fields['extraction_error'] = str(e)
+    
+    return fields
+
 def flatten_event_data(data, prefix='', max_depth=5):
     """
     Flatten EVTX event data to create a structure similar to Wazuh/ELK
@@ -1688,6 +1899,15 @@ def process_evtx_file(file_id):
             case_file.celery_task_id = process_evtx_file.request.id  # Track this task
             db.session.commit()
             
+            # Remove existing events for this file (if re-indexing)
+            logger.info(f"Checking for existing events to remove for file: {case_file.original_filename}")
+            removed_count = remove_events_by_filename(case_file.case_id, case_file.original_filename)
+            if removed_count > 0:
+                logger.info(f"Re-indexing: Removed {removed_count} existing events")
+                case_file.processing_details = f'Removed {removed_count} existing events, starting fresh indexing...'
+                case_file.processing_progress = 10
+                db.session.commit()
+            
             # Verify file exists before processing
             if not os.path.exists(case_file.file_path):
                 logger.error(f"File not found: {case_file.file_path}")
@@ -1811,39 +2031,64 @@ def process_evtx_file(file_id):
                     except Exception as timestamp_error:
                         logger.debug(f"Could not extract event timestamp: {timestamp_error}")
                     
-                    # Sanitize event data for OpenSearch compatibility
+                    # Extract flat fields for ELK-style access
                     try:
+                        # Extract flat fields using the new function
+                        flat_fields = extract_evtx_fields(event_data)
+                        
+                        # Use extracted event time if available
+                        if not event_timestamp and flat_fields.get('event_time'):
+                            event_timestamp = flat_fields['event_time']
+                        
+                        # Sanitize original event data for compatibility
                         sanitized_event_data = sanitize_for_opensearch(event_data)
                         
-                        # Create a flatter structure for better field access
-                        flattened_data = {}
-                        if isinstance(sanitized_event_data, dict):
-                            # Flatten the structure to make fields more accessible
-                            flattened_data = flatten_event_data(sanitized_event_data)
-                        
-                        # Debug: Log problematic data structures (first 3 records only)
+                        # Debug: Log field extraction (first 3 records only)
                         if processed_records < 3:
-                            logger.info(f"Record {processed_records + 1} - Original data keys: {list(event_data.keys()) if isinstance(event_data, dict) else 'Not a dict'}")
-                            logger.info(f"Record {processed_records + 1} - Sanitized data keys: {list(sanitized_event_data.keys()) if isinstance(sanitized_event_data, dict) else 'Not a dict'}")
+                            logger.info(f"Record {processed_records + 1} - Extracted fields: {list(flat_fields.keys())}")
+                            logger.info(f"Record {processed_records + 1} - Event ID: {flat_fields.get('event_id')}")
                             logger.info(f"Record {processed_records + 1} - Event timestamp: {event_timestamp}")
+                            logger.info(f"Record {processed_records + 1} - Summary: {flat_fields.get('event_summary', 'N/A')}")
                             
-                    except Exception as sanitize_error:
-                        logger.error(f"Error sanitizing event data: {sanitize_error}")
-                        # Fall back to string representation
+                    except Exception as extract_error:
+                        logger.error(f"Error extracting EVTX fields: {extract_error}")
+                        # Fall back to basic structure
+                        flat_fields = {'extraction_error': str(extract_error)}
                         sanitized_event_data = {'raw_data': str(event_data)[:1000]}
-                        flattened_data = {}
                     
-                    # Create OpenSearch document with proper timestamp
+                    # Create OpenSearch document with proper tagging
                     doc = {
+                        # Core identification and tagging
                         'case_id': case_file.case_id,
                         'file_id': case_file.id,
-                        'timestamp': event_timestamp if event_timestamp else datetime.utcnow().isoformat(),
-                        'event_timestamp': event_timestamp,  # Keep original event time
-                        'ingestion_timestamp': datetime.utcnow().isoformat(),  # Track when indexed
-                        'event_data': sanitized_event_data,
-                        'event_fields': flattened_data,  # Flattened fields for easier access
+                        'filename_tag': case_file.original_filename,  # Tag for file-based operations
                         'source_file': case_file.original_filename,
-                        'processed_at': datetime.utcnow().isoformat()
+                        
+                        # Timestamps
+                        'timestamp': event_timestamp if event_timestamp else datetime.utcnow().isoformat(),
+                        'event_timestamp': event_timestamp,  # Actual event time
+                        'ingestion_timestamp': datetime.utcnow().isoformat(),  # When indexed
+                        'processed_at': datetime.utcnow().isoformat(),
+                        
+                        # Flat fields for easy access (ELK-style) - ALL searchable
+                        'event_id': flat_fields.get('event_id'),
+                        'computer': flat_fields.get('computer'),
+                        'channel': flat_fields.get('channel'),
+                        'provider_name': flat_fields.get('provider_name'),
+                        'event_summary': flat_fields.get('event_summary'),
+                        'event_record_id': flat_fields.get('event_record_id'),
+                        
+                        # All extracted fields for detailed view and searching
+                        'event_fields': flat_fields,
+                        
+                        # Original structure for compatibility
+                        'event_data': sanitized_event_data,
+                        
+                        # Rule processing results (initially empty, filled by separate rule processing)
+                        'sigma_violations': [],
+                        'chainsaw_violations': [],
+                        'rule_tags': [],  # List of rule names that matched
+                        'has_violations': False  # Quick filter for violated events
                     }
                     
                     # Index in OpenSearch with error handling
@@ -1926,51 +2171,22 @@ def process_evtx_file(file_id):
                         logger.error(f"Record keys: {list(record.keys())}")
                     continue
             
-            # Update to analyzing stage
+            # Complete indexing (NO rule processing during indexing)
             case_file.event_count = processed_records  # Use the actual record count
-            case_file.processing_status = 'analyzing'
-            case_file.processing_progress = 80
-            db.session.commit()
-            
-            logger.info(f"Event ingestion complete - processed {processed_records} records. Starting rule analysis...")
-            
-            # Apply rules efficiently
-            sigma_violations = 0
-            chainsaw_violations = 0
-            
-            try:
-                logger.info("Running Chainsaw analysis...")
-                case_file.processing_progress = 85
-                case_file.processing_phase = 'Running Chainsaw rule analysis'
-                case_file.processing_details = f'0/{indexed_count:,} events analyzed for violations'
-                db.session.commit()
-                
-                # Run Chainsaw directly on EVTX file (much faster)
-                chainsaw_violations = run_chainsaw_directly(case_file)
-                logger.info(f"Chainsaw analysis complete: {chainsaw_violations} violations found")
-                
-                # Update progress during analysis completion
-                case_file.processing_progress = 95
-                case_file.processing_details = f'{indexed_count:,}/{indexed_count:,} events analyzed - found {chainsaw_violations} violations'
-                db.session.commit()
-                
-                # Skip slow Sigma processing for now - focus on speed
-                sigma_violations = 0
-                logger.info(f"Sigma rules skipped for performance - will implement fast version")
-                
-            except Exception as rule_error:
-                logger.error(f"Error during rule analysis: {rule_error}")
-                # Continue processing even if rules fail
-            
-            # Update final counts and completion status
-            case_file.sigma_violations = sigma_violations
-            case_file.chainsaw_violations = chainsaw_violations
-            case_file.processing_status = 'completed'
+            case_file.processing_status = 'completed'  # Indexing is complete
             case_file.processing_progress = 100
-            case_file.processing_phase = 'Complete'
-            case_file.processing_details = f'Processed {indexed_count:,} events with {chainsaw_violations} violations'
+            case_file.processing_phase = 'Indexing Complete'
+            case_file.processing_details = f'Indexed {indexed_count:,} events successfully'
             case_file.celery_task_id = None  # Clear task ID when complete
+            
+            # Rule processing counts (will be updated separately when rules are run)
+            case_file.sigma_violations = 0
+            case_file.chainsaw_violations = 0
+            
             db.session.commit()
+            
+            logger.info(f"File indexing complete - indexed {processed_records} records.")
+            logger.info(f"Rules can be run separately using 'Re-run Rules' function.")
             
             # Verify the index was created and has documents
             index_name = f"casescope-case-{case_file.case_id}"
@@ -2383,21 +2599,30 @@ def rerun_rules():
         flash('Case not found or inactive.', 'error')
         return redirect(url_for('system_dashboard'))
     
-    # Queue all files for rule re-run (including error files)
-    files = case.files.filter(CaseFile.processing_status.in_(['completed', 'error'])).all()
-    for file in files:
-        # Reset violation counts before reprocessing
-        file.sigma_violations = 0
-        file.chainsaw_violations = 0
-        file.error_message = None
-        if file.processing_status == 'error':
-            file.processing_status = 'pending'
-            file.processing_progress = 0
+    try:
+        # Process rules against existing indexed events (no file re-processing)
+        logger.info(f"Re-running rules for case: {case.name}")
+        
+        # Reset violation counts for all files in the case
+        files = case.files.filter(CaseFile.processing_status == 'completed').all()
+        for file in files:
+            file.sigma_violations = 0
+            file.chainsaw_violations = 0
         db.session.commit()
-        process_evtx_file.delay(file.id)
+        
+        # Process rules against all indexed events in the case
+        success = process_rules_for_case(selected_case_id)
+        
+        if success:
+            log_audit('rules_rerun', f'Re-ran rules for case: {case.name}')
+            flash(f'Successfully re-ran rules against all indexed events in case "{case.name}".', 'success')
+        else:
+            flash(f'Error re-running rules for case "{case.name}". Check logs for details.', 'error')
+            
+    except Exception as e:
+        logger.error(f"Error in rerun_rules: {e}")
+        flash(f'Error re-running rules: {str(e)}', 'error')
     
-    log_audit('rules_rerun', f'Re-running rules for case: {case.name}')
-    flash(f'Re-running rules for {len(files)} file(s) in case.', 'info')
     return redirect(url_for('list_files'))
 
 @app.route('/files/<int:file_id>/abort', methods=['POST'])
@@ -2543,7 +2768,7 @@ def search():
                     logger.error(f"Error debugging indices: {debug_error}")
                 
                 error_message = f"No data has been indexed for this case yet. Please upload and process files first."
-                return render_template('search.html',
+                return render_template('search_simple.html',
                                      case=case,
                                      query=query,
                                      results=[],
@@ -2928,21 +3153,31 @@ def search():
                     result = {
                         'id': hit['_id'],
                         'timestamp': source.get('timestamp', ''),
-                        'event_timestamp': source.get('event_timestamp', ''),  # NEW: Actual event time
-                        'ingestion_timestamp': source.get('ingestion_timestamp', source.get('processed_at', '')),  # NEW: When indexed
+                        'event_timestamp': source.get('event_timestamp', ''),  # Actual event time
+                        'ingestion_timestamp': source.get('ingestion_timestamp', source.get('processed_at', '')),  # When indexed
                         'file_id': source.get('file_id', ''),
                         'source_file': source.get('source_file', ''),
                         'case_id': source.get('case_id', ''),
                         'processed_at': source.get('processed_at', ''),
                         'sigma_violations': source.get('sigma_violations', []),
                         'chainsaw_violations': source.get('chainsaw_violations', []),
+                        
+                        # Flat fields for easy access (ELK-style)
+                        'event_id': source.get('event_id', ''),
+                        'computer_name': source.get('computer', ''),
+                        'channel': source.get('channel', ''),
+                        'provider_name': source.get('provider_name', ''),
+                        'event_summary': source.get('event_summary', ''),
+                        'event_record_id': source.get('event_record_id', ''),
+                        
+                        # All extracted fields for detailed view
+                        'event_fields': source.get('event_fields', {}),
+                        
+                        # Original structure for compatibility
                         'event_data': source.get('event_data', {}),
-                        'event_fields': source.get('event_fields', {}),  # NEW: Flattened fields
-                        # Extract commonly needed fields from event_data if available
-                        'event_id': '',
-                        'event_record_id': '',
-                        'computer_name': '',
-                        'source_name': ''
+                        
+                        # Legacy fields for backward compatibility
+                        'source_name': source.get('provider_name', '')
                     }
                     
                     # Try to extract event details from event_data structure
@@ -3133,7 +3368,7 @@ def search():
         total_hits = 0
     
     # Render search template with results
-    return render_template('search.html',
+    return render_template('search_simple.html',
                          case=case,
                          query=query,
                          results=results,

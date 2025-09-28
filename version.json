@@ -1,6 +1,6 @@
 {
-  "version": "7.0.146",
+  "version": "7.0.148",
   "release_date": "2025-09-27",
-  "description": "DEBUG VERSION: Enhanced fallback + timestamp fixes + table troubleshooting",
+  "description": "PROPER ARCHITECTURE: Separated indexing from rules + filename tagging + clean re-indexing",
   "build": "production"
 }

@@ -956,9 +956,9 @@ log "Installation framework complete. Application files will be created next."
 # Create version file
 # Extract version from version.json and write to VERSION file
 if [ -f "$SCRIPT_DIR/version.json" ]; then
-    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.127")
+    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.148")
 else
-    VERSION="7.0.127"
+    VERSION="7.0.148"
 fi
 echo "$VERSION" > /opt/casescope/VERSION
 

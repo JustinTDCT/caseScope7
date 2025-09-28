@@ -40,12 +40,13 @@ fi
 
 # Extract version from version.json for logging
 if [ -f "$SCRIPT_DIR/version.json" ]; then
-    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.127")
+    VERSION=$(python3 -c "import json; print(json.load(open('$SCRIPT_DIR/version.json'))['version'])" 2>/dev/null || echo "7.0.148")
 else
-    VERSION="7.0.127"
+    VERSION="7.0.148"
 fi
 
 log "Starting caseScope v$VERSION application deployment..."
+log "Architecture: Separated indexing from rule processing + ELK-style flat fields"
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
