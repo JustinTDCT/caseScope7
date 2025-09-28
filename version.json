@@ -1,6 +1,6 @@
 {
-  "version": "7.0.145",
+  "version": "7.0.146",
   "release_date": "2025-09-27",
-  "description": "TABLE FORMAT: Wazuh-style table + actual event timestamps + field headers",
+  "description": "DEBUG VERSION: Enhanced fallback + timestamp fixes + table troubleshooting",
   "build": "production"
 }
