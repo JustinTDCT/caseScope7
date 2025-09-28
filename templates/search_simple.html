@@ -18,7 +18,7 @@
                                 <div class="input-group">
                                     <input type="text" 
                                            class="form-control" 
-                                           name="query" 
+                                           name="q" 
                                            value="{{ query if query else '' }}" 
                                            placeholder="Search events... (e.g., '4625 AND administrator', 'failed logon', Event ID 1149)"
                                            autocomplete="off">
@@ -281,7 +281,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const value = this.getAttribute('data-value');
             
             if (field && value) {
-                const searchInput = document.querySelector('input[name="query"]');
+                const searchInput = document.querySelector('input[name="q"]');  // Fixed: changed from "query" to "q"
                 const currentQuery = searchInput.value.trim();
                 
                 // Create search term

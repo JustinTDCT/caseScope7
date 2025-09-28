@@ -1082,15 +1082,42 @@ def extract_evtx_fields(event_data):
                         value = data_item.get('#text') or data_item.get('text') or data_item.get('value')
                         
                         if name and value is not None:
-                            # Convert to lowercase for consistency
+                            # Convert to lowercase for consistency and create nested field names
                             field_name = str(name).lower().replace(' ', '_')
                             fields[field_name] = str(value)
+                            # Also create event_data.fieldname format for compatibility
+                            fields[f'event_data.{field_name}'] = str(value)
             
             # Handle direct fields (alternative format)
             for key, value in event_data_section.items():
                 if key not in ['Data', 'data'] and value is not None:
                     field_name = str(key).lower().replace(' ', '_')
                     fields[field_name] = str(value)
+                    # Also create event_data.fieldname format
+                    fields[f'event_data.{field_name}'] = str(value)
+        
+        # Also extract from nested structures recursively
+        def extract_nested_fields(data, prefix=''):
+            """Recursively extract fields from nested structures"""
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    if isinstance(value, dict):
+                        # Recurse into nested dictionaries
+                        new_prefix = f"{prefix}.{key.lower()}" if prefix else key.lower()
+                        extract_nested_fields(value, new_prefix)
+                    elif isinstance(value, list):
+                        # Handle arrays
+                        for i, item in enumerate(value[:10]):  # Limit to first 10 items
+                            if isinstance(item, dict):
+                                new_prefix = f"{prefix}.{key.lower()}[{i}]" if prefix else f"{key.lower()}[{i}]"
+                                extract_nested_fields(item, new_prefix)
+                    elif value is not None and str(value).strip():
+                        # Store the field
+                        field_name = f"{prefix}.{key.lower()}" if prefix else key.lower()
+                        fields[field_name] = str(value)
+        
+        # Extract nested fields from the entire event structure
+        extract_nested_fields(event, 'event')
         
         # Create event summary (like Windows Event Viewer)
         summary_parts = []
@@ -2047,6 +2074,9 @@ def process_evtx_file(file_id):
                             logger.info(f"Record {processed_records + 1} - Event ID: {flat_fields.get('event_id')}")
                             logger.info(f"Record {processed_records + 1} - Event timestamp: {event_timestamp}")
                             logger.info(f"Record {processed_records + 1} - Summary: {flat_fields.get('event_summary', 'N/A')}")
+                            logger.info(f"Record {processed_records + 1} - Sample flat fields: {dict(list(flat_fields.items())[:5])}")
+                            logger.info(f"Record {processed_records + 1} - Original event_data keys: {list(event_data.keys()) if isinstance(event_data, dict) else 'Not a dict'}")
+                            logger.info(f"Record {processed_records + 1} - Sanitized event_data keys: {list(sanitized_event_data.keys()) if isinstance(sanitized_event_data, dict) else 'Not a dict'}")
                             
                     except Exception as extract_error:
                         logger.error(f"Error extracting EVTX fields: {extract_error}")
@@ -3367,8 +3397,30 @@ def search():
     
     # Debug logging for search results
     logger.info(f"Search debug - Query: '{query}', Results: {len(results)}, Case: {case.name if case else 'None'}")
+    logger.info(f"Search debug - Index: {index_name}, Total hits: {total_hits}")
     if results:
         logger.info(f"First result sample: {list(results[0].keys()) if results[0] else 'Empty result'}")
+        logger.info(f"First result event_id: {results[0].get('event_id', 'N/A')}")
+        logger.info(f"First result event_summary: {results[0].get('event_summary', 'N/A')}")
+    else:
+        logger.info("No results returned - checking if index exists and has data")
+        try:
+            # Check if index exists and has documents
+            index_stats = opensearch_client.indices.stats(index=index_name)
+            doc_count = index_stats['indices'][index_name]['total']['docs']['count']
+            logger.info(f"Index {index_name} has {doc_count} documents")
+            
+            # Try a simple match_all query to see if there's any data
+            test_query = {"query": {"match_all": {}}, "size": 1}
+            test_response = opensearch_client.search(index=index_name, body=test_query)
+            test_hits = test_response['hits']['total']['value']
+            logger.info(f"Test match_all query returned {test_hits} hits")
+            if test_hits > 0:
+                sample_doc = test_response['hits']['hits'][0]['_source']
+                logger.info(f"Sample document keys: {list(sample_doc.keys())}")
+                logger.info(f"Sample document event_id: {sample_doc.get('event_id', 'N/A')}")
+        except Exception as debug_error:
+            logger.error(f"Debug query failed: {debug_error}")
     
     # Render search template with results
     return render_template('search_simple.html',
