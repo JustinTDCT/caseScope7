@@ -1,6 +1,6 @@
 {
-  "version": "7.0.156",
+  "version": "7.0.157",
   "release_date": "2025-09-27",
-  "description": "SEARCH FIX: Auto-select case + show all records by default + comprehensive debugging",
+  "description": "SEARCH COMPLETE: Fixed template condition + auto-select case + show all records by default",
   "build": "production"
 }
