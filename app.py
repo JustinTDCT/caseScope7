@@ -2738,14 +2738,30 @@ def clear_pending_files():
 def search():
     """Search events in OpenSearch with proper error handling"""
     selected_case_id = session.get('selected_case_id')
+    
+    # If no case is selected, automatically select the first available case
     if not selected_case_id:
-        flash('Please select a case first.', 'error')
-        return redirect(url_for('system_dashboard'))
+        first_case = Case.query.filter_by(is_active=True).first()
+        if first_case:
+            selected_case_id = first_case.id
+            session['selected_case_id'] = selected_case_id
+            logger.info(f"Auto-selected case {first_case.id} ({first_case.name}) for search")
+        else:
+            flash('No active cases found. Please create a case first.', 'error')
+            return redirect(url_for('system_dashboard'))
     
     case = Case.query.get(selected_case_id)
     if not case or not case.is_active:
-        flash('Case not found or inactive.', 'error')
-        return redirect(url_for('system_dashboard'))
+        # Try to find another active case
+        first_case = Case.query.filter_by(is_active=True).first()
+        if first_case:
+            selected_case_id = first_case.id
+            session['selected_case_id'] = selected_case_id
+            case = first_case
+            logger.info(f"Switched to case {first_case.id} ({first_case.name}) for search")
+        else:
+            flash('No active cases found.', 'error')
+            return redirect(url_for('system_dashboard'))
     
     # Get search parameters
     query = request.args.get('q', '').strip()
@@ -2844,7 +2860,8 @@ def search():
         except Exception as index_check_error:
             logger.error(f"Error checking index existence: {index_check_error}")
         
-        if query or rule_violations or file_id:
+        # Always perform search - if no query, show all records
+        if True:  # Changed from: if query or rule_violations or file_id:
             # Convert to plain text search - search for actual values in event content
             if query:
                 original_query = query
@@ -3071,22 +3088,38 @@ def search():
                     "_source": True
                 }
             else:
-                # Build OpenSearch query with preference for documents that have event_data
-                search_body = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"term": {"case_id": selected_case_id}},
-                            # CRITICAL FIX: Only search documents that have event_data field
-                            {"exists": {"field": "event_data"}}
-                        ],
-                        "filter": []
+                # If no query provided, show all records for the case
+                if not query and not rule_violations and not file_id:
+                    logger.info("No search query provided - showing all records for case")
+                    search_body = {
+                        "query": {
+                            "bool": {
+                                "must": [
+                                    {"term": {"case_id": selected_case_id}},
+                                    {"exists": {"field": "event_data"}}
+                                ]
+                            }
+                        },
+                        "sort": [{"timestamp": {"order": "desc"}}],
+                        "size": 100
                     }
-                },
-                "sort": [{"timestamp": {"order": "desc"}}],
-                "size": 100
-                # TEMPORARILY REMOVED _source.excludes to test if it's causing the empty event_data
-            }
+                else:
+                    # Build OpenSearch query with preference for documents that have event_data
+                    search_body = {
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {"term": {"case_id": selected_case_id}},
+                                # CRITICAL FIX: Only search documents that have event_data field
+                                {"exists": {"field": "event_data"}}
+                            ],
+                            "filter": []
+                        }
+                    },
+                    "sort": [{"timestamp": {"order": "desc"}}],
+                    "size": 100
+                    # TEMPORARILY REMOVED _source.excludes to test if it's causing the empty event_data
+                }
             
             # Add file filter if specified
             if file_id:
