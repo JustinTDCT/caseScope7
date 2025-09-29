@@ -15,6 +15,13 @@ from opensearchpy import OpenSearch, helpers
 import Evtx.Evtx as evtx
 import xmltodict
 
+# SIGMA processing imports
+from sigma.collection import SigmaCollection
+from sigma.backends.opensearch import OpensearchBackend
+from sigma.processing.pipeline import ProcessingPipeline, ProcessingItem
+from sigma.processing.transformations import FieldMappingTransformation
+from sigma.exceptions import SigmaError
+
 # Setup logging
 logging.basicConfig(
     level=logging.DEBUG,
@@ -30,7 +37,7 @@ logger.info("="*80)
 # Add app directory to path for imports
 sys.path.insert(0, '/opt/casescope/app')
 logger.info("Importing Flask app and database models...")
-from main import app, db, CaseFile, Case
+from main import app, db, CaseFile, Case, SigmaRule, SigmaViolation
 logger.info("Flask app and models imported successfully")
 
 # OpenSearch connection
@@ -44,6 +51,94 @@ opensearch_client = OpenSearch(
     ssl_show_warn=False
 )
 logger.info("OpenSearch client initialized")
+
+# caseScope SIGMA Field Mapping
+# Maps standard Sigma field names to our flattened EVTX structure
+CASESCOPE_FIELD_MAPPING = {
+    # System fields
+    'EventID': 'System.EventID.#text',
+    'Provider_Name': 'System.Provider.@Name',
+    'Computer': 'System.Computer',
+    'Channel': 'System.Channel',
+    'Level': 'System.Level',
+    'Task': 'System.Task',
+    'Keywords': 'System.Keywords',
+    'TimeCreated': 'System.TimeCreated.@SystemTime',
+    
+    # Common EventData fields (Sysmon & Security)
+    'CommandLine': 'EventData.CommandLine',
+    'Image': 'EventData.Image',
+    'ParentImage': 'EventData.ParentImage',
+    'ParentCommandLine': 'EventData.ParentCommandLine',
+    'TargetFilename': 'EventData.TargetFilename',
+    'SourceIp': 'EventData.SourceIp',
+    'DestinationIp': 'EventData.DestinationIp',
+    'User': 'EventData.User',
+    'TargetUserName': 'EventData.TargetUserName',
+    'SubjectUserName': 'EventData.SubjectUserName',
+    'LogonType': 'EventData.LogonType',
+    'IpAddress': 'EventData.IpAddress',
+    'WorkstationName': 'EventData.WorkstationName',
+    'TargetObject': 'EventData.TargetObject',
+    'Details': 'EventData.Details',
+    'ProcessId': 'EventData.ProcessId',
+    'ParentProcessId': 'EventData.ParentProcessId',
+    'SourcePort': 'EventData.SourcePort',
+    'DestinationPort': 'EventData.DestinationPort',
+    'Protocol': 'EventData.Protocol',
+    'Initiated': 'EventData.Initiated',
+    'SourceHostname': 'EventData.SourceHostname',
+    'DestinationHostname': 'EventData.DestinationHostname',
+    'Hashes': 'EventData.Hashes',
+    'IntegrityLevel': 'EventData.IntegrityLevel',
+    'OriginalFileName': 'EventData.OriginalFileName',
+    'Product': 'EventData.Product',
+    'Company': 'EventData.Company',
+    'Description': 'EventData.Description',
+    'FileVersion': 'EventData.FileVersion',
+    'TargetUser': 'EventData.TargetUser',
+    'ServiceName': 'EventData.ServiceName',
+    'ServiceFileName': 'EventData.ServiceFileName',
+    'ScriptBlockText': 'EventData.ScriptBlockText',
+    'Path': 'EventData.Path',
+    'Destination': 'EventData.Destination',
+    'Query': 'EventData.Query',
+    'QueryName': 'EventData.QueryName',
+    'QueryResults': 'EventData.QueryResults',
+    'RegistryKey': 'EventData.TargetObject',
+    'RegistryValue': 'EventData.Details',
+    'ImagePath': 'EventData.ImagePath',
+    'ShareName': 'EventData.ShareName',
+    'RelativeTargetName': 'EventData.RelativeTargetName',
+    'Device': 'EventData.Device',
+    'AccountName': 'EventData.AccountName',
+    'AccountDomain': 'EventData.AccountDomain',
+    'ClientAddress': 'EventData.ClientAddress',
+    'FailureCode': 'EventData.FailureCode',
+    'Status': 'EventData.Status',
+    'SubStatus': 'EventData.SubStatus',
+}
+
+def create_casescope_pipeline():
+    """
+    Create pySigma processing pipeline for caseScope EVTX structure
+    Maps Sigma standard fields to our flattened XML structure
+    """
+    field_mapping = FieldMappingTransformation(CASESCOPE_FIELD_MAPPING)
+    
+    pipeline = ProcessingPipeline(
+        name="caseScope EVTX Pipeline",
+        priority=50,
+        items=[
+            ProcessingItem(
+                identifier="casescope-field-mapping",
+                transformation=field_mapping,
+                rule_conditions=[]
+            )
+        ]
+    )
+    
+    return pipeline
 
 @celery_app.task(bind=True, name='tasks.index_evtx_file')
 def index_evtx_file(self, file_id):
@@ -188,32 +283,164 @@ def process_sigma_rules(self, file_id, index_name):
         file_id: Database ID of the CaseFile
         index_name: OpenSearch index to scan
     """
+    logger.info("="*80)
+    logger.info(f"STARTING SIGMA RULE PROCESSING - File ID: {file_id}, Index: {index_name}")
+    logger.info("="*80)
+    
     with app.app_context():
         try:
             case_file = CaseFile.query.get(file_id)
             if not case_file:
+                logger.error(f"File ID {file_id} not found in database")
                 return {'status': 'error', 'message': f'File ID {file_id} not found'}
             
-            # TODO: Implement SIGMA rule processing
-            # This will be implemented in Phase 4
-            print(f"[Rules] SIGMA rule processing for {case_file.original_filename} (placeholder)")
+            case = Case.query.get(case_file.case_id)
+            if not case:
+                return {'status': 'error', 'message': f'Case ID {case_file.case_id} not found'}
             
-            # For now, just mark as completed
-            time.sleep(2)  # Simulate processing
+            # Get all enabled SIGMA rules
+            enabled_rules = SigmaRule.query.filter_by(is_enabled=True).all()
+            logger.info(f"Found {len(enabled_rules)} enabled SIGMA rules to process")
             
+            if not enabled_rules:
+                logger.info("No enabled rules found, marking as completed")
+                case_file.indexing_status = 'Completed'
+                db.session.commit()
+                return {'status': 'success', 'message': 'No enabled rules', 'violations': 0}
+            
+            # Create pipeline for field mapping
+            pipeline = create_casescope_pipeline()
+            backend = OpensearchBackend(processing_pipeline=pipeline)
+            
+            total_violations = 0
+            rules_processed = 0
+            rules_failed = 0
+            
+            for rule in enabled_rules:
+                try:
+                    logger.info(f"Processing rule: {rule.title}")
+                    
+                    # Parse Sigma rule
+                    try:
+                        sigma_collection = SigmaCollection.from_yaml(rule.rule_yaml)
+                    except Exception as e:
+                        logger.warning(f"Failed to parse rule {rule.title}: {e}")
+                        rules_failed += 1
+                        continue
+                    
+                    # Convert to OpenSearch query
+                    try:
+                        queries = backend.convert(sigma_collection)
+                        # Backend returns a list of queries (one per rule in collection)
+                        if isinstance(queries, list):
+                            opensearch_query = queries[0] if queries else None
+                        else:
+                            opensearch_query = queries
+                        
+                        if not opensearch_query:
+                            logger.warning(f"No query generated for rule {rule.title}")
+                            rules_failed += 1
+                            continue
+                    except Exception as e:
+                        logger.warning(f"Failed to convert rule {rule.title}: {e}")
+                        rules_failed += 1
+                        continue
+                    
+                    # Execute query against index
+                    try:
+                        # Build complete search body
+                        search_body = {
+                            "query": {
+                                "query_string": {
+                                    "query": opensearch_query,
+                                    "analyze_wildcard": True,
+                                    "default_operator": "AND"
+                                }
+                            },
+                            "size": 1000  # Max results per rule
+                        }
+                        
+                        response = opensearch_client.search(
+                            index=index_name,
+                            body=search_body
+                        )
+                        
+                        hits = response['hits']['hits']
+                        logger.info(f"Rule '{rule.title}' matched {len(hits)} events")
+                        
+                        # Create violation records for matches
+                        for hit in hits:
+                            # Check if violation already exists for this event/rule combo
+                            existing = SigmaViolation.query.filter_by(
+                                file_id=file_id,
+                                rule_id=rule.id,
+                                event_id=hit['_id']
+                            ).first()
+                            
+                            if not existing:
+                                violation = SigmaViolation(
+                                    case_id=case.id,
+                                    file_id=file_id,
+                                    rule_id=rule.id,
+                                    event_id=hit['_id'],
+                                    event_data=json.dumps(hit['_source']),
+                                    matched_fields=json.dumps({}),  # Could extract matched fields
+                                    severity=rule.level
+                                )
+                                db.session.add(violation)
+                                total_violations += 1
+                        
+                        # Commit after each rule
+                        db.session.commit()
+                        rules_processed += 1
+                        
+                    except Exception as e:
+                        logger.warning(f"Search failed for rule {rule.title}: {e}")
+                        rules_failed += 1
+                        continue
+                
+                except Exception as e:
+                    logger.error(f"Unexpected error processing rule {rule.title}: {e}")
+                    rules_failed += 1
+                    continue
+                
+                # Update task progress
+                progress = int((rules_processed + rules_failed) / len(enabled_rules) * 100)
+                self.update_state(
+                    state='PROGRESS',
+                    meta={
+                        'current': rules_processed + rules_failed,
+                        'total': len(enabled_rules),
+                        'violations': total_violations,
+                        'status': f'Processed {rules_processed}/{len(enabled_rules)} rules'
+                    }
+                )
+            
+            # Update file record with violation count
+            case_file.violation_count = total_violations
             case_file.indexing_status = 'Completed'
             db.session.commit()
             
-            print(f"[Rules] Completed processing for {case_file.original_filename}")
+            logger.info("="*80)
+            logger.info(f"SIGMA PROCESSING COMPLETED: {total_violations} violations found")
+            logger.info(f"Rules processed: {rules_processed}, Failed: {rules_failed}")
+            logger.info("="*80)
             
             return {
                 'status': 'success',
-                'message': 'SIGMA rules processed (placeholder)',
-                'violations': 0
+                'message': f'Processed {rules_processed} rules, found {total_violations} violations',
+                'violations': total_violations,
+                'rules_processed': rules_processed,
+                'rules_failed': rules_failed
             }
         
         except Exception as e:
-            print(f"[Rules] Error: {e}")
+            logger.error("="*80)
+            logger.error(f"SIGMA PROCESSING FAILED: {e}")
+            logger.error("="*80)
+            import traceback
+            logger.error(traceback.format_exc())
+            
             case_file = CaseFile.query.get(file_id)
             if case_file:
                 case_file.indexing_status = 'Failed'

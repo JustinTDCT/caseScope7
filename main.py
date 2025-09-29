@@ -124,6 +124,54 @@ class CaseFile(db.Model):
     def __repr__(self):
         return f'<CaseFile {self.original_filename} in Case {self.case_id}>'
 
+class SigmaRule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    title = db.Column(db.String(500))
+    description = db.Column(db.Text)
+    author = db.Column(db.String(200))
+    level = db.Column(db.String(20))  # low, medium, high, critical
+    status = db.Column(db.String(20))  # test, experimental, stable
+    rule_yaml = db.Column(db.Text, nullable=False)  # Full YAML content
+    rule_hash = db.Column(db.String(64), unique=True)  # SHA256 of YAML
+    is_enabled = db.Column(db.Boolean, default=True)
+    is_builtin = db.Column(db.Boolean, default=False)  # Built-in vs user-uploaded
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    uploaded_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    category = db.Column(db.String(100))  # process_creation, network_connection, etc.
+    tags = db.Column(db.Text)  # JSON array of tags
+    
+    # Relationships
+    uploader = db.relationship('User', backref='uploaded_rules')
+    
+    def __repr__(self):
+        return f'<SigmaRule {self.name}>'
+
+class SigmaViolation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    case_id = db.Column(db.Integer, db.ForeignKey('case.id'), nullable=False)
+    file_id = db.Column(db.Integer, db.ForeignKey('case_file.id'), nullable=False)
+    rule_id = db.Column(db.Integer, db.ForeignKey('sigma_rule.id'), nullable=False)
+    event_id = db.Column(db.String(100))  # OpenSearch document ID
+    event_data = db.Column(db.Text)  # JSON of matched event
+    matched_fields = db.Column(db.Text)  # JSON of fields that matched
+    severity = db.Column(db.String(20))  # From rule level
+    detected_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_reviewed = db.Column(db.Boolean, default=False)
+    reviewed_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    reviewed_at = db.Column(db.DateTime)
+    notes = db.Column(db.Text)
+    
+    # Relationships
+    case = db.relationship('Case', backref='violations')
+    file = db.relationship('CaseFile', backref='violations')
+    rule = db.relationship('SigmaRule', backref='violations')
+    reviewer = db.relationship('User', backref='reviewed_violations')
+    
+    def __repr__(self):
+        return f'<SigmaViolation Rule:{self.rule_id} File:{self.file_id}>'
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -484,6 +532,89 @@ def rerun_rules(file_id):
     
     return redirect(url_for('list_files'))
 
+@app.route('/violations', methods=['GET'])
+@login_required
+def violations():
+    """View SIGMA rule violations for active case"""
+    # Check for active case
+    case_id = session.get('active_case_id')
+    if not case_id:
+        flash('Please select a case first', 'warning')
+        return redirect(url_for('select_case'))
+    
+    case = Case.query.get(case_id)
+    if not case:
+        flash('Case not found', 'error')
+        return redirect(url_for('select_case'))
+    
+    # Get filter parameters
+    severity_filter = request.args.get('severity', 'all')
+    rule_filter = request.args.get('rule', 'all')
+    file_filter = request.args.get('file', 'all')
+    reviewed_filter = request.args.get('reviewed', 'all')
+    page = int(request.args.get('page', 1))
+    per_page = 50
+    
+    # Build query
+    query = SigmaViolation.query.filter_by(case_id=case_id)
+    
+    if severity_filter != 'all':
+        query = query.filter_by(severity=severity_filter)
+    
+    if rule_filter != 'all':
+        query = query.filter_by(rule_id=int(rule_filter))
+    
+    if file_filter != 'all':
+        query = query.filter_by(file_id=int(file_filter))
+    
+    if reviewed_filter == 'reviewed':
+        query = query.filter_by(is_reviewed=True)
+    elif reviewed_filter == 'unreviewed':
+        query = query.filter_by(is_reviewed=False)
+    
+    # Get paginated results
+    violations_paginated = query.order_by(SigmaViolation.detected_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    
+    # Get filter options
+    all_rules = SigmaRule.query.join(SigmaViolation).filter(SigmaViolation.case_id == case_id).distinct().all()
+    all_files = CaseFile.query.join(SigmaViolation).filter(SigmaViolation.case_id == case_id).distinct().all()
+    
+    # Get statistics
+    total_violations = SigmaViolation.query.filter_by(case_id=case_id).count()
+    critical_count = SigmaViolation.query.filter_by(case_id=case_id, severity='critical').count()
+    high_count = SigmaViolation.query.filter_by(case_id=case_id, severity='high').count()
+    medium_count = SigmaViolation.query.filter_by(case_id=case_id, severity='medium').count()
+    low_count = SigmaViolation.query.filter_by(case_id=case_id, severity='low').count()
+    reviewed_count = SigmaViolation.query.filter_by(case_id=case_id, is_reviewed=True).count()
+    
+    return render_violations_page(
+        case, violations_paginated.items, violations_paginated.total,
+        page, per_page, severity_filter, rule_filter, file_filter, reviewed_filter,
+        all_rules, all_files, total_violations, critical_count, high_count,
+        medium_count, low_count, reviewed_count
+    )
+
+@app.route('/violation/<int:violation_id>/review', methods=['POST'])
+@login_required
+def review_violation(violation_id):
+    """Mark a violation as reviewed"""
+    violation = SigmaViolation.query.get(violation_id)
+    if not violation:
+        return jsonify({'status': 'error', 'message': 'Violation not found'}), 404
+    
+    notes = request.form.get('notes', '')
+    
+    violation.is_reviewed = True
+    violation.reviewed_by = current_user.id
+    violation.reviewed_at = datetime.utcnow()
+    violation.notes = notes
+    
+    db.session.commit()
+    
+    flash('✓ Violation marked as reviewed', 'success')
+    return redirect(url_for('violations'))
 
 @app.route('/search', methods=['GET', 'POST'])
 @login_required
@@ -615,6 +746,213 @@ def search():
                 print(f"[Search] Error: {e}")
     
     return render_search_page(case, query_str, results, total_hits, page, per_page, error_message, len(indexed_files))
+
+@app.route('/sigma-rules/download', methods=['POST'])
+@login_required
+def download_sigma_rules():
+    """Download SIGMA rules from SigmaHQ GitHub repository"""
+    import hashlib
+    import tempfile
+    import shutil
+    import subprocess
+    
+    try:
+        # Create temp directory for cloning
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_path = os.path.join(tmpdir, 'sigma')
+            
+            # Clone SigmaHQ repository (shallow clone for speed)
+            flash('📥 Downloading SIGMA rules from GitHub...', 'info')
+            result = subprocess.run(
+                ['git', 'clone', '--depth', '1', 'https://github.com/SigmaHQ/sigma.git', repo_path],
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            
+            if result.returncode != 0:
+                flash(f'Error cloning repository: {result.stderr}', 'error')
+                return redirect(url_for('sigma_rules'))
+            
+            # Parse and import rules from rules/ directory
+            rules_dir = os.path.join(repo_path, 'rules')
+            imported_count = 0
+            skipped_count = 0
+            error_count = 0
+            
+            if os.path.exists(rules_dir):
+                import yaml
+                
+                for root, dirs, files in os.walk(rules_dir):
+                    for file in files:
+                        if file.endswith('.yml') or file.endswith('.yaml'):
+                            file_path = os.path.join(root, file)
+                            
+                            try:
+                                with open(file_path, 'r', encoding='utf-8') as f:
+                                    yaml_content = f.read()
+                                    rule_data = yaml.safe_load(yaml_content)
+                                
+                                # Skip non-detection rules
+                                if not rule_data.get('detection'):
+                                    continue
+                                
+                                # Calculate hash
+                                rule_hash = hashlib.sha256(yaml_content.encode()).hexdigest()
+                                
+                                # Check if already exists
+                                existing = SigmaRule.query.filter_by(rule_hash=rule_hash).first()
+                                if existing:
+                                    skipped_count += 1
+                                    continue
+                                
+                                # Extract logsource
+                                logsource = rule_data.get('logsource', {})
+                                category = logsource.get('category', logsource.get('product', 'unknown'))
+                                
+                                # Create rule
+                                rule = SigmaRule(
+                                    name=rule_data.get('id', file.replace('.yml', '').replace('.yaml', '')),
+                                    title=rule_data.get('title', 'Untitled Rule'),
+                                    description=rule_data.get('description', ''),
+                                    author=rule_data.get('author', 'SigmaHQ'),
+                                    level=rule_data.get('level', 'medium'),
+                                    status=rule_data.get('status', 'stable'),
+                                    category=category,
+                                    tags=json.dumps(rule_data.get('tags', [])),
+                                    rule_yaml=yaml_content,
+                                    rule_hash=rule_hash,
+                                    is_builtin=False,
+                                    is_enabled=False,  # Disabled by default for bulk imports
+                                    uploaded_by=current_user.id
+                                )
+                                
+                                db.session.add(rule)
+                                imported_count += 1
+                                
+                                # Commit every 100 rules
+                                if imported_count % 100 == 0:
+                                    db.session.commit()
+                            
+                            except Exception as e:
+                                error_count += 1
+                                continue
+                
+                # Final commit
+                db.session.commit()
+            
+            flash(f'✓ Import complete: {imported_count} new rules added, {skipped_count} duplicates skipped, {error_count} errors', 'success')
+            return redirect(url_for('sigma_rules'))
+    
+    except subprocess.TimeoutExpired:
+        flash('Download timed out. Please try again.', 'error')
+        return redirect(url_for('sigma_rules'))
+    except Exception as e:
+        flash(f'Error downloading rules: {str(e)}', 'error')
+        return redirect(url_for('sigma_rules'))
+
+@app.route('/sigma-rules', methods=['GET', 'POST'])
+@login_required
+def sigma_rules():
+    """SIGMA Rules Management Interface"""
+    import hashlib
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'upload':
+            # Handle file upload
+            if 'rule_file' not in request.files:
+                flash('No file selected', 'error')
+                return redirect(url_for('sigma_rules'))
+            
+            file = request.files['rule_file']
+            if file.filename == '':
+                flash('No file selected', 'error')
+                return redirect(url_for('sigma_rules'))
+            
+            if not file.filename.endswith('.yml') and not file.filename.endswith('.yaml'):
+                flash('Only YAML files (.yml, .yaml) are supported', 'error')
+                return redirect(url_for('sigma_rules'))
+            
+            try:
+                # Read YAML content
+                yaml_content = file.read().decode('utf-8')
+                
+                # Parse YAML to extract metadata
+                import yaml
+                rule_data = yaml.safe_load(yaml_content)
+                
+                # Calculate hash
+                rule_hash = hashlib.sha256(yaml_content.encode()).hexdigest()
+                
+                # Check for duplicates
+                existing = SigmaRule.query.filter_by(rule_hash=rule_hash).first()
+                if existing:
+                    flash(f'Rule already exists: {existing.title}', 'warning')
+                    return redirect(url_for('sigma_rules'))
+                
+                # Create new rule
+                rule = SigmaRule(
+                    name=rule_data.get('id', file.filename.replace('.yml', '').replace('.yaml', '')),
+                    title=rule_data.get('title', 'Untitled Rule'),
+                    description=rule_data.get('description', ''),
+                    author=rule_data.get('author', 'Unknown'),
+                    level=rule_data.get('level', 'medium'),
+                    status=rule_data.get('status', 'experimental'),
+                    category=rule_data.get('logsource', {}).get('category', 'unknown'),
+                    tags=json.dumps(rule_data.get('tags', [])),
+                    rule_yaml=yaml_content,
+                    rule_hash=rule_hash,
+                    is_builtin=False,
+                    is_enabled=True,
+                    uploaded_by=current_user.id
+                )
+                
+                db.session.add(rule)
+                db.session.commit()
+                
+                flash(f'✓ Rule uploaded successfully: {rule.title}', 'success')
+                return redirect(url_for('sigma_rules'))
+                
+            except Exception as e:
+                flash(f'Error uploading rule: {str(e)}', 'error')
+                return redirect(url_for('sigma_rules'))
+        
+        elif action == 'toggle':
+            # Toggle rule enabled/disabled
+            rule_id = request.form.get('rule_id')
+            rule = SigmaRule.query.get(rule_id)
+            if rule:
+                rule.is_enabled = not rule.is_enabled
+                db.session.commit()
+                status = 'enabled' if rule.is_enabled else 'disabled'
+                flash(f'Rule {status}: {rule.title}', 'success')
+            return redirect(url_for('sigma_rules'))
+        
+        elif action == 'delete':
+            # Delete user-uploaded rule (not built-in)
+            rule_id = request.form.get('rule_id')
+            rule = SigmaRule.query.get(rule_id)
+            if rule and not rule.is_builtin:
+                db.session.delete(rule)
+                db.session.commit()
+                flash(f'Rule deleted: {rule.title}', 'success')
+            elif rule and rule.is_builtin:
+                flash('Cannot delete built-in rules', 'error')
+            return redirect(url_for('sigma_rules'))
+    
+    # GET request - show rules
+    all_rules = SigmaRule.query.order_by(SigmaRule.is_builtin.desc(), SigmaRule.level.desc(), SigmaRule.title).all()
+    enabled_count = SigmaRule.query.filter_by(is_enabled=True).count()
+    total_count = SigmaRule.query.count()
+    
+    # Get violation statistics
+    total_violations = SigmaViolation.query.count()
+    critical_violations = SigmaViolation.query.join(SigmaRule).filter(SigmaRule.level == 'critical').count()
+    high_violations = SigmaViolation.query.join(SigmaRule).filter(SigmaRule.level == 'high').count()
+    
+    return render_sigma_rules_page(all_rules, enabled_count, total_count, total_violations, critical_violations, high_violations)
 
 
 def get_event_description(event_id, channel, provider, event_data):
@@ -827,13 +1165,14 @@ def render_sidebar_menu(active_page=''):
         <a href="/upload" class="menu-item {'active' if active_page == 'upload' else ''}">📤 Upload Files</a>
         <a href="/files" class="menu-item {'active' if active_page == 'files' else ''}">📄 List Files</a>
         <a href="/search" class="menu-item {'active' if active_page == 'search' else ''}">🔍 Search Events</a>
+        <a href="/violations" class="menu-item {'active' if active_page == 'violations' else ''}">🚨 SIGMA Violations</a>
         
-        <h3 class="menu-title">Management</h3>
-        <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
-        <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
-        <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
-        <a href="/sigma-rules" class="menu-item placeholder">📋 Update SIGMA Rules (Coming Soon)</a>
-        <a href="/event-id-database" class="menu-item placeholder">🔄 Update Event ID Database (Coming Soon)</a>
+            <h3 class="menu-title">Management</h3>
+            <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
+            <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
+            <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
+            <a href="/sigma-rules" class="menu-item {'active' if active_page == 'sigma_rules' else ''}">📋 SIGMA Rules</a>
+            <a href="/event-id-database" class="menu-item placeholder">🔄 Update Event ID Database (Coming Soon)</a>
     '''
 
 
@@ -3136,6 +3475,673 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
     </html>
     '''
 
+def render_sigma_rules_page(all_rules, enabled_count, total_count, total_violations, critical_violations, high_violations):
+    """Render SIGMA Rules Management Page"""
+    from flask import get_flashed_messages
+    
+    # Flash messages
+    flash_messages_html = ""
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        icon = "⚠️" if category == "warning" else "❌" if category == "error" else "✅"
+        flash_messages_html += f'''
+        <div class="flash-message flash-{category}">
+            <span class="flash-icon">{icon}</span>
+            <span class="flash-text">{message}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        '''
+    
+    # Build rules table
+    rules_html = ""
+    for rule in all_rules:
+        # Parse tags
+        try:
+            tags = json.loads(rule.tags) if rule.tags else []
+            tags_html = ' '.join([f'<span class="tag">{tag}</span>' for tag in tags[:5]])
+        except:
+            tags_html = ''
+        
+        # Level badge color
+        level_colors = {
+            'critical': '#d32f2f',
+            'high': '#f44336',
+            'medium': '#ff9800',
+            'low': '#2196f3',
+            'informational': '#4caf50'
+        }
+        level_color = level_colors.get(rule.level, '#757575')
+        
+        # Status badge
+        status_emoji = '✓' if rule.is_enabled else '✗'
+        status_class = 'enabled' if rule.is_enabled else 'disabled'
+        
+        # Built-in badge
+        builtin_badge = '<span class="builtin-badge">🏢 Built-in</span>' if rule.is_builtin else '<span class="user-badge">👤 Custom</span>'
+        
+        # Violation count for this rule
+        rule_violations = SigmaViolation.query.filter_by(rule_id=rule.id).count()
+        
+        rules_html += f'''
+        <tr class="rule-row">
+            <td>
+                <div class="rule-title">{rule.title}</div>
+                <div class="rule-meta">{builtin_badge} {tags_html}</div>
+            </td>
+            <td><span class="level-badge" style="background: {level_color};">{rule.level.upper()}</span></td>
+            <td>{rule.category}</td>
+            <td>{rule.author}</td>
+            <td>{rule_violations:,}</td>
+            <td>
+                <span class="status-badge status-{status_class}">{status_emoji} {('Enabled' if rule.is_enabled else 'Disabled')}</span>
+            </td>
+            <td class="actions-cell">
+                <form method="POST" style="display: inline;">
+                    <input type="hidden" name="action" value="toggle">
+                    <input type="hidden" name="rule_id" value="{rule.id}">
+                    <button type="submit" class="btn-action btn-toggle" title="{'Disable' if rule.is_enabled else 'Enable'}">
+                        {'⏸' if rule.is_enabled else '▶️'}
+                    </button>
+                </form>
+                <button class="btn-action btn-view" onclick="viewRule({rule.id})" title="View Rule">👁️</button>
+                {f'''<form method="POST" style="display: inline;" onsubmit="return confirm('Delete this rule?');">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="rule_id" value="{rule.id}">
+                    <button type="submit" class="btn-action btn-delete" title="Delete">🗑️</button>
+                </form>''' if not rule.is_builtin else ''}
+            </td>
+        </tr>
+        <tr id="rule-details-{rule.id}" class="rule-details" style="display: none;">
+            <td colspan="7">
+                <div class="rule-yaml">
+                    <h4>Rule YAML</h4>
+                    <pre>{rule.rule_yaml}</pre>
+                </div>
+            </td>
+        </tr>
+        '''
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>SIGMA Rules - caseScope 7.1</title>
+        <style>
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                display: flex; 
+                min-height: 100vh; 
+            }}
+            .sidebar {{ 
+                width: 280px; 
+                background: linear-gradient(145deg, #303f9f, #283593); 
+                padding: 20px; 
+                box-shadow: 5px 0 20px rgba(0,0,0,0.4), inset -1px 0 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+            }}
+            .main-content {{ flex: 1; }}
+            .header {{ 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 15px 30px; 
+                display: flex; 
+                justify-content: space-between; 
+                align-items: center;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                min-height: 60px;
+            }}
+            .case-title {{ font-size: 1.3em; font-weight: 600; }}
+            .user-info {{ display: flex; align-items: center; gap: 20px; font-size: 1em; line-height: 1.2; }}
+            .sidebar-logo {{
+                text-align: center; font-size: 2.2em; font-weight: 300; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                margin-bottom: 15px; padding: 5px 0 8px 0; border-bottom: 1px solid rgba(76,175,80,0.3);
+            }}
+            .sidebar-logo .case {{ color: #4caf50; }}
+            .sidebar-logo .scope {{ color: white; }}
+            .version-badge {{
+                font-size: 0.4em; background: linear-gradient(145deg, #4caf50, #388e3c); color: white;
+                padding: 3px 6px; border-radius: 6px; margin-top: 5px; display: inline-block;
+                box-shadow: 0 2px 4px rgba(76,175,80,0.3); border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .content {{ padding: 30px; }}
+            .logout-btn {{
+                background: linear-gradient(145deg, #f44336, #d32f2f); color: white !important;
+                padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 0.9em;
+                font-weight: 500; box-shadow: 0 4px 8px rgba(244,67,54,0.3); transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .logout-btn:hover {{
+                background: linear-gradient(145deg, #ef5350, #f44336);
+                box-shadow: 0 6px 12px rgba(244,67,54,0.4); transform: translateY(-1px);
+            }}
+            .flash-message {{
+                padding: 15px 20px; margin: 20px 0; border-radius: 12px; display: flex; align-items: center;
+                gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); animation: slideIn 0.3s ease;
+            }}
+            .flash-success {{ background: linear-gradient(145deg, #4caf50, #388e3c); border: 1px solid rgba(255,255,255,0.2); }}
+            .flash-warning {{ background: linear-gradient(145deg, #ff9800, #f57c00); border: 1px solid rgba(255,255,255,0.2); }}
+            .flash-error {{ background: linear-gradient(145deg, #f44336, #d32f2f); border: 1px solid rgba(255,255,255,0.2); }}
+            .flash-icon {{ font-size: 1.5em; flex-shrink: 0; }}
+            .flash-text {{ flex: 1; font-size: 1em; line-height: 1.4; }}
+            .flash-close {{
+                background: rgba(255,255,255,0.2); border: none; color: white; font-size: 24px; font-weight: bold;
+                cursor: pointer; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center;
+                justify-content: center; transition: all 0.2s ease; flex-shrink: 0;
+            }}
+            .flash-close:hover {{ background: rgba(255,255,255,0.3); transform: scale(1.1); }}
+            @keyframes slideIn {{ from {{ transform: translateY(-20px); opacity: 0; }} to {{ transform: translateY(0); opacity: 1; }} }}
+            .stats-bar {{
+                background: linear-gradient(145deg, #3f51b5, #283593); padding: 20px; border-radius: 12px;
+                margin-bottom: 25px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            }}
+            .stat-item {{
+                text-align: center; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 8px;
+            }}
+            .stat-value {{ font-size: 2em; font-weight: bold; color: #4caf50; }}
+            .stat-label {{ font-size: 0.9em; color: rgba(255,255,255,0.7); margin-top: 5px; }}
+            .upload-box {{
+                background: linear-gradient(145deg, #3f51b5, #283593); padding: 25px; border-radius: 12px;
+                margin-bottom: 25px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            }}
+            .upload-box h3 {{ margin-top: 0; }}
+            .upload-box input[type="file"] {{
+                display: block; margin: 15px 0; padding: 10px; background: rgba(255,255,255,0.1);
+                border: 2px dashed rgba(255,255,255,0.3); border-radius: 8px; color: white; width: 100%;
+                box-sizing: border-box;
+            }}
+            .upload-box button {{
+                padding: 12px 24px; background: linear-gradient(145deg, #4caf50, #388e3c); color: white;
+                border: none; border-radius: 8px; font-size: 1em; cursor: pointer; box-shadow: 0 4px 8px rgba(76,175,80,0.3);
+            }}
+            .upload-box button:hover {{ background: linear-gradient(145deg, #66bb6a, #4caf50); }}
+            .rules-table {{
+                width: 100%; border-collapse: collapse; background: linear-gradient(145deg, #3f51b5, #283593);
+                border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            }}
+            .rules-table thead {{ background: #283593; }}
+            .rules-table th {{
+                padding: 15px; text-align: left; font-weight: 600; border-bottom: 2px solid rgba(255,255,255,0.1);
+            }}
+            .rule-row {{ cursor: pointer; transition: all 0.2s ease; border-bottom: 1px solid rgba(255,255,255,0.05); }}
+            .rule-row:hover {{ background: rgba(255,255,255,0.1); }}
+            .rule-row td {{ padding: 15px; vertical-align: top; }}
+            .rule-title {{ font-weight: 600; margin-bottom: 5px; }}
+            .rule-meta {{ font-size: 0.85em; color: rgba(255,255,255,0.7); }}
+            .level-badge {{
+                padding: 4px 10px; border-radius: 6px; font-size: 0.85em; font-weight: 600; color: white;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3); display: inline-block;
+            }}
+            .status-badge {{
+                padding: 4px 10px; border-radius: 6px; font-size: 0.85em; font-weight: 600;
+                display: inline-block;
+            }}
+            .status-enabled {{ background: linear-gradient(145deg, #4caf50, #388e3c); color: white; }}
+            .status-disabled {{ background: linear-gradient(145deg, #757575, #616161); color: white; }}
+            .tag {{
+                background: rgba(33,150,243,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.8em;
+                margin-right: 5px; border: 1px solid rgba(33,150,243,0.5);
+            }}
+            .builtin-badge {{
+                background: linear-gradient(145deg, #9c27b0, #7b1fa2); padding: 3px 8px; border-radius: 4px;
+                font-size: 0.8em; margin-right: 5px; border: 1px solid rgba(255,255,255,0.2);
+            }}
+            .user-badge {{
+                background: linear-gradient(145deg, #00bcd4, #0097a7); padding: 3px 8px; border-radius: 4px;
+                font-size: 0.8em; margin-right: 5px; border: 1px solid rgba(255,255,255,0.2);
+            }}
+            .actions-cell {{ white-space: nowrap; }}
+            .btn-action {{
+                padding: 6px 10px; margin: 0 2px; border: none; border-radius: 6px; cursor: pointer;
+                font-size: 1em; transition: all 0.2s ease; background: rgba(255,255,255,0.1);
+            }}
+            .btn-action:hover {{ background: rgba(255,255,255,0.2); transform: scale(1.1); }}
+            .btn-toggle {{ background: linear-gradient(145deg, #ff9800, #f57c00); color: white; }}
+            .btn-view {{ background: linear-gradient(145deg, #2196f3, #1976d2); color: white; }}
+            .btn-delete {{ background: linear-gradient(145deg, #f44336, #d32f2f); color: white; }}
+            .rule-details td {{ padding: 20px !important; background: rgba(0,0,0,0.3); }}
+            .rule-yaml {{ background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px; }}
+            .rule-yaml h4 {{ margin: 0 0 10px 0; color: #4caf50; }}
+            .rule-yaml pre {{
+                background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px; overflow-x: auto;
+                font-size: 0.9em; line-height: 1.5; color: #e0e0e0; margin: 0;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
+            </div>
+            
+            {render_sidebar_menu('sigma_rules')}
+        </div>
+        <div class="main-content">
+            <div class="header">
+                <div class="case-title">📋 SIGMA Rules Management</div>
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
+                    <a href="/logout" class="logout-btn">Logout</a>
+                </div>
+            </div>
+            <div class="content">
+                <h1>📋 SIGMA Rules Management</h1>
+                
+                {flash_messages_html}
+                
+                <div class="stats-bar">
+                    <div class="stat-item">
+                        <div class="stat-value">{total_count}</div>
+                        <div class="stat-label">Total Rules</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">{enabled_count}</div>
+                        <div class="stat-label">Enabled Rules</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">{total_violations:,}</div>
+                        <div class="stat-label">Total Violations</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">{critical_violations + high_violations}</div>
+                        <div class="stat-label">Critical/High Violations</div>
+                    </div>
+                </div>
+                
+                <div class="upload-box">
+                    <h3>📥 Download SigmaHQ Rules</h3>
+                    <p>Download 3000+ detection rules from the official SigmaHQ repository on GitHub.</p>
+                    <form method="POST" action="/sigma-rules/download">
+                        <button type="submit" style="background: linear-gradient(145deg, #2196f3, #1976d2);">Download from GitHub</button>
+                    </form>
+                </div>
+                
+                <div class="upload-box">
+                    <h3>📤 Upload Custom Rule</h3>
+                    <p>Upload YAML files containing SIGMA detection rules. Supports standard SIGMA format.</p>
+                    <form method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="action" value="upload">
+                        <input type="file" name="rule_file" accept=".yml,.yaml" required>
+                        <button type="submit">Upload Rule</button>
+                    </form>
+                </div>
+                
+                <table class="rules-table">
+                    <thead>
+                        <tr>
+                            <th>Rule</th>
+                            <th>Level</th>
+                            <th>Category</th>
+                            <th>Author</th>
+                            <th>Violations</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rules_html if rules_html else '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #aaa;">No SIGMA rules loaded. Upload rules to get started.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <script>
+            function viewRule(ruleId) {{
+                const row = document.getElementById('rule-details-' + ruleId);
+                if (row.style.display === 'none') {{
+                    row.style.display = 'table-row';
+                }} else {{
+                    row.style.display = 'none';
+                }}
+            }}
+        </script>
+    </body>
+    </html>
+    '''
+
+def render_violations_page(case, violations, total_violations, page, per_page, severity_filter,
+                           rule_filter, file_filter, reviewed_filter, all_rules, all_files,
+                           total_count, critical_count, high_count, medium_count, low_count, reviewed_count):
+    """Render SIGMA Violations Viewer Page"""
+    
+    # Build violations table
+    violations_html = ""
+    for v in violations:
+        # Parse event data for display
+        try:
+            event_data = json.loads(v.event_data)
+            event_id = event_data.get('System', {}).get('EventID', {}).get('#text', 'N/A')
+            computer = event_data.get('System', {}).get('Computer', 'N/A')
+            timestamp = event_data.get('System', {}).get('TimeCreated', {}).get('@SystemTime', 'N/A')
+        except:
+            event_id = 'N/A'
+            computer = 'N/A'
+            timestamp = 'N/A'
+        
+        # Severity color
+        severity_colors = {
+            'critical': '#d32f2f',
+            'high': '#f44336',
+            'medium': '#ff9800',
+            'low': '#2196f3'
+        }
+        severity_color = severity_colors.get(v.severity, '#757575')
+        
+        # Review status
+        review_badge = '✓ Reviewed' if v.is_reviewed else '⏳ Pending Review'
+        review_class = 'reviewed' if v.is_reviewed else 'pending'
+        
+        violations_html += f'''
+        <tr class="violation-row">
+            <td><span class="severity-badge" style="background: {severity_color};">{v.severity.upper()}</span></td>
+            <td>{v.rule.title}</td>
+            <td>{v.file.original_filename}</td>
+            <td>{event_id}</td>
+            <td>{computer}</td>
+            <td>{timestamp[:19] if len(timestamp) > 19 else timestamp}</td>
+            <td><span class="review-badge review-{review_class}">{review_badge}</span></td>
+            <td class="actions-cell">
+                <button class="btn-action btn-view" onclick="viewViolation({v.id})" title="View Details">👁️</button>
+                {f'<button class="btn-action btn-review" onclick="showReviewModal({v.id})" title="Mark Reviewed">✓</button>' if not v.is_reviewed else ''}
+            </td>
+        </tr>
+        <tr id="violation-details-{v.id}" class="violation-details" style="display: none;">
+            <td colspan="8">
+                <div class="violation-detail-panel">
+                    <h4>Violation Details</h4>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <strong>Rule:</strong> {v.rule.title}
+                            <p style="color: #aaa; font-size: 0.9em;">{v.rule.description}</p>
+                        </div>
+                        <div class="detail-item">
+                            <strong>Severity:</strong> <span style="color: {severity_color};">{v.severity.upper()}</span>
+                        </div>
+                        <div class="detail-item">
+                            <strong>Detected:</strong> {v.detected_at.strftime('%Y-%m-%d %H:%M:%S') if v.detected_at else 'N/A'}
+                        </div>
+                        {f'<div class="detail-item"><strong>Reviewed By:</strong> {v.reviewer.username if v.reviewer else "N/A"}</div>' if v.is_reviewed else ''}
+                        {f'<div class="detail-item"><strong>Review Date:</strong> {v.reviewed_at.strftime("%Y-%m-%d %H:%M:%S") if v.reviewed_at else "N/A"}</div>' if v.is_reviewed else ''}
+                        {f'<div class="detail-item" style="grid-column: 1 / -1;"><strong>Notes:</strong><br>{v.notes}</div>' if v.notes else ''}
+                    </div>
+                    <h4>Event Data</h4>
+                    <pre class="event-json">{json.dumps(event_data, indent=2)}</pre>
+                </div>
+            </td>
+        </tr>
+        '''
+    
+    # Build filter dropdowns
+    rule_options = ''.join([f'<option value="{r.id}" {"selected" if str(r.id) == rule_filter else ""}>{r.title}</option>' for r in all_rules])
+    file_options = ''.join([f'<option value="{f.id}" {"selected" if str(f.id) == file_filter else ""}>{f.original_filename}</option>' for f in all_files])
+    
+    # Pagination
+    total_pages = (total_violations + per_page - 1) // per_page
+    pagination_html = ""
+    if total_pages > 1:
+        if page > 1:
+            pagination_html += f'<a href="?page={page-1}&severity={severity_filter}&rule={rule_filter}&file={file_filter}&reviewed={reviewed_filter}" class="page-btn">← Previous</a>'
+        pagination_html += f'<span class="page-info">Page {page} of {total_pages}</span>'
+        if page < total_pages:
+            pagination_html += f'<a href="?page={page+1}&severity={severity_filter}&rule={rule_filter}&file={file_filter}&reviewed={reviewed_filter}" class="page-btn">Next →</a>'
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>SIGMA Violations - caseScope 7.1</title>
+        <style>
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                display: flex; 
+                min-height: 100vh; 
+            }}
+            .sidebar {{ 
+                width: 280px; 
+                background: linear-gradient(145deg, #303f9f, #283593); 
+                padding: 20px; 
+                box-shadow: 5px 0 20px rgba(0,0,0,0.4), inset -1px 0 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+            }}
+            .main-content {{ flex: 1; }}
+            .header {{ 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 15px 30px; 
+                display: flex; 
+                justify-content: space-between; 
+                align-items: center;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                min-height: 60px;
+            }}
+            .case-title {{ font-size: 1.3em; font-weight: 600; }}
+            .user-info {{ display: flex; align-items: center; gap: 20px; font-size: 1em; line-height: 1.2; }}
+            .sidebar-logo {{
+                text-align: center; font-size: 2.2em; font-weight: 300; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                margin-bottom: 15px; padding: 5px 0 8px 0; border-bottom: 1px solid rgba(76,175,80,0.3);
+            }}
+            .sidebar-logo .case {{ color: #4caf50; }}
+            .sidebar-logo .scope {{ color: white; }}
+            .version-badge {{
+                font-size: 0.4em; background: linear-gradient(145deg, #4caf50, #388e3c); color: white;
+                padding: 3px 6px; border-radius: 6px; margin-top: 5px; display: inline-block;
+                box-shadow: 0 2px 4px rgba(76,175,80,0.3); border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .content {{ padding: 30px; }}
+            .logout-btn {{
+                background: linear-gradient(145deg, #f44336, #d32f2f); color: white !important;
+                padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 0.9em;
+                font-weight: 500; box-shadow: 0 4px 8px rgba(244,67,54,0.3); transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .logout-btn:hover {{
+                background: linear-gradient(145deg, #ef5350, #f44336);
+                box-shadow: 0 6px 12px rgba(244,67,54,0.4); transform: translateY(-1px);
+            }}
+            .stats-bar {{
+                background: linear-gradient(145deg, #3f51b5, #283593); padding: 20px; border-radius: 12px;
+                margin-bottom: 25px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            }}
+            .stat-item {{
+                text-align: center; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px;
+            }}
+            .stat-value {{ font-size: 1.8em; font-weight: bold; }}
+            .stat-value.critical {{ color: #f44336; }}
+            .stat-value.high {{ color: #ff5722; }}
+            .stat-value.medium {{ color: #ff9800; }}
+            .stat-value.low {{ color: #2196f3; }}
+            .stat-label {{ font-size: 0.85em; color: rgba(255,255,255,0.7); margin-top: 5px; }}
+            .filter-bar {{
+                background: linear-gradient(145deg, #3f51b5, #283593); padding: 20px; border-radius: 12px;
+                margin-bottom: 25px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap;
+            }}
+            .filter-bar select {{
+                padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);
+                border-radius: 8px; color: white; font-size: 1em;
+            }}
+            .filter-bar select option {{ background: #283593; }}
+            .violations-table {{
+                width: 100%; border-collapse: collapse; background: linear-gradient(145deg, #3f51b5, #283593);
+                border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            }}
+            .violations-table thead {{ background: #283593; }}
+            .violations-table th {{
+                padding: 15px; text-align: left; font-weight: 600; border-bottom: 2px solid rgba(255,255,255,0.1);
+                font-size: 0.9em;
+            }}
+            .violation-row {{ cursor: pointer; transition: all 0.2s ease; border-bottom: 1px solid rgba(255,255,255,0.05); }}
+            .violation-row:hover {{ background: rgba(255,255,255,0.1); }}
+            .violation-row td {{ padding: 12px; vertical-align: middle; font-size: 0.9em; }}
+            .severity-badge {{
+                padding: 4px 10px; border-radius: 6px; font-size: 0.85em; font-weight: 600; color: white;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3); display: inline-block;
+            }}
+            .review-badge {{
+                padding: 4px 10px; border-radius: 6px; font-size: 0.85em; font-weight: 600;
+                display: inline-block;
+            }}
+            .review-reviewed {{ background: linear-gradient(145deg, #4caf50, #388e3c); color: white; }}
+            .review-pending {{ background: linear-gradient(145deg, #ff9800, #f57c00); color: white; }}
+            .actions-cell {{ white-space: nowrap; }}
+            .btn-action {{
+                padding: 6px 10px; margin: 0 2px; border: none; border-radius: 6px; cursor: pointer;
+                font-size: 1em; transition: all 0.2s ease; background: rgba(255,255,255,0.1);
+            }}
+            .btn-action:hover {{ background: rgba(255,255,255,0.2); transform: scale(1.1); }}
+            .btn-view {{ background: linear-gradient(145deg, #2196f3, #1976d2); color: white; }}
+            .btn-review {{ background: linear-gradient(145deg, #4caf50, #388e3c); color: white; }}
+            .violation-details td {{ padding: 20px !important; background: rgba(0,0,0,0.3); }}
+            .violation-detail-panel {{ background: rgba(0,0,0,0.5); padding: 20px; border-radius: 8px; }}
+            .detail-grid {{
+                display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px; margin-bottom: 20px;
+            }}
+            .detail-item strong {{ color: #4caf50; display: block; margin-bottom: 5px; }}
+            .event-json {{
+                background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px; overflow-x: auto;
+                font-size: 0.85em; line-height: 1.5; color: #e0e0e0; margin: 0;
+            }}
+            .pagination {{
+                margin: 30px 0; display: flex; gap: 15px; align-items: center; justify-content: center;
+            }}
+            .page-btn {{
+                padding: 10px 20px; background: linear-gradient(145deg, #3949ab, #283593);
+                color: white; text-decoration: none; border-radius: 8px; transition: all 0.3s ease;
+            }}
+            .page-btn:hover {{ background: linear-gradient(145deg, #5c6bc0, #3949ab); }}
+        </style>
+    </head>
+    <body>
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
+            </div>
+            
+            {render_sidebar_menu('violations')}
+        </div>
+        <div class="main-content">
+            <div class="header">
+                <div class="case-title">🚨 SIGMA Violations - Case: {case.name}</div>
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
+                    <a href="/logout" class="logout-btn">Logout</a>
+                </div>
+            </div>
+            <div class="content">
+                <h1>🚨 SIGMA Rule Violations</h1>
+                
+                <div class="stats-bar">
+                    <div class="stat-item">
+                        <div class="stat-value">{total_count}</div>
+                        <div class="stat-label">Total</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value critical">{critical_count}</div>
+                        <div class="stat-label">Critical</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value high">{high_count}</div>
+                        <div class="stat-label">High</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value medium">{medium_count}</div>
+                        <div class="stat-label">Medium</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value low">{low_count}</div>
+                        <div class="stat-label">Low</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">{reviewed_count}</div>
+                        <div class="stat-label">Reviewed</div>
+                    </div>
+                </div>
+                
+                <div class="filter-bar">
+                    <strong>Filters:</strong>
+                    <select onchange="window.location.href='?severity='+this.value+'&rule={rule_filter}&file={file_filter}&reviewed={reviewed_filter}'">
+                        <option value="all" {"selected" if severity_filter == "all" else ""}>All Severities</option>
+                        <option value="critical" {"selected" if severity_filter == "critical" else ""}>Critical</option>
+                        <option value="high" {"selected" if severity_filter == "high" else ""}>High</option>
+                        <option value="medium" {"selected" if severity_filter == "medium" else ""}>Medium</option>
+                        <option value="low" {"selected" if severity_filter == "low" else ""}>Low</option>
+                    </select>
+                    <select onchange="window.location.href='?severity={severity_filter}&rule='+this.value+'&file={file_filter}&reviewed={reviewed_filter}'">
+                        <option value="all" {"selected" if rule_filter == "all" else ""}>All Rules</option>
+                        {rule_options}
+                    </select>
+                    <select onchange="window.location.href='?severity={severity_filter}&rule={rule_filter}&file='+this.value+'&reviewed={reviewed_filter}'">
+                        <option value="all" {"selected" if file_filter == "all" else ""}>All Files</option>
+                        {file_options}
+                    </select>
+                    <select onchange="window.location.href='?severity={severity_filter}&rule={rule_filter}&file={file_filter}&reviewed='+this.value">
+                        <option value="all" {"selected" if reviewed_filter == "all" else ""}>All Status</option>
+                        <option value="unreviewed" {"selected" if reviewed_filter == "unreviewed" else ""}>Unreviewed</option>
+                        <option value="reviewed" {"selected" if reviewed_filter == "reviewed" else ""}>Reviewed</option>
+                    </select>
+                </div>
+                
+                <table class="violations-table">
+                    <thead>
+                        <tr>
+                            <th>Severity</th>
+                            <th>Rule</th>
+                            <th>File</th>
+                            <th>Event ID</th>
+                            <th>Computer</th>
+                            <th>Timestamp</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {violations_html if violations_html else '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #aaa;">No violations found with current filters.</td></tr>'}
+                    </tbody>
+                </table>
+                
+                {f'<div class="pagination">{pagination_html}</div>' if total_pages > 1 else ''}
+            </div>
+        </div>
+        
+        <script>
+            function viewViolation(violationId) {{
+                const row = document.getElementById('violation-details-' + violationId);
+                if (row.style.display === 'none') {{
+                    row.style.display = 'table-row';
+                }} else {{
+                    row.style.display = 'none';
+                }}
+            }}
+            
+            function showReviewModal(violationId) {{
+                const notes = prompt('Add review notes (optional):');
+                if (notes !== null) {{
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = '/violation/' + violationId + '/review';
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'notes';
+                    input.value = notes;
+                    form.appendChild(input);
+                    document.body.appendChild(form);
+                    form.submit();
+                }}
+            }}
+        </script>
+    </body>
+    </html>
+    '''
+
 def render_case_form():
     """Render case creation form"""
     return f'''
@@ -3774,6 +4780,167 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
     </html>
     '''
 
+# SIGMA Rules Management
+def load_default_sigma_rules():
+    """Load built-in SIGMA rules on first run"""
+    import hashlib
+    
+    # Check if we already have built-in rules
+    existing_count = SigmaRule.query.filter_by(is_builtin=True).count()
+    if existing_count > 0:
+        print(f"Built-in SIGMA rules already loaded ({existing_count} rules)")
+        return
+    
+    print("Loading default SIGMA rules...")
+    
+    # Common Windows Security SIGMA rules
+    default_rules = [
+        {
+            'name': 'suspicious_powershell_execution',
+            'title': 'Suspicious PowerShell Execution',
+            'description': 'Detects suspicious PowerShell command execution patterns',
+            'author': 'caseScope Team',
+            'level': 'medium',
+            'status': 'stable',
+            'category': 'process_creation',
+            'tags': json.dumps(['powershell', 'execution', 'suspicious']),
+            'rule_yaml': '''
+title: Suspicious PowerShell Execution
+description: Detects suspicious PowerShell command patterns
+level: medium
+detection:
+    selection:
+        - EventID: 4104
+        - ScriptBlockText|contains:
+            - 'DownloadString'
+            - 'Invoke-Expression'
+            - 'IEX'
+            - 'Net.WebClient'
+            - '-enc'
+            - '-EncodedCommand'
+    condition: selection
+'''
+        },
+        {
+            'name': 'mimikatz_detection',
+            'title': 'Mimikatz Credential Dumping',
+            'description': 'Detects potential Mimikatz credential dumping activity',
+            'author': 'caseScope Team',
+            'level': 'high',
+            'status': 'stable',
+            'category': 'process_creation',
+            'tags': json.dumps(['mimikatz', 'credential-access', 'attack.t1003']),
+            'rule_yaml': '''
+title: Mimikatz Credential Dumping
+description: Detects Mimikatz credential dumping
+level: high
+detection:
+    selection:
+        - EventID: 4688
+        - CommandLine|contains:
+            - 'sekurlsa'
+            - 'lsadump'
+            - 'privilege::debug'
+    condition: selection
+'''
+        },
+        {
+            'name': 'suspicious_network_logon',
+            'title': 'Suspicious Network Logon',
+            'description': 'Detects suspicious network logon attempts',
+            'author': 'caseScope Team',
+            'level': 'medium',
+            'status': 'stable',
+            'category': 'authentication',
+            'tags': json.dumps(['logon', 'network', 'lateral-movement']),
+            'rule_yaml': '''
+title: Suspicious Network Logon
+description: Detects suspicious network logon patterns
+level: medium
+detection:
+    selection:
+        EventID: 4624
+        LogonType: 3
+    filter:
+        IpAddress|startswith:
+            - '10.'
+            - '172.16.'
+            - '192.168.'
+    condition: selection and not filter
+'''
+        },
+        {
+            'name': 'defender_disabled',
+            'title': 'Windows Defender Disabled',
+            'description': 'Detects when Windows Defender is disabled',
+            'author': 'caseScope Team',
+            'level': 'high',
+            'status': 'stable',
+            'category': 'defense_evasion',
+            'tags': json.dumps(['defender', 'evasion', 'attack.t1562']),
+            'rule_yaml': '''
+title: Windows Defender Disabled
+description: Detects when Windows Defender real-time protection is disabled
+level: high
+detection:
+    selection:
+        EventID: 5001
+    condition: selection
+'''
+        },
+        {
+            'name': 'failed_logon_attempts',
+            'title': 'Multiple Failed Logon Attempts',
+            'description': 'Detects multiple failed logon attempts indicating brute force',
+            'author': 'caseScope Team',
+            'level': 'medium',
+            'status': 'stable',
+            'category': 'credential_access',
+            'tags': json.dumps(['bruteforce', 'failed-logon', 'attack.t1110']),
+            'rule_yaml': '''
+title: Multiple Failed Logon Attempts
+description: Detects brute force attempts via multiple failed logons
+level: medium
+detection:
+    selection:
+        EventID: 4625
+    condition: selection
+'''
+        }
+    ]
+    
+    # Add each rule
+    added_count = 0
+    for rule_data in default_rules:
+        # Calculate hash of YAML
+        rule_hash = hashlib.sha256(rule_data['rule_yaml'].encode()).hexdigest()
+        
+        # Check if rule already exists by hash
+        existing = SigmaRule.query.filter_by(rule_hash=rule_hash).first()
+        if not existing:
+            rule = SigmaRule(
+                name=rule_data['name'],
+                title=rule_data['title'],
+                description=rule_data['description'],
+                author=rule_data['author'],
+                level=rule_data['level'],
+                status=rule_data['status'],
+                category=rule_data['category'],
+                tags=rule_data['tags'],
+                rule_yaml=rule_data['rule_yaml'],
+                rule_hash=rule_hash,
+                is_builtin=True,
+                is_enabled=True
+            )
+            db.session.add(rule)
+            added_count += 1
+    
+    if added_count > 0:
+        db.session.commit()
+        print(f"Loaded {added_count} default SIGMA rules")
+    else:
+        print("No new default SIGMA rules to load")
+
 # Initialize database
 def init_db():
     with app.app_context():
@@ -3781,22 +4948,24 @@ def init_db():
         
         # Run migrations for existing databases
         try:
-            # Check if violation_count and estimated_event_count columns exist
             from sqlalchemy import inspect, text
             inspector = inspect(db.engine)
-            columns = [col['name'] for col in inspector.get_columns('case_file')]
             
-            if 'violation_count' not in columns:
-                print("Running migration: Adding violation_count column to case_file table...")
-                db.session.execute(text('ALTER TABLE case_file ADD COLUMN violation_count INTEGER DEFAULT 0'))
-                db.session.commit()
-                print("Migration completed: violation_count column added")
-            
-            if 'estimated_event_count' not in columns:
-                print("Running migration: Adding estimated_event_count column to case_file table...")
-                db.session.execute(text('ALTER TABLE case_file ADD COLUMN estimated_event_count INTEGER DEFAULT 0'))
-                db.session.commit()
-                print("Migration completed: estimated_event_count column added")
+            # Check case_file table migrations
+            if 'case_file' in inspector.get_table_names():
+                columns = [col['name'] for col in inspector.get_columns('case_file')]
+                
+                if 'violation_count' not in columns:
+                    print("Running migration: Adding violation_count column to case_file table...")
+                    db.session.execute(text('ALTER TABLE case_file ADD COLUMN violation_count INTEGER DEFAULT 0'))
+                    db.session.commit()
+                    print("Migration completed: violation_count column added")
+                
+                if 'estimated_event_count' not in columns:
+                    print("Running migration: Adding estimated_event_count column to case_file table...")
+                    db.session.execute(text('ALTER TABLE case_file ADD COLUMN estimated_event_count INTEGER DEFAULT 0'))
+                    db.session.commit()
+                    print("Migration completed: estimated_event_count column added")
         except Exception as e:
             print(f"Migration check/execution note: {e}")
             db.session.rollback()
@@ -3814,6 +4983,9 @@ def init_db():
             db.session.add(admin)
             db.session.commit()
             print("Created default administrator user")
+        
+        # Load default SIGMA rules
+        load_default_sigma_rules()
 
 if __name__ == '__main__':
     print("Starting caseScope 7.1 application...")
