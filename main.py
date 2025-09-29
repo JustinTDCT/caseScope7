@@ -96,6 +96,9 @@ def login():
         
         # Debug logging
         print(f"DEBUG: Login attempt - Username: '{username}', Password length: {len(password)}")
+        print(f"DEBUG: Database URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
+        print(f"DEBUG: Request method: {request.method}")
+        print(f"DEBUG: Form data: {dict(request.form)}")
         
         try:
             # Check if database exists and is accessible
@@ -596,5 +599,10 @@ def init_db():
             print("Created default administrator user")
 
 if __name__ == '__main__':
+    print("Starting caseScope 7.1 application...")
+    print(f"Database URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
+    print("Initializing database...")
     init_db()
+    print("Database initialization completed")
+    print("Starting Flask application on 0.0.0.0:5000")
     app.run(debug=True, host='0.0.0.0', port=5000)

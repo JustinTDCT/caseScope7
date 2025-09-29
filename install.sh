@@ -719,9 +719,13 @@ Group=casescope
 WorkingDirectory=/opt/casescope/app
 Environment=PATH=/opt/casescope/venv/bin
 Environment=PYTHONPATH=/opt/casescope/app
-ExecStart=/opt/casescope/venv/bin/gunicorn --bind 127.0.0.1:5000 --workers 4 --timeout 300 main:app
+Environment=FLASK_ENV=production
+Environment=FLASK_DEBUG=1
+ExecStart=/opt/casescope/venv/bin/gunicorn --bind 127.0.0.1:5000 --workers 4 --timeout 300 --log-level debug --access-logfile - --error-logfile - main:app
 Restart=always
 RestartSec=3
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
@@ -1220,6 +1224,73 @@ except Exception as e:
         echo -e "Database Debug: ${GREEN}http://localhost/debug/database${NC}"
         echo -e "Service Logs: ${YELLOW}sudo journalctl -u casescope-web -f${NC}"
         echo -e "Application Logs: ${YELLOW}sudo tail -f /opt/casescope/logs/app.log${NC}"
+        
+        # Final database verification and test
+        echo
+        echo -e "${BLUE}Final Database Verification:${NC}"
+        cd /opt/casescope/app
+        sudo -u casescope /opt/casescope/venv/bin/python3 -c "
+import sys
+import os
+sys.path.insert(0, '/opt/casescope/app')
+
+try:
+    from main import app, db, User
+    with app.app_context():
+        # Check database file exists
+        db_path = '/opt/casescope/data/casescope.db'
+        if os.path.exists(db_path):
+            print(f'✓ Database file exists: {db_path}')
+            file_size = os.path.getsize(db_path)
+            print(f'✓ Database file size: {file_size} bytes')
+        else:
+            print(f'✗ Database file missing: {db_path}')
+            sys.exit(1)
+        
+        # Test database connection
+        try:
+            from sqlalchemy import text
+            result = db.session.execute(text('SELECT COUNT(*) FROM user')).scalar()
+            print(f'✓ Database connection successful - {result} users found')
+        except Exception as e:
+            print(f'✗ Database connection failed: {e}')
+            sys.exit(1)
+        
+        # Check admin user
+        admin = User.query.filter_by(username='administrator').first()
+        if admin:
+            print(f'✓ Administrator user found: {admin.username}')
+            print(f'  Email: {admin.email}')
+            print(f'  Role: {admin.role}')
+            print(f'  Active: {admin.is_active}')
+            print(f'  Password change required: {admin.force_password_change}')
+            
+            # Test password validation
+            password_test = admin.check_password('ChangeMe!')
+            print(f'  Password validation test: {password_test}')
+            
+            if not password_test:
+                print('✗ WARNING: Default password validation failed!')
+            else:
+                print('✓ Default password validation successful')
+        else:
+            print('✗ Administrator user not found!')
+            sys.exit(1)
+            
+        print('✓ Database verification completed successfully')
+        
+except Exception as e:
+    print(f'✗ Database verification error: {e}')
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+"
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}✓ Final database verification: PASSED${NC}"
+        else
+            echo -e "${RED}✗ Final database verification: FAILED${NC}"
+            echo -e "${YELLOW}Check the output above for specific issues${NC}"
+        fi
     else
         echo -e "${RED}╔══════════════════════════════════════════════════════════════╗${NC}"
         echo -e "${RED}║              Installation Issues Detected!                  ║${NC}"
