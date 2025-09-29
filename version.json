@@ -1,7 +1,7 @@
 {
-  "version": "7.1.16",
+  "version": "7.1.17",
   "release_date": "2025-09-29",
-  "description": "Enhanced file discovery with better current directory detection and specific user directory fallbacks",
+  "description": "Fixed OpenSearch discovery configuration compatibility - removed deprecated discovery.zen settings and updated gateway settings",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -19,6 +19,7 @@
     "7.1.13": "Debug - Enhanced application file copying with comprehensive diagnostics and error reporting",
     "7.1.14": "UI - Enhanced dashboard with sidebar menu, service status indicators, and clear distinction between working features and development placeholders",
     "7.1.15": "Bugfix - Smart application file discovery, searches current dir, parent dir, and user directories with clear error guidance",
-    "7.1.16": "Bugfix - Improved current working directory detection and added specific /home/jdube/caseScope7 fallback for git clone workflow"
+    "7.1.16": "Bugfix - Improved current working directory detection and added specific /home/jdube/caseScope7 fallback for git clone workflow",
+    "7.1.17": "Bugfix - Fixed OpenSearch 2.11.1 discovery compatibility, replaced deprecated discovery.zen.* with cluster.initial_master_nodes and discovery.seed_hosts"
   }
 }

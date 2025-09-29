@@ -381,20 +381,18 @@ http.compression_level: 3
 network.tcp.keep_alive: true
 network.tcp.reuse_address: true
 
-# Discovery and cluster formation optimizations
-discovery.zen.minimum_master_nodes: 1
-discovery.zen.ping_timeout: 3s
-discovery.zen.fd.ping_timeout: 10s
-discovery.zen.fd.ping_retries: 2
+# Discovery and cluster formation optimizations (OpenSearch 2.11.1 compatible)
+cluster.initial_master_nodes: ["casescope-node"]
+discovery.seed_hosts: ["127.0.0.1"]
 
 # Thread pool optimizations for faster startup
 thread_pool.write.queue_size: 200
 thread_pool.search.queue_size: 500
 thread_pool.get.queue_size: 500
 
-# Gateway and recovery settings for faster startup
-gateway.recover_after_nodes: 1
-gateway.expected_nodes: 1
+# Gateway and recovery settings for faster startup (OpenSearch 2.11.1 compatible)
+gateway.recover_after_data_nodes: 1
+gateway.expected_data_nodes: 1
 gateway.recover_after_time: 0s
 
 # Plugin management - only disable what we know exists
