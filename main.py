@@ -340,7 +340,7 @@ def dashboard():
                 font-weight: 300;
                 text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
                 margin-bottom: 15px;
-                padding: 10px 0 8px 0;
+                padding: 5px 0 8px 0;
                 border-bottom: 1px solid rgba(76,175,80,0.3);
             }}
             .sidebar-logo .case {{ color: #4caf50; }}
