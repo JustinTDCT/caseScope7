@@ -63,22 +63,76 @@ def index():
         return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
 
+@app.route('/debug/database')
+def debug_database():
+    """Debug route to check database status"""
+    try:
+        user_count = User.query.count()
+        all_users = User.query.all()
+        user_list = [{"id": u.id, "username": u.username, "email": u.email, "role": u.role, "active": u.is_active} for u in all_users]
+        
+        return f'''
+        <h2>Database Debug Information</h2>
+        <p><strong>Total Users:</strong> {user_count}</p>
+        <p><strong>Database File:</strong> {app.config['SQLALCHEMY_DATABASE_URI']}</p>
+        <h3>All Users:</h3>
+        <pre>{user_list}</pre>
+        <p><a href="/login">Back to Login</a></p>
+        '''
+    except Exception as e:
+        import traceback
+        return f'''
+        <h2>Database Error</h2>
+        <p><strong>Error:</strong> {e}</p>
+        <pre>{traceback.format_exc()}</pre>
+        <p><a href="/login">Back to Login</a></p>
+        '''
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form.get('username', '').lower().strip()
         password = request.form.get('password', '')
         
-        user = User.query.filter(db.func.lower(User.username) == username).first()
+        # Debug logging
+        print(f"DEBUG: Login attempt - Username: '{username}', Password length: {len(password)}")
         
-        if user and user.check_password(password) and user.is_active:
-            login_user(user)
-            if user.force_password_change:
-                flash('You must change your password before continuing.', 'warning')
-                return redirect(url_for('change_password'))
-            return redirect(url_for('dashboard'))
-        else:
-            flash('Invalid username or password.', 'error')
+        try:
+            # Check if database exists and is accessible
+            user_count = User.query.count()
+            print(f"DEBUG: Total users in database: {user_count}")
+            
+            # Look for the user
+            user = User.query.filter(db.func.lower(User.username) == username).first()
+            print(f"DEBUG: User found: {user is not None}")
+            
+            if user:
+                print(f"DEBUG: User details - ID: {user.id}, Username: {user.username}, Active: {user.is_active}")
+                password_valid = user.check_password(password)
+                print(f"DEBUG: Password valid: {password_valid}")
+                
+                if password_valid and user.is_active:
+                    login_user(user)
+                    print(f"DEBUG: User logged in successfully")
+                    if user.force_password_change:
+                        flash('You must change your password before continuing.', 'warning')
+                        return redirect(url_for('change_password'))
+                    return redirect(url_for('dashboard'))
+                else:
+                    print(f"DEBUG: Login failed - Password valid: {password_valid}, User active: {user.is_active}")
+                    flash('Invalid username or password.', 'error')
+            else:
+                print(f"DEBUG: No user found with username: '{username}'")
+                # List all users for debugging
+                all_users = User.query.all()
+                print(f"DEBUG: All users in database: {[u.username for u in all_users]}")
+                flash('Invalid username or password.', 'error')
+                
+        except Exception as e:
+            print(f"DEBUG: Database error during login: {e}")
+            import traceback
+            traceback.print_exc()
+            flash('Database error. Please check system logs.', 'error')
     
     # Flash messages for display
     flash_messages = ""

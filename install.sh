@@ -1138,6 +1138,48 @@ main() {
     setup_python
     configure_services
     initialize_database
+    
+    # Force database creation check before starting services
+    log "Performing final database verification..."
+    cd /opt/casescope/app
+    sudo -u casescope /opt/casescope/venv/bin/python3 -c "
+import sys
+import os
+sys.path.insert(0, '/opt/casescope/app')
+
+try:
+    from main import app, init_db
+    print('Final database check and creation...')
+    init_db()
+    print('✓ Final database verification completed')
+    
+    # Test a simple login attempt
+    from main import User
+    with app.app_context():
+        admin = User.query.filter_by(username='administrator').first()
+        if admin:
+            print(f'✓ Administrator account confirmed: {admin.username}')
+            print(f'  - Email: {admin.email}')  
+            print(f'  - Role: {admin.role}')
+            print(f'  - Active: {admin.is_active}')
+            print(f'  - Force password change: {admin.force_password_change}')
+        else:
+            print('✗ Administrator account not found!')
+            sys.exit(1)
+except Exception as e:
+    print(f'ERROR: Final database verification failed: {e}')
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+"
+    
+    if [ $? -eq 0 ]; then
+        log "Final database verification: SUCCESS"
+    else
+        log_error "Final database verification failed - login may not work"
+        return 1
+    fi
+    
     start_services
     
     # Verify services are running
@@ -1173,6 +1215,11 @@ main() {
         echo -e "Default Password: ${GREEN}ChangeMe!${NC}"
         echo
         echo -e "${YELLOW}Important:${NC} You will be required to change the default password on first login."
+        echo
+        echo -e "${BLUE}Troubleshooting (if login fails):${NC}"
+        echo -e "Database Debug: ${GREEN}http://localhost/debug/database${NC}"
+        echo -e "Service Logs: ${YELLOW}sudo journalctl -u casescope-web -f${NC}"
+        echo -e "Application Logs: ${YELLOW}sudo tail -f /opt/casescope/logs/app.log${NC}"
     else
         echo -e "${RED}╔══════════════════════════════════════════════════════════════╗${NC}"
         echo -e "${RED}║              Installation Issues Detected!                  ║${NC}"
