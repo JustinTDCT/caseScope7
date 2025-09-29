@@ -575,10 +575,36 @@ def build_opensearch_query(query_str):
     Build OpenSearch query from user input
     Supports: AND, OR, NOT, parentheses, phrase matching with quotes
     Case-insensitive by default
+    
+    Smart field mapping:
+    - EventID -> System.EventID
+    - Computer -> System.Computer
+    - Channel -> System.Channel
     """
     query_str = query_str.strip()
     
-    # Simple implementation for now - will enhance with proper parser later
+    # Map common field names to actual indexed field names
+    # This makes queries more user-friendly
+    field_mappings = {
+        'EventID': 'System.EventID',
+        'Computer': 'System.Computer',
+        'Channel': 'System.Channel',
+        'Provider': 'System.Provider.Name',
+        'Level': 'System.Level',
+        'Task': 'System.Task'
+    }
+    
+    # Replace field names in query (simple string replacement)
+    for user_field, indexed_field in field_mappings.items():
+        # Match field: pattern (case insensitive)
+        import re
+        query_str = re.sub(
+            rf'\b{user_field}\s*:',
+            f'{indexed_field}:',
+            query_str,
+            flags=re.IGNORECASE
+        )
+    
     # For phase 1, use query_string query which supports most operators
     return {
         "query_string": {
@@ -2756,8 +2782,9 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                     <div id="helpBox" class="help-box">
                         <h4>📖 Search Query Syntax</h4>
                         <ul>
+                            <li><code>*</code> - Show ALL events (paginated)</li>
                             <li><code>keyword</code> - Search for keyword in any field</li>
-                            <li><code>field:value</code> - Search specific field (e.g., <code>EventID:4624</code>)</li>
+                            <li><code>field:value</code> - Search specific field (e.g., <code>EventID:5000</code>)</li>
                             <li><code>"exact phrase"</code> - Match exact phrase</li>
                             <li><code>term1 AND term2</code> - Both terms must exist (default)</li>
                             <li><code>term1 OR term2</code> - Either term can exist</li>
@@ -2765,13 +2792,22 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                             <li><code>(term1 OR term2) AND term3</code> - Use parentheses for grouping</li>
                             <li><code>field:*wildcard*</code> - Wildcard search</li>
                         </ul>
+                        <h4>🎯 Common Field Names</h4>
+                        <ul>
+                            <li><code>EventID</code> - Event identifier (e.g., 4624, 4625, 5000)</li>
+                            <li><code>Computer</code> - Computer/hostname</li>
+                            <li><code>Channel</code> - Event log channel</li>
+                            <li><code>Provider</code> - Event source/provider</li>
+                            <li><code>Level</code> - Event level (1=Critical, 2=Error, 3=Warning, 4=Info)</li>
+                        </ul>
                         <h4>🎯 Example Queries</h4>
                         <ul>
+                            <li><code>*</code> - Show all events</li>
                             <li><code>EventID:4624</code> - Find all successful logon events</li>
                             <li><code>EventID:4625 AND Computer:DC01</code> - Failed logons on specific computer</li>
                             <li><code>"Administrator" OR "admin"</code> - Search for admin-related terms</li>
                             <li><code>EventID:(4624 OR 4625)</code> - Logon success or failure</li>
-                            <li><code>* NOT EventID:4688</code> - Everything except process creation</li>
+                            <li><code>Level:2</code> - Show only error events</li>
                         </ul>
                     </div>
                 </div>

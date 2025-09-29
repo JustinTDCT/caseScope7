@@ -1,7 +1,7 @@
 {
-  "version": "7.1.56",
+  "version": "7.1.57",
   "release_date": "2025-09-29",
-  "description": "Bugfix - Fixed search sorting to use System_TimeCreated_SystemTime instead of missing @timestamp field",
+  "description": "Enhancement - Added smart field name mapping to make search queries user-friendly",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -59,6 +59,7 @@
     "7.1.53": "Enhancement - Added prominent flash message display to upload page: shows success/warning/error messages at top of content area with colored gradient backgrounds (green/orange/red), includes emoji icons (✅⚠️❌), dismissible with X button, smooth slide-in animation, properly displays duplicate file warnings and upload errors to users",
     "7.1.54": "Bugfix - Extended flash message display system to file list page: messages now persist through redirect from upload to file list, duplicate file warnings and upload errors appear prominently at top of file list with same styling (gradient backgrounds, icons, dismiss button), ensures users always see feedback after upload attempts",
     "7.1.55": "Feature Complete - Event Search Interface: /search route with OpenSearch integration, query_string parser supporting AND/OR/NOT/parentheses/wildcards/phrase matching, results table with Event ID/Timestamp/Computer/Channel/Provider columns, expandable row details showing full JSON event data, clickable field tags to build queries, pagination (50 results per page), collapsible query help with syntax examples, searches across all indexed files in active case, modern 3D UI matching application theme",
-    "7.1.56": "Bugfix - Fixed search RequestError 400: Changed sort field from @timestamp (not indexed) to System_TimeCreated_SystemTime with unmapped_type fallback, added fallback timestamp detection (System_TimeCreated_SystemTime → @timestamp → TimeCreated → N/A), secondary sort by _score for relevance when timestamp unavailable"
+    "7.1.56": "Bugfix - Fixed search RequestError 400: Changed sort field from @timestamp (not indexed) to System_TimeCreated_SystemTime with unmapped_type fallback, added fallback timestamp detection (System_TimeCreated_SystemTime → @timestamp → TimeCreated → N/A), secondary sort by _score for relevance when timestamp unavailable",
+    "7.1.57": "Enhancement - Smart field name mapping for user-friendly queries: EventID→System.EventID, Computer→System.Computer, Channel→System.Channel, Provider→System.Provider.Name, Level→System.Level, Task→System.Task; users can now type 'EventID:5000' instead of 'System.EventID:5000'; added 'Show All Events' query (*); updated help documentation with common field names and better examples"
   }
 }
