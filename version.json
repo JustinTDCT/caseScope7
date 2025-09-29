@@ -1,7 +1,7 @@
 {
-  "version": "7.1.18",
+  "version": "7.1.19",
   "release_date": "2025-09-29",
-  "description": "Fixed single-node discovery conflict - removed cluster.initial_master_nodes setting incompatible with discovery.type single-node",
+  "description": "Enhanced OpenSearch startup monitoring - extended timeout to 3 minutes with detailed progress reporting and log snippets",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -21,6 +21,7 @@
     "7.1.15": "Bugfix - Smart application file discovery, searches current dir, parent dir, and user directories with clear error guidance",
     "7.1.16": "Bugfix - Improved current working directory detection and added specific /home/jdube/caseScope7 fallback for git clone workflow",
     "7.1.17": "Bugfix - Fixed OpenSearch 2.11.1 discovery compatibility, replaced deprecated discovery.zen.* with cluster.initial_master_nodes and discovery.seed_hosts",
-    "7.1.18": "Bugfix - Removed cluster.initial_master_nodes conflicting with single-node discovery type, simplified to minimal single-node config"
+    "7.1.18": "Bugfix - Removed cluster.initial_master_nodes conflicting with single-node discovery type, simplified to minimal single-node config",
+    "7.1.19": "Enhancement - Extended OpenSearch startup monitoring to 3 minutes with real-time progress, log snippets, and educational messaging"
   }
 }

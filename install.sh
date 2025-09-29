@@ -768,27 +768,27 @@ start_services() {
         return 1
     fi
     
-    # Wait for OpenSearch to start with detailed progress indication
-    log "Monitoring OpenSearch startup progress (maximum wait: 60 attempts x 2 seconds = 2 minutes)"
-    log "Each dot (.) represents a 2-second check. Service is ready when you see 'SUCCESS'"
+    # Wait for OpenSearch to start with detailed progress indication  
+    log "Monitoring OpenSearch startup progress (maximum wait: 90 attempts x 2 seconds = 3 minutes)"
+    log "OpenSearch startup can take 2-3 minutes on first run - this is normal"
+    log "Each status check represents a 2-second interval. Service is ready when API responds."
     
     startup_success=false
-    for attempt in {1..30}; do
-        echo -n "Attempt ${attempt}/30: "
+    for attempt in {1..90}; do
+        echo -n "Attempt ${attempt}/90 ($(($attempt * 2))s): "
         
         # Check if the service is active
         if systemctl is-active --quiet opensearch; then
-            echo -e "${GREEN}✓ Service is running${NC}"
+            echo -n "${GREEN}Service running${NC} - "
             
             # Additional check: verify OpenSearch is responding on port 9200
-            echo -n "Checking if OpenSearch API is responding... "
-            if curl -s --connect-timeout 2 http://127.0.0.1:9200 >/dev/null 2>&1; then
-                echo -e "${GREEN}✓ API responding${NC}"
+            if curl -s --connect-timeout 3 http://127.0.0.1:9200 >/dev/null 2>&1; then
+                echo -e "${GREEN}✓ API responding - READY!${NC}"
                 log "SUCCESS: OpenSearch is fully operational after ${attempt} attempts ($(($attempt * 2)) seconds)"
                 startup_success=true
                 break
             else
-                echo -e "${YELLOW}Service running but API not ready yet${NC}"
+                echo -e "${YELLOW}API not ready yet (still initializing)${NC}"
             fi
         else
             # Check if service failed
@@ -797,14 +797,18 @@ start_services() {
                 log_error "OpenSearch service entered failed state on attempt ${attempt}"
                 break
             else
-                echo -e "${YELLOW}Still starting...${NC}"
+                echo -e "${YELLOW}Service starting...${NC}"
             fi
         fi
         
-        # Show helpful information every 10 attempts
-        if [ $((attempt % 10)) -eq 0 ]; then
-            log "Status after ${attempt} attempts: OpenSearch is still initializing (this is normal)"
-            log "Common startup delays: JVM initialization, plugin loading, cluster formation"
+        # Show helpful information and current logs every 15 attempts
+        if [ $((attempt % 15)) -eq 0 ]; then
+            echo
+            log "Status after ${attempt} attempts ($(($attempt * 2)) seconds): OpenSearch is still initializing"
+            log "This is normal - OpenSearch startup includes: JVM init, plugin loading, cluster formation, index recovery"
+            log "Recent OpenSearch activity:"
+            journalctl -u opensearch -n 3 --no-pager | head -3
+            echo
         fi
         
         sleep 2
@@ -812,7 +816,7 @@ start_services() {
     
     if [ "$startup_success" = false ]; then
         echo
-        log_error "OpenSearch failed to start properly after 30 attempts (60 seconds total)"
+        log_error "OpenSearch failed to start properly after 90 attempts (3 minutes total)"
         log_error "This usually indicates a configuration or resource issue"
         echo
         echo -e "${BLUE}Diagnostic Information:${NC}"
