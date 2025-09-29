@@ -1,11 +1,12 @@
 {
-  "version": "7.1.3",
-  "release_date": "2025-09-28",
-  "description": "Fixed web UI port 80 access, database path configuration, and service monitoring",
+  "version": "7.1.4",
+  "release_date": "2025-09-29",
+  "description": "Fixed OpenSearch security plugin demo mode startup failures and python-evtx version",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
     "7.1.2": "Bugfix - Fixed requirements.txt copying and added fallback dependency installation",
-    "7.1.3": "Bugfix - Fixed database path to absolute, improved service status checks, added Nginx troubleshooting"
+    "7.1.3": "Bugfix - Fixed database path to absolute, improved service status checks, added Nginx troubleshooting",
+    "7.1.4": "Bugfix - Fixed OpenSearch demo config issues, updated python-evtx to 0.8.1, disabled security plugin properly"
   }
 }

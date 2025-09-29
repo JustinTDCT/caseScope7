@@ -303,6 +303,19 @@ plugins.security.disabled: true
 bootstrap.memory_lock: false
 EOF
     
+    # Ensure security plugin is disabled and demo config is not installed
+    log "Configuring OpenSearch security settings..."
+    
+    # Remove any existing security configuration
+    sed -i '/^plugins\.security\.disabled/d' /opt/opensearch/config/opensearch.yml
+    echo 'plugins.security.disabled: true' >> /opt/opensearch/config/opensearch.yml
+    
+    # Disable demo configuration
+    export DISABLE_INSTALL_DEMO_CONFIG=true
+    
+    # Set proper permissions for OpenSearch config
+    chown -R casescope:casescope /opt/opensearch/config
+    
     # Set JVM options
     cat > /opt/opensearch/config/jvm.options << 'EOF'
 -Xms2g
@@ -325,6 +338,7 @@ RuntimeDirectory=opensearch
 PrivateTmp=true
 Environment=OS_HOME=/opt/opensearch
 Environment=OS_PATH_CONF=/opt/opensearch/config
+Environment=DISABLE_INSTALL_DEMO_CONFIG=true
 WorkingDirectory=/opt/opensearch
 User=casescope
 Group=casescope
@@ -484,11 +498,14 @@ start_services() {
     fi
     
     log "Starting OpenSearch..."
+    # Set environment variable to disable demo config before starting
+    export DISABLE_INSTALL_DEMO_CONFIG=true
     systemctl start opensearch
     sleep 15  # Wait for OpenSearch to start
     if ! systemctl is-active --quiet opensearch; then
         log_error "OpenSearch failed to start"
         systemctl status opensearch
+        log_error "Check OpenSearch logs with: journalctl -u opensearch -n 50"
     fi
     
     log "Starting caseScope web application..."
