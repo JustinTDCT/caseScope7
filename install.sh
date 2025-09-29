@@ -724,6 +724,7 @@ Group=casescope
 WorkingDirectory=/opt/casescope/app
 Environment=PATH=/opt/casescope/venv/bin
 Environment=PYTHONPATH=/opt/casescope/app
+PIDFile=/opt/casescope/tmp/celery_worker.pid
 ExecStart=/opt/casescope/venv/bin/celery -A celery_app worker \
     --loglevel=info \
     --concurrency=2 \
@@ -731,7 +732,7 @@ ExecStart=/opt/casescope/venv/bin/celery -A celery_app worker \
     --pidfile=/opt/casescope/tmp/celery_worker.pid \
     --logfile=/opt/casescope/logs/celery_worker.log \
     --detach
-ExecStop=/bin/kill -TERM $MAINPID
+ExecStop=/bin/sh -c '/opt/casescope/venv/bin/celery -A celery_app control shutdown || /bin/kill -TERM $(cat /opt/casescope/tmp/celery_worker.pid 2>/dev/null) 2>/dev/null || true'
 Restart=always
 RestartSec=10
 StandardOutput=journal
