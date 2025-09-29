@@ -545,52 +545,194 @@ start_services() {
         systemctl status redis-server
     fi
     
-    log "Starting OpenSearch..."
+    log "Starting OpenSearch search engine..."
+    log "Note: OpenSearch is a Java application and may take 1-2 minutes to fully initialize"
+    
     # Set environment variable to disable demo config before starting
     export DISABLE_INSTALL_DEMO_CONFIG=true
+    
+    log "Issuing start command to OpenSearch service..."
     systemctl start opensearch
     
-    # Wait for OpenSearch to start with progress indication
-    log "Waiting for OpenSearch to initialize (this may take up to 5 minutes)..."
-    for i in {1..60}; do
+    if [ $? -eq 0 ]; then
+        log "Start command accepted by systemd. Beginning startup monitoring..."
+    else
+        log_error "Failed to issue start command to OpenSearch service"
+        return 1
+    fi
+    
+    # Wait for OpenSearch to start with detailed progress indication
+    log "Monitoring OpenSearch startup progress (maximum wait: 60 attempts x 2 seconds = 2 minutes)"
+    log "Each dot (.) represents a 2-second check. Service is ready when you see 'SUCCESS'"
+    
+    startup_success=false
+    for attempt in {1..30}; do
+        echo -n "Attempt ${attempt}/30: "
+        
+        # Check if the service is active
         if systemctl is-active --quiet opensearch; then
-            log "OpenSearch started successfully after ${i} attempts"
-            break
+            echo -e "${GREEN}✓ Service is running${NC}"
+            
+            # Additional check: verify OpenSearch is responding on port 9200
+            echo -n "Checking if OpenSearch API is responding... "
+            if curl -s --connect-timeout 2 http://127.0.0.1:9200 >/dev/null 2>&1; then
+                echo -e "${GREEN}✓ API responding${NC}"
+                log "SUCCESS: OpenSearch is fully operational after ${attempt} attempts ($(($attempt * 2)) seconds)"
+                startup_success=true
+                break
+            else
+                echo -e "${YELLOW}Service running but API not ready yet${NC}"
+            fi
+        else
+            # Check if service failed
+            if systemctl is-failed --quiet opensearch; then
+                echo -e "${RED}✗ Service failed${NC}"
+                log_error "OpenSearch service entered failed state on attempt ${attempt}"
+                break
+            else
+                echo -e "${YELLOW}Still starting...${NC}"
+            fi
         fi
-        if [ $i -eq 60 ]; then
-            log_error "OpenSearch failed to start within 5 minutes"
-            systemctl status opensearch
-            log_error "Check OpenSearch logs with: journalctl -u opensearch -n 50"
-            break
+        
+        # Show helpful information every 10 attempts
+        if [ $((attempt % 10)) -eq 0 ]; then
+            log "Status after ${attempt} attempts: OpenSearch is still initializing (this is normal)"
+            log "Common startup delays: JVM initialization, plugin loading, cluster formation"
         fi
-        sleep 5
-        echo -n "."
+        
+        sleep 2
+    done
+    
+    if [ "$startup_success" = false ]; then
+        echo
+        log_error "OpenSearch failed to start properly after 30 attempts (60 seconds total)"
+        log_error "This usually indicates a configuration or resource issue"
+        echo
+        echo -e "${BLUE}Diagnostic Information:${NC}"
+        echo -e "Service Status: $(systemctl is-active opensearch 2>/dev/null || echo 'unknown')"
+        echo -e "Service State: $(systemctl is-enabled opensearch 2>/dev/null || echo 'unknown')"
+        echo
+        echo -e "${BLUE}Troubleshooting Steps:${NC}"
+        echo -e "1. Check service status: ${YELLOW}sudo systemctl status opensearch${NC}"
+        echo -e "2. View recent logs: ${YELLOW}sudo journalctl -u opensearch -n 20${NC}"
+        echo -e "3. View live logs: ${YELLOW}sudo journalctl -u opensearch -f${NC}"
+        echo -e "4. Check system resources: ${YELLOW}free -h && df -h${NC}"
+        echo -e "5. Verify Java installation: ${YELLOW}java -version${NC}"
+        echo
+        echo -e "${YELLOW}Common Issues and Solutions:${NC}"
+        echo -e "• Insufficient memory: Reduce heap size in JVM options"
+        echo -e "• Port conflicts: Check if port 9200 is already in use"
+        echo -e "• Permission issues: Verify casescope user owns OpenSearch files"
+        echo -e "• Disk space: Ensure adequate free space for data and logs"
+        echo
+        return 1
+    fi
+    
+    log "Starting caseScope web application..."
+    log "This service runs the main web interface that you'll access through your browser"
+    
+    systemctl start casescope-web
+    
+    # Give the application time to initialize
+    log "Waiting for web application to initialize (checking for 10 seconds)..."
+    web_startup_success=false
+    for i in {1..5}; do
+        sleep 2
+        if systemctl is-active --quiet casescope-web; then
+            log "SUCCESS: caseScope web application is running"
+            web_startup_success=true
+            break
+        else
+            echo -n "."
+        fi
     done
     echo
     
-    log "Starting caseScope web application..."
-    systemctl start casescope-web
-    sleep 5  # Give the app time to start
-    if ! systemctl is-active --quiet casescope-web; then
-        log_error "caseScope web service failed to start"
-        systemctl status casescope-web
-        log_error "Check the service logs with: journalctl -u casescope-web -n 50"
+    if [ "$web_startup_success" = false ]; then
+        log_error "caseScope web service failed to start within 10 seconds"
+        echo
+        echo -e "${BLUE}Diagnostic Information:${NC}"
+        echo -e "Service Status: $(systemctl is-active casescope-web 2>/dev/null || echo 'failed')"
+        echo
+        echo -e "${BLUE}Detailed Error Analysis:${NC}"
+        systemctl status casescope-web --no-pager -l
+        echo
+        echo -e "${BLUE}Recent Application Logs:${NC}"
+        journalctl -u casescope-web -n 10 --no-pager
+        echo
+        echo -e "${YELLOW}Common Web Service Issues:${NC}"
+        echo -e "• Python dependencies missing: Check requirements.txt installation"
+        echo -e "• Database connection failed: Verify SQLite database permissions"
+        echo -e "• Port 5000 conflict: Another service may be using this port"
+        echo -e "• Virtual environment issues: Python venv may not be properly configured"
+        echo
+        echo -e "${BLUE}Troubleshooting Commands:${NC}"
+        echo -e "Live logs: ${YELLOW}sudo journalctl -u casescope-web -f${NC}"
+        echo -e "Test Python app: ${YELLOW}sudo -u casescope /opt/casescope/venv/bin/python /opt/casescope/app/main.py${NC}"
+        echo -e "Check port 5000: ${YELLOW}sudo netstat -tlnp | grep 5000${NC}"
+        echo
+        return 1
     fi
     
-    log "Starting Nginx..."
-    systemctl start nginx
-    if ! systemctl is-active --quiet nginx; then
-        log_error "Nginx failed to start"
-        systemctl status nginx
-    fi
+    log "Starting Nginx web server..."
+    log "Nginx will serve as the front-end proxy to route web traffic to caseScope"
     
-    # Test Nginx configuration
-    nginx -t
-    if [ $? -ne 0 ]; then
+    # Test configuration first
+    log "Testing Nginx configuration before starting..."
+    if nginx -t 2>/dev/null; then
+        log "✓ Nginx configuration is valid"
+    else
         log_error "Nginx configuration test failed"
+        echo -e "${BLUE}Configuration Test Output:${NC}"
+        nginx -t
+        echo
+        echo -e "${YELLOW}Common Nginx Configuration Issues:${NC}"
+        echo -e "• Syntax errors in config files"
+        echo -e "• Missing SSL certificates (if HTTPS is configured)"
+        echo -e "• Invalid upstream server definitions"
+        echo -e "• Port conflicts or permission issues"
+        echo
+        return 1
     fi
     
-    log "All services startup attempted"
+    systemctl start nginx
+    sleep 2
+    
+    if systemctl is-active --quiet nginx; then
+        log "SUCCESS: Nginx web server is running"
+        
+        # Verify the caseScope site is properly configured
+        if [ -f "/etc/nginx/sites-enabled/casescope" ]; then
+            log "✓ caseScope site configuration is active"
+        else
+            log_warning "caseScope site configuration not found in sites-enabled"
+        fi
+        
+        # Check if default site is disabled
+        if [ ! -f "/etc/nginx/sites-enabled/default" ]; then
+            log "✓ Default Nginx site is properly disabled"
+        else
+            log_warning "Default Nginx site is still enabled - you may see the default page instead of caseScope"
+        fi
+    else
+        log_error "Nginx failed to start"
+        echo
+        echo -e "${BLUE}Nginx Service Status:${NC}"
+        systemctl status nginx --no-pager -l
+        echo
+        echo -e "${BLUE}Nginx Error Logs:${NC}"
+        tail -n 10 /var/log/nginx/error.log 2>/dev/null || echo "No error log found"
+        echo
+        echo -e "${YELLOW}Common Nginx Startup Issues:${NC}"
+        echo -e "• Port 80 already in use by another service"
+        echo -e "• Permission denied accessing log or pid files"
+        echo -e "• Configuration file syntax errors"
+        echo -e "• SELinux or AppArmor blocking Nginx"
+        echo
+        return 1
+    fi
+    
+    log "All critical services have been started and verified"
 }
 
 # Initialize database

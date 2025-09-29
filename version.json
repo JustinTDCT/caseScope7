@@ -1,7 +1,7 @@
 {
-  "version": "7.1.6",
+  "version": "7.1.7",
   "release_date": "2025-09-29",
-  "description": "Fixed OpenSearch startup timeout issues with optimized configuration and dynamic heap sizing",
+  "description": "Enhanced installer verbosity with detailed progress monitoring, comprehensive error diagnostics, and user-friendly troubleshooting guidance",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -9,6 +9,7 @@
     "7.1.3": "Bugfix - Fixed database path to absolute, improved service status checks, added Nginx troubleshooting",
     "7.1.4": "Bugfix - Fixed OpenSearch demo config issues, updated python-evtx to 0.8.1, disabled security plugin properly",
     "7.1.5": "Bugfix - Fixed OpenSearch temp directory creation, ensures all required directories exist",
-    "7.1.6": "Bugfix - Fixed OpenSearch startup timeouts, optimized config, disabled unnecessary plugins, dynamic heap sizing"
+    "7.1.6": "Bugfix - Fixed OpenSearch startup timeouts, optimized config, disabled unnecessary plugins, dynamic heap sizing",
+    "7.1.7": "Enhancement - Comprehensive installer verbosity, detailed service monitoring, API response verification, extensive troubleshooting guidance"
   }
 }
