@@ -1,7 +1,7 @@
 {
-  "version": "7.1.58",
+  "version": "7.1.60",
   "release_date": "2025-09-29",
-  "description": "Bugfix - Fixed result display to handle XML attribute notation (@Name, @SystemTime, #text)",
+  "description": "Enhancement - Added multi-field mapping for best of both worlds: searchable text + sortable dates",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -61,6 +61,8 @@
     "7.1.55": "Feature Complete - Event Search Interface: /search route with OpenSearch integration, query_string parser supporting AND/OR/NOT/parentheses/wildcards/phrase matching, results table with Event ID/Timestamp/Computer/Channel/Provider columns, expandable row details showing full JSON event data, clickable field tags to build queries, pagination (50 results per page), collapsible query help with syntax examples, searches across all indexed files in active case, modern 3D UI matching application theme",
     "7.1.56": "Bugfix - Fixed search RequestError 400: Changed sort field from @timestamp (not indexed) to System_TimeCreated_SystemTime with unmapped_type fallback, added fallback timestamp detection (System_TimeCreated_SystemTime → @timestamp → TimeCreated → N/A), secondary sort by _score for relevance when timestamp unavailable",
     "7.1.57": "Enhancement - Smart field name mapping for user-friendly queries: EventID→System.EventID, Computer→System.Computer, Channel→System.Channel, Provider→System.Provider.Name, Level→System.Level, Task→System.Task; users can now type 'EventID:5000' instead of 'System.EventID:5000'; added 'Show All Events' query (*); updated help documentation with common field names and better examples",
-    "7.1.58": "Bugfix - Fixed result display fields showing N/A: Updated field extraction to handle XML attribute notation (System.EventID.#text, System.TimeCreated.@SystemTime, System.Provider.@Name), fixed source filename extraction from _casescope_metadata, updated sort field to use correct timestamp path, updated field mappings for accurate queries, enhanced help documentation with Pro Tips emphasizing all data is searchable as plain text, added practical forensic examples (IPs, file paths, executables)"
+    "7.1.58": "Bugfix - Fixed result display fields showing N/A: Updated field extraction to handle XML attribute notation (System.EventID.#text, System.TimeCreated.@SystemTime, System.Provider.@Name), fixed source filename extraction from _casescope_metadata, updated sort field to use correct timestamp path, updated field mappings for accurate queries, enhanced help documentation with Pro Tips emphasizing all data is searchable as plain text, added practical forensic examples (IPs, file paths, executables)",
+    "7.1.59": "Bugfix - Removed timestamp sorting to fix RequestError 400: Text fields cannot be used for sorting in OpenSearch; changed to sort by relevance score (_score) instead, which is more appropriate for forensic searches where users want most relevant results first; all fields remain fully searchable as text for maximum flexibility",
+    "7.1.60": "Enhancement - Implemented multi-field mapping for timeline sorting: System.TimeCreated.@SystemTime now indexed as text (searchable) + date (sortable) + keyword (exact match); EventID, Computer, Channel, Provider also get text + keyword subfields; added create_index_mapping() function that sets up proper field mappings before indexing; search now sorts by timestamp.date subfield (chronological timeline view) with relevance fallback; ALL fields remain fully text-searchable while key fields can also be sorted/filtered; re-index files to get timeline sorting"
   }
 }

@@ -262,6 +262,96 @@ def flatten_event(event_data, parent_key='', sep='.'):
     return dict(items)
 
 
+def create_index_mapping(index_name):
+    """
+    Create index with proper field mappings for sorting and searching
+    Uses multi-field mapping: text for searching, keyword/date for sorting
+    """
+    mapping = {
+        "mappings": {
+            "properties": {
+                # Timestamp field - both as text (searchable) and date (sortable)
+                "System.TimeCreated.@SystemTime": {
+                    "type": "text",
+                    "fields": {
+                        "keyword": {"type": "keyword"},
+                        "date": {"type": "date", "ignore_malformed": True}
+                    }
+                },
+                # Event ID - text (searchable) and keyword (sortable/filterable)
+                "System.EventID.#text": {
+                    "type": "text",
+                    "fields": {
+                        "keyword": {"type": "keyword"}
+                    }
+                },
+                # Computer - text (searchable) and keyword (sortable)
+                "System.Computer": {
+                    "type": "text",
+                    "fields": {
+                        "keyword": {"type": "keyword"}
+                    }
+                },
+                # Channel - text (searchable) and keyword (sortable)
+                "System.Channel": {
+                    "type": "text",
+                    "fields": {
+                        "keyword": {"type": "keyword"}
+                    }
+                },
+                # Provider - text (searchable) and keyword (sortable)
+                "System.Provider.@Name": {
+                    "type": "text",
+                    "fields": {
+                        "keyword": {"type": "keyword"}
+                    }
+                },
+                # Level - both text and long for filtering
+                "System.Level": {
+                    "type": "text",
+                    "fields": {
+                        "keyword": {"type": "keyword"},
+                        "long": {"type": "long", "ignore_malformed": True}
+                    }
+                },
+                # Default mapping for all other fields - text with keyword subfield
+                "_default_": {
+                    "dynamic_templates": [
+                        {
+                            "strings": {
+                                "match_mapping_type": "string",
+                                "mapping": {
+                                    "type": "text",
+                                    "fields": {
+                                        "keyword": {"type": "keyword", "ignore_above": 256}
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        },
+        "settings": {
+            "index": {
+                "number_of_shards": 1,
+                "number_of_replicas": 0
+            }
+        }
+    }
+    
+    try:
+        # Check if index exists
+        if not opensearch_client.indices.exists(index=index_name):
+            opensearch_client.indices.create(index=index_name, body=mapping)
+            logger.info(f"Created index with mapping: {index_name}")
+        else:
+            logger.info(f"Index already exists: {index_name}")
+    except Exception as e:
+        logger.warning(f"Could not create index mapping: {e}")
+        # Continue anyway - OpenSearch will use dynamic mapping
+
+
 def bulk_index_events(index_name, events):
     """
     Bulk index events to OpenSearch
@@ -272,6 +362,9 @@ def bulk_index_events(index_name, events):
     """
     if not events:
         return
+    
+    # Ensure index exists with proper mapping
+    create_index_mapping(index_name)
     
     # Prepare bulk actions
     actions = [

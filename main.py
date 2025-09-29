@@ -527,9 +527,11 @@ def search():
                     "query": os_query,
                     "from": from_offset,
                     "size": per_page,
+                    # Sort by timestamp (newest first) using the .date subfield
+                    # Falls back to relevance score if timestamp unavailable
                     "sort": [
-                        {"System.TimeCreated.@SystemTime": {"order": "desc", "unmapped_type": "date"}},
-                        {"_score": {"order": "desc"}}
+                        {"System.TimeCreated.@SystemTime.date": {"order": "desc", "unmapped_type": "date"}},
+                        "_score"
                     ],
                     "_source": True
                 }
