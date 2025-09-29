@@ -279,6 +279,11 @@ install_opensearch() {
         # Move to final location
         mv opensearch-2.11.1 /opt/opensearch
         
+        # Create required directories
+        mkdir -p /opt/opensearch/tmp
+        mkdir -p /opt/opensearch/data
+        mkdir -p /opt/opensearch/logs
+        
         # Set ownership
         chown -R casescope:casescope /opt/opensearch
         
@@ -288,6 +293,11 @@ install_opensearch() {
         log "OpenSearch installed"
     else
         log "OpenSearch already installed"
+        # Ensure required directories exist even if OpenSearch was already installed
+        mkdir -p /opt/opensearch/tmp
+        mkdir -p /opt/opensearch/data
+        mkdir -p /opt/opensearch/logs
+        chown -R casescope:casescope /opt/opensearch
     fi
     
     # Configure OpenSearch
