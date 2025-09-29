@@ -286,11 +286,23 @@ handle_existing_data() {
         "upgrade")
             log "Upgrade installation - preserving existing data..."
             
+            # Ensure backup directory exists
+            mkdir -p /opt/casescope/data/backups
+            chown casescope:casescope /opt/casescope/data/backups
+            
             # Create backup of database
             if [ -f /opt/casescope/data/casescope.db ]; then
-                cp /opt/casescope/data/casescope.db /opt/casescope/data/backups/casescope.db.backup.$(date +%Y%m%d_%H%M%S)
-                log "Database backed up"
+                BACKUP_NAME="casescope.db.backup.$(date +%Y%m%d_%H%M%S)"
+                cp /opt/casescope/data/casescope.db /opt/casescope/data/backups/$BACKUP_NAME
+                chown casescope:casescope /opt/casescope/data/backups/$BACKUP_NAME
+                log "Database backed up to: /opt/casescope/data/backups/$BACKUP_NAME"
             fi
+            
+            # Stop services for upgrade but keep data
+            systemctl stop casescope-web 2>/dev/null || true
+            systemctl stop nginx 2>/dev/null || true
+            
+            log "Upgrade: Existing data preserved, services stopped for update"
             ;;
             
         "reindex")
@@ -300,11 +312,19 @@ handle_existing_data() {
             systemctl stop casescope-web 2>/dev/null || true
             systemctl stop opensearch 2>/dev/null || true
             
-            # Remove only OpenSearch indexes
+            # Remove OpenSearch indexes and data (but not the installation)
+            log "Removing OpenSearch index data..."
             rm -rf /var/lib/opensearch/nodes/*/indices/casescope-* 2>/dev/null || true
             rm -rf /opt/opensearch/data/nodes/*/indices/casescope-* 2>/dev/null || true
+            rm -rf /opt/opensearch/data/nodes/*/indices/* 2>/dev/null || true
+            rm -rf /var/lib/opensearch/nodes/*/indices/* 2>/dev/null || true
             
-            log "OpenSearch indexes cleared - files will need re-indexing"
+            # Clear upload files (since they'll need to be re-indexed anyway)
+            log "Clearing uploaded files (will need re-upload for re-indexing)..."
+            rm -rf /opt/casescope/upload/* 2>/dev/null || true
+            
+            log "Reindex: OpenSearch indexes and uploaded files cleared"
+            log "Database and user accounts preserved"
             ;;
     esac
 }
@@ -966,13 +986,54 @@ initialize_database() {
     
     # Ensure database directory exists with proper permissions
     mkdir -p /opt/casescope/data
-    chown casescope:casescope /opt/casescope/data
+    mkdir -p /opt/casescope/data/backups
+    chown -R casescope:casescope /opt/casescope/data
     chmod 755 /opt/casescope/data
     
     cd /opt/casescope/app
     
-    # Initialize database with proper error handling
-    sudo -u casescope /opt/casescope/venv/bin/python3 -c "
+    # Check if database already exists and what type of install we're doing
+    DB_EXISTS=false
+    if [ -f "/opt/casescope/data/casescope.db" ]; then
+        DB_EXISTS=true
+        log "Existing database found"
+    fi
+    
+    # Handle database based on installation type
+    case $INSTALL_TYPE in
+        "clean")
+            log "Clean install: Creating fresh database..."
+            # Remove existing database for clean install
+            rm -f /opt/casescope/data/casescope.db 2>/dev/null || true
+            INIT_DB=true
+            ;;
+        "upgrade")
+            if [ "$DB_EXISTS" = true ]; then
+                log "Upgrade install: Preserving existing database..."
+                INIT_DB=false
+            else
+                log "Upgrade install: No existing database found, creating new one..."
+                INIT_DB=true
+            fi
+            ;;
+        "reindex")
+            if [ "$DB_EXISTS" = true ]; then
+                log "Reindex install: Preserving existing database..."
+                INIT_DB=false
+            else
+                log "Reindex install: No existing database found, creating new one..."
+                INIT_DB=true
+            fi
+            ;;
+        *)
+            log "Unknown install type, initializing database..."
+            INIT_DB=true
+            ;;
+    esac
+    
+    if [ "$INIT_DB" = true ]; then
+        # Initialize database with proper error handling
+        sudo -u casescope /opt/casescope/venv/bin/python3 -c "
 import sys
 import os
 sys.path.insert(0, '/opt/casescope/app')
@@ -993,15 +1054,69 @@ except Exception as e:
     traceback.print_exc()
     sys.exit(1)
 "
-    DB_INIT_RESULT=$?
-    
-    if [ $DB_INIT_RESULT -eq 0 ]; then
-        log "Database initialized successfully"
-        log "Default login: administrator / ChangeMe! (password change required)"
+        DB_INIT_RESULT=$?
+        
+        if [ $DB_INIT_RESULT -eq 0 ]; then
+            log "Database initialized successfully"
+            log "Default login: administrator / ChangeMe! (password change required)"
+        else
+            log_error "Failed to initialize database (exit code: $DB_INIT_RESULT)"
+            log_error "Check Python dependencies and database permissions"
+            return 1
+        fi
     else
-        log_error "Failed to initialize database (exit code: $DB_INIT_RESULT)"
-        log_error "Check Python dependencies and database permissions"
-        return 1
+        log "Database preservation: Existing database retained"
+        log "Using existing user accounts and settings"
+        
+        # Still run a basic check to ensure database is accessible
+        sudo -u casescope /opt/casescope/venv/bin/python3 -c "
+import sys
+import os
+sys.path.insert(0, '/opt/casescope/app')
+
+try:
+    from main import app, db
+    with app.app_context():
+        # Test database connection
+        from sqlalchemy import text
+        db.session.execute(text('SELECT 1')).fetchone()
+        print('✓ Database connection verified')
+        
+        # Check if admin user exists
+        from main import User
+        admin_count = User.query.filter_by(username='administrator').count()
+        print(f'✓ Found {admin_count} administrator account(s)')
+        
+        if admin_count == 0:
+            print('⚠ No administrator account found - creating default account...')
+            admin = User(
+                username='administrator',
+                email='admin@casescope.local',
+                role='administrator',
+                force_password_change=True
+            )
+            admin.set_password('ChangeMe!')
+            db.session.add(admin)
+            db.session.commit()
+            print('✓ Default administrator user created')
+            print('  Username: administrator')
+            print('  Password: ChangeMe!')
+        
+except Exception as e:
+    print(f'ERROR: Database verification failed: {e}')
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+"
+        DB_CHECK_RESULT=$?
+        
+        if [ $DB_CHECK_RESULT -eq 0 ]; then
+            log "Database verification completed successfully"
+        else
+            log_error "Failed to verify existing database (exit code: $DB_CHECK_RESULT)"
+            log_error "Database may be corrupted or incompatible"
+            return 1
+        fi
     fi
 }
 

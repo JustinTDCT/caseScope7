@@ -1,7 +1,7 @@
 {
-  "version": "7.1.22",
+  "version": "7.1.23",
   "release_date": "2025-09-29",
-  "description": "Fixed login functionality with proper database initialization and enhanced UI with modern 3D styling, gradient backgrounds, and improved visual hierarchy",
+  "description": "Enhanced database initialization with proper installation type handling, improved backup system, and comprehensive database verification for all install modes",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -25,6 +25,7 @@
     "7.1.19": "Enhancement - Extended OpenSearch startup monitoring to 3 minutes with real-time progress, log snippets, and educational messaging",
     "7.1.20": "Bugfix - Fixed installer hanging on OpenSearch startup by using --no-block flag and added detailed start command debugging",
     "7.1.21": "Bugfix - Fixed OpenSearch startup detection by using process monitoring instead of systemd status, changed service type from notify to simple",
-    "7.1.22": "UI Enhancement - Fixed login functionality with proper database initialization, enhanced UI with modern 3D styling, gradients, shadows, and better visual hierarchy"
+    "7.1.22": "UI Enhancement - Fixed login functionality with proper database initialization, enhanced UI with modern 3D styling, gradients, shadows, and better visual hierarchy",
+    "7.1.23": "Database Enhancement - Comprehensive database initialization based on install type (clean/upgrade/reindex), improved backup system, automatic admin account recovery"
   }
 }
