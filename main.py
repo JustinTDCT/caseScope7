@@ -80,28 +80,144 @@ def login():
         else:
             flash('Invalid username or password.', 'error')
     
+    # Flash messages for display
+    flash_messages = ""
+    if hasattr(session, '_flashes') and session._flashes:
+        for category, message in session._flashes:
+            flash_messages += f'<div class="alert alert-{category}">{message}</div>'
+        session._flashes.clear()
+    
     return f'''
     <!DOCTYPE html>
     <html>
     <head>
         <title>caseScope 7.1 - Login</title>
         <style>
-            body {{ font-family: Arial, sans-serif; background: #1a237e; color: white; margin: 0; padding: 50px; }}
-            .login-container {{ max-width: 400px; margin: 0 auto; background: #283593; padding: 30px; border-radius: 10px; }}
-            .logo {{ text-align: center; font-size: 2em; margin-bottom: 30px; }}
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                padding: 0; 
+                min-height: 100vh; 
+                display: flex; 
+                align-items: center; 
+                justify-content: center;
+            }}
+            .login-container {{ 
+                max-width: 420px; 
+                width: 90%; 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 40px; 
+                border-radius: 20px; 
+                box-shadow: 
+                    0 20px 40px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .logo {{ 
+                text-align: center; 
+                font-size: 3em; 
+                margin-bottom: 40px; 
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                font-weight: 300;
+            }}
             .logo .case {{ color: #4caf50; }}
             .logo .scope {{ color: white; }}
-            input {{ width: 100%; padding: 10px; margin: 10px 0; border: none; border-radius: 5px; }}
-            button {{ width: 100%; padding: 10px; background: #4caf50; color: white; border: none; border-radius: 5px; cursor: pointer; }}
-            .version {{ text-align: center; margin-top: 20px; font-size: 0.8em; color: #ccc; }}
+            .form-group {{
+                margin-bottom: 20px;
+            }}
+            input {{ 
+                width: 100%; 
+                padding: 15px 20px; 
+                margin: 0; 
+                border: none; 
+                border-radius: 12px; 
+                background: rgba(255,255,255,0.1);
+                color: white;
+                font-size: 16px;
+                box-shadow: 
+                    inset 0 2px 5px rgba(0,0,0,0.2),
+                    0 1px 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(5px);
+                border: 1px solid rgba(255,255,255,0.1);
+                box-sizing: border-box;
+            }}
+            input::placeholder {{
+                color: rgba(255,255,255,0.7);
+            }}
+            input:focus {{
+                outline: none;
+                box-shadow: 
+                    inset 0 2px 5px rgba(0,0,0,0.2),
+                    0 0 0 3px rgba(76,175,80,0.3);
+                border-color: #4caf50;
+            }}
+            button {{ 
+                width: 100%; 
+                padding: 15px; 
+                background: linear-gradient(145deg, #4caf50, #388e3c); 
+                color: white; 
+                border: none; 
+                border-radius: 12px; 
+                cursor: pointer; 
+                font-size: 16px;
+                font-weight: 600;
+                box-shadow: 
+                    0 8px 15px rgba(76,175,80,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
+                transition: all 0.3s ease;
+            }}
+            button:hover {{
+                background: linear-gradient(145deg, #66bb6a, #4caf50);
+                box-shadow: 
+                    0 12px 20px rgba(76,175,80,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
+                transform: translateY(-2px);
+            }}
+            button:active {{
+                transform: translateY(0);
+                box-shadow: 
+                    0 4px 8px rgba(76,175,80,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
+            }}
+            .version {{ 
+                text-align: center; 
+                margin-top: 30px; 
+                font-size: 0.9em; 
+                color: rgba(255,255,255,0.7); 
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            }}
+            .alert {{
+                padding: 12px 16px;
+                margin-bottom: 20px;
+                border-radius: 8px;
+                font-size: 14px;
+            }}
+            .alert-error {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                border: 1px solid rgba(255,255,255,0.1);
+                box-shadow: 0 4px 8px rgba(244,67,54,0.3);
+            }}
+            .alert-info {{
+                background: linear-gradient(145deg, #2196f3, #1976d2);
+                border: 1px solid rgba(255,255,255,0.1);
+                box-shadow: 0 4px 8px rgba(33,150,243,0.3);
+            }}
         </style>
     </head>
     <body>
         <div class="login-container">
             <div class="logo"><span class="case">case</span><span class="scope">Scope</span></div>
+            {flash_messages}
             <form method="POST">
-                <input type="text" name="username" placeholder="Username" required>
-                <input type="password" name="password" placeholder="Password" required>
+                <div class="form-group">
+                    <input type="text" name="username" placeholder="Username" required>
+                </div>
+                <div class="form-group">
+                    <input type="password" name="password" placeholder="Password" required>
+                </div>
                 <button type="submit">Login</button>
             </form>
             <div class="version">Version {APP_VERSION}</div>
@@ -126,37 +242,172 @@ def dashboard():
     <head>
         <title>caseScope 7.1 - Dashboard</title>
         <style>
-            body {{ font-family: Arial, sans-serif; background: #1a237e; color: white; margin: 0; display: flex; min-height: 100vh; }}
-            .sidebar {{ width: 250px; background: #303f9f; padding: 20px; box-shadow: 2px 0 5px rgba(0,0,0,0.3); }}
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                display: flex; 
+                min-height: 100vh; 
+            }}
+            .sidebar {{ 
+                width: 280px; 
+                background: linear-gradient(145deg, #303f9f, #283593); 
+                padding: 30px 20px; 
+                box-shadow: 
+                    5px 0 20px rgba(0,0,0,0.4),
+                    inset -1px 0 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+            }}
             .main-content {{ flex: 1; }}
-            .header {{ background: #283593; padding: 20px; display: flex; justify-content: space-between; align-items: center; }}
-            .logo {{ font-size: 1.5em; }}
+            .header {{ 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 25px 30px; 
+                display: flex; 
+                justify-content: space-between; 
+                align-items: center;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }}
+            .logo {{ 
+                font-size: 1.8em; 
+                font-weight: 300;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            }}
             .logo .case {{ color: #4caf50; }}
             .logo .scope {{ color: white; }}
-            .user-info {{ display: flex; align-items: center; gap: 20px; }}
-            .content {{ padding: 30px; }}
-            .tile {{ background: #3f51b5; padding: 20px; margin: 10px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }}
-            .tiles {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }}
-            .menu-item {{ display: block; color: white; text-decoration: none; padding: 10px; margin: 5px 0; border-radius: 5px; background: #3949ab; }}
-            .menu-item:hover {{ background: #5c6bc0; }}
-            .menu-item.placeholder {{ background: #424242; color: #aaa; cursor: not-allowed; }}
-            a {{ color: #4caf50; text-decoration: none; }}
-            .footer {{ position: fixed; bottom: 10px; right: 10px; font-size: 0.8em; color: #ccc; }}
-            .status {{ display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 0.8em; }}
-            .status.operational {{ background: #4caf50; }}
-            .status.placeholder {{ background: #ff9800; }}
+            .user-info {{ 
+                display: flex; 
+                align-items: center; 
+                gap: 25px;
+                font-size: 0.95em;
+            }}
+            .content {{ padding: 40px; }}
+            .tile {{ 
+                background: linear-gradient(145deg, #3f51b5, #283593); 
+                padding: 30px; 
+                margin: 0; 
+                border-radius: 15px; 
+                box-shadow: 
+                    0 10px 25px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255,255,255,0.1);
+                transition: all 0.3s ease;
+            }}
+            .tile:hover {{
+                transform: translateY(-5px);
+                box-shadow: 
+                    0 20px 40px rgba(0,0,0,0.5),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+            }}
+            .tile h3 {{
+                margin-top: 0;
+                margin-bottom: 20px;
+                font-size: 1.3em;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            }}
+            .tiles {{ 
+                display: grid; 
+                grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); 
+                gap: 30px; 
+            }}
+            .menu-item {{ 
+                display: block; 
+                color: white; 
+                text-decoration: none; 
+                padding: 15px 20px; 
+                margin: 8px 0; 
+                border-radius: 12px; 
+                background: linear-gradient(145deg, #3949ab, #283593);
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+                font-size: 0.95em;
+            }}
+            .menu-item:hover {{ 
+                background: linear-gradient(145deg, #5c6bc0, #3949ab);
+                transform: translateX(5px);
+                box-shadow: 
+                    0 8px 15px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
+            }}
+            .menu-item.placeholder {{ 
+                background: linear-gradient(145deg, #424242, #2e2e2e); 
+                color: #aaa; 
+                cursor: not-allowed;
+                opacity: 0.7;
+            }}
+            .menu-item.placeholder:hover {{
+                transform: none;
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+            }}
+            h3.menu-title {{
+                font-size: 1.1em;
+                margin: 25px 0 15px 0;
+                color: #4caf50;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+                padding-bottom: 8px;
+            }}
+            a {{ color: #4caf50; text-decoration: none; transition: color 0.3s ease; }}
+            a:hover {{ color: #66bb6a; }}
+            .footer {{ 
+                position: fixed; 
+                bottom: 15px; 
+                right: 20px; 
+                font-size: 0.85em; 
+                color: rgba(255,255,255,0.7);
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            }}
+            .status {{ 
+                display: inline-block; 
+                padding: 6px 12px; 
+                border-radius: 8px; 
+                font-size: 0.85em;
+                font-weight: 500;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                margin: 2px 0;
+            }}
+            .status.operational {{ 
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+            }}
+            .status.placeholder {{ 
+                background: linear-gradient(145deg, #ff9800, #f57c00);
+                color: white;
+            }}
+            .success-banner {{
+                background: linear-gradient(145deg, #2e7d32, #1b5e20);
+                padding: 25px;
+                border-radius: 15px;
+                margin-top: 30px;
+                box-shadow: 
+                    0 8px 20px rgba(46,125,50,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+                border: 1px solid rgba(76,175,80,0.3);
+            }}
+            .success-banner h3 {{
+                margin-top: 0;
+                color: #4caf50;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            }}
         </style>
     </head>
     <body>
         <div class="sidebar">
-            <h3>Menu</h3>
+            <h3 class="menu-title">Navigation</h3>
             <a href="/dashboard" class="menu-item">📊 Dashboard</a>
             <a href="/case-selection" class="menu-item placeholder">📁 Case Selection (Coming Soon)</a>
             <a href="/upload" class="menu-item placeholder">📤 Upload Files (Coming Soon)</a>
             <a href="/files" class="menu-item placeholder">📄 List Files (Coming Soon)</a>
             <a href="/search" class="menu-item placeholder">🔍 Search (Coming Soon)</a>
-            <hr style="border-color: #5c6bc0; margin: 20px 0;">
-            <h4>Management</h4>
+            
+            <h3 class="menu-title">Management</h3>
             <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
             <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
             <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
@@ -203,7 +454,7 @@ def dashboard():
                     </div>
                 </div>
                 
-                <div style="margin-top: 30px; padding: 20px; background: #2e7d32; border-radius: 10px;">
+                <div class="success-banner">
                     <h3>🎉 Installation Successful!</h3>
                     <p>caseScope 7.1 has been successfully installed and all core services are running.</p>
                     <p>This UI demonstrates the installation is working. Forensic features (case management, file processing, search) will be implemented in future releases.</p>

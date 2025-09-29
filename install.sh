@@ -964,15 +964,45 @@ start_services() {
 initialize_database() {
     log "Initializing database..."
     
-    cd /opt/casescope/app
-    sudo -u casescope /opt/casescope/venv/bin/python3 -c "
-from main import app, db, User
-with app.app_context():
-    db.create_all()
-    print('Database initialized')
-"
+    # Ensure database directory exists with proper permissions
+    mkdir -p /opt/casescope/data
+    chown casescope:casescope /opt/casescope/data
+    chmod 755 /opt/casescope/data
     
-    log "Database initialized"
+    cd /opt/casescope/app
+    
+    # Initialize database with proper error handling
+    sudo -u casescope /opt/casescope/venv/bin/python3 -c "
+import sys
+import os
+sys.path.insert(0, '/opt/casescope/app')
+
+try:
+    from main import init_db
+    print('Starting database initialization...')
+    init_db()
+    print('✓ Database tables created successfully')
+    print('✓ Default administrator user created')
+    print('  Username: administrator')
+    print('  Password: ChangeMe!')
+    print('  (Password change required on first login)')
+    print('✓ Database initialization completed')
+except Exception as e:
+    print(f'ERROR: Database initialization failed: {e}')
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+"
+    DB_INIT_RESULT=$?
+    
+    if [ $DB_INIT_RESULT -eq 0 ]; then
+        log "Database initialized successfully"
+        log "Default login: administrator / ChangeMe! (password change required)"
+    else
+        log_error "Failed to initialize database (exit code: $DB_INIT_RESULT)"
+        log_error "Check Python dependencies and database permissions"
+        return 1
+    fi
 }
 
 # Main installation function
