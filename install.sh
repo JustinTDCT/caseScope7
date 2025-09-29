@@ -318,13 +318,10 @@ cluster.routing.allocation.disk.threshold_enabled: false
 indices.fielddata.cache.size: 20%
 indices.memory.index_buffer_size: 10%
 
-# Disable unnecessary features for faster startup
+# Disable unnecessary features for faster startup (only valid settings for 2.11.1)
 plugins.index_state_management.enabled: false
 plugins.alerting.enabled: false
 plugins.anomaly_detection.enabled: false
-plugins.asynchronous_search.enabled: false
-plugins.cross_cluster_replication.enabled: false
-plugins.index_management.enabled: false
 plugins.ml_commons.enabled: false
 plugins.notifications.enabled: false
 plugins.observability.enabled: false
