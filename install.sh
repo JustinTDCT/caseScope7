@@ -241,23 +241,46 @@ create_directories() {
 handle_existing_data() {
     case $INSTALL_TYPE in
         "clean")
-            log "Performing clean installation - removing all existing data..."
+            log "Performing COMPLETE clean installation - removing all existing data and services..."
             
-            # Stop services
+            # Stop and disable all services
+            log "Stopping all caseScope services..."
             systemctl stop casescope-web 2>/dev/null || true
             systemctl stop opensearch 2>/dev/null || true
-            systemctl stop redis 2>/dev/null || true
+            systemctl stop nginx 2>/dev/null || true
+            systemctl stop redis-server 2>/dev/null || true
             
-            # Remove all data
-            rm -rf /opt/casescope/data/* 2>/dev/null || true
-            rm -rf /opt/casescope/uploads/* 2>/dev/null || true
-            rm -rf /opt/casescope/logs/* 2>/dev/null || true
+            systemctl disable casescope-web 2>/dev/null || true
+            systemctl disable opensearch 2>/dev/null || true
             
-            # Remove OpenSearch data
-            rm -rf /var/lib/opensearch/* 2>/dev/null || true
-            rm -rf /opt/opensearch/data/* 2>/dev/null || true
+            # Remove service files
+            log "Removing service files..."
+            rm -f /etc/systemd/system/casescope-web.service 2>/dev/null || true
+            rm -f /etc/systemd/system/opensearch.service 2>/dev/null || true
             
-            log "Clean installation: all data removed"
+            # Remove Nginx site configuration
+            log "Removing Nginx configuration..."
+            rm -f /etc/nginx/sites-enabled/casescope 2>/dev/null || true
+            rm -f /etc/nginx/sites-available/casescope 2>/dev/null || true
+            
+            # Remove all application data
+            log "Removing all application data..."
+            rm -rf /opt/casescope/* 2>/dev/null || true
+            
+            # Remove OpenSearch completely
+            log "Removing OpenSearch installation and data..."
+            rm -rf /opt/opensearch 2>/dev/null || true
+            rm -rf /var/lib/opensearch 2>/dev/null || true
+            
+            # Remove any leftover processes
+            log "Ensuring all processes are terminated..."
+            pkill -f opensearch 2>/dev/null || true
+            pkill -f casescope 2>/dev/null || true
+            
+            # Reload systemd
+            systemctl daemon-reload
+            
+            log "Clean installation: ALL data, services, and configurations removed"
             ;;
             
         "upgrade")
@@ -414,6 +437,10 @@ EOF
 -Xms${HEAP_SIZE}
 -Xmx${HEAP_SIZE}
 
+# Unlock experimental options FIRST (must come before experimental flags)
+-XX:+UnlockExperimentalVMOptions
+-XX:+UnlockDiagnosticVMOptions
+
 # GC Settings optimized for startup speed
 -XX:+UseG1GC
 -XX:G1HeapRegionSize=16m
@@ -427,11 +454,9 @@ EOF
 # JIT Compiler optimizations for faster startup
 -XX:TieredStopAtLevel=1
 -XX:+UseSharedSpaces
--XX:+UnlockExperimentalVMOptions
 -XX:+UseContainerSupport
 
 # Class loading optimizations
--XX:+UnlockDiagnosticVMOptions
 -XX:+LogVMOutput
 -XX:+UseTransparentHugePages
 
