@@ -1,7 +1,7 @@
 {
-  "version": "7.1.32",
+  "version": "7.1.33",
   "release_date": "2025-09-29",
-  "description": "UI Polish - Simplified case table header styling, removed gradient for cleaner appearance",
+  "description": "File Upload System - Multi-file upload with validation, hash deduplication, and file management interface",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -35,6 +35,7 @@
     "7.1.29": "UI Ultra-Compact - Further tightened sidebar logo spacing, reduced menu item padding, and minimized all navigation margins for maximum content space",
     "7.1.30": "UI Fine-Tuning - Reduced sidebar logo top padding from 10px to 5px (50% reduction) for optimal spacing and visual balance",
     "7.1.31": "Feature Complete - Case Management System with Case/CaseFile models, create/select/dashboard routes, case directories, and modern 3D UI",
-    "7.1.32": "UI Polish - Simplified case table header styling, removed gradient for solid color background for cleaner appearance"
+    "7.1.32": "UI Polish - Simplified case table header styling, removed gradient for solid color background for cleaner appearance",
+    "7.1.33": "File Upload System - Complete upload functionality with multi-file support (5 files, 3GB each), SHA256 hash verification, duplicate detection, MIME type detection, and file list management interface"
   }
 }

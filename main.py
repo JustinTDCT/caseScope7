@@ -225,6 +225,135 @@ def case_dashboard():
     case = Case.query.get_or_404(active_case_id)
     return render_case_dashboard(case)
 
+@app.route('/upload', methods=['GET', 'POST'])
+@login_required
+def upload_files():
+    """File upload for active case"""
+    import hashlib
+    import mimetypes
+    
+    # Require active case
+    active_case_id = session.get('active_case_id')
+    if not active_case_id:
+        flash('Please select a case before uploading files.', 'warning')
+        return redirect(url_for('case_selection'))
+    
+    case = Case.query.get_or_404(active_case_id)
+    
+    if request.method == 'POST':
+        files = request.files.getlist('files')
+        
+        if not files or files[0].filename == '':
+            flash('No files selected.', 'error')
+            return redirect(request.url)
+        
+        # Validate file count
+        if len(files) > 5:
+            flash('Maximum 5 files allowed per upload.', 'error')
+            return redirect(request.url)
+        
+        success_count = 0
+        error_count = 0
+        
+        for file in files:
+            if file.filename == '':
+                continue
+            
+            try:
+                # Read file data
+                file_data = file.read()
+                file_size = len(file_data)
+                
+                # Validate file size (3GB = 3,221,225,472 bytes)
+                if file_size > 3221225472:
+                    flash(f'File {file.filename} exceeds 3GB limit.', 'error')
+                    error_count += 1
+                    continue
+                
+                # Calculate SHA256 hash
+                sha256_hash = hashlib.sha256(file_data).hexdigest()
+                
+                # Check for duplicate hash in this case
+                duplicate = CaseFile.query.filter_by(
+                    case_id=case.id, 
+                    file_hash=sha256_hash,
+                    is_deleted=False
+                ).first()
+                
+                if duplicate:
+                    flash(f'File {file.filename} already exists (duplicate hash).', 'warning')
+                    error_count += 1
+                    continue
+                
+                # Determine MIME type
+                mime_type = mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
+                
+                # Generate safe filename
+                import time
+                timestamp = int(time.time())
+                safe_filename = f"{timestamp}_{file.filename}"
+                
+                # Ensure case upload directory exists
+                case_upload_dir = f"/opt/casescope/uploads/{case.id}"
+                os.makedirs(case_upload_dir, exist_ok=True)
+                
+                # Save file
+                file_path = os.path.join(case_upload_dir, safe_filename)
+                with open(file_path, 'wb') as f:
+                    f.write(file_data)
+                
+                # Create database record
+                case_file = CaseFile(
+                    case_id=case.id,
+                    filename=safe_filename,
+                    original_filename=file.filename,
+                    file_path=file_path,
+                    file_size=file_size,
+                    file_hash=sha256_hash,
+                    mime_type=mime_type,
+                    uploaded_by=current_user.id,
+                    indexing_status='Pending'
+                )
+                
+                db.session.add(case_file)
+                success_count += 1
+                
+            except Exception as e:
+                flash(f'Error uploading {file.filename}: {str(e)}', 'error')
+                error_count += 1
+                continue
+        
+        # Commit all successful uploads
+        if success_count > 0:
+            try:
+                db.session.commit()
+                flash(f'Successfully uploaded {success_count} file(s).', 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Database error: {str(e)}', 'error')
+        
+        if error_count > 0:
+            flash(f'{error_count} file(s) failed to upload.', 'warning')
+        
+        return redirect(url_for('list_files'))
+    
+    # GET request - show upload form
+    return render_upload_form(case)
+
+@app.route('/files')
+@login_required
+def list_files():
+    """List files in active case"""
+    active_case_id = session.get('active_case_id')
+    if not active_case_id:
+        flash('Please select a case first.', 'warning')
+        return redirect(url_for('case_selection'))
+    
+    case = Case.query.get_or_404(active_case_id)
+    files = CaseFile.query.filter_by(case_id=case.id, is_deleted=False).order_by(CaseFile.uploaded_at.desc()).all()
+    
+    return render_file_list(case, files)
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -641,8 +770,8 @@ def dashboard():
             <h3 class="menu-title">Navigation</h3>
             <a href="/dashboard" class="menu-item">📊 Dashboard</a>
             <a href="/case/select" class="menu-item">📁 Case Selection</a>
-            <a href="/upload" class="menu-item placeholder">📤 Upload Files (Coming Soon)</a>
-            <a href="/files" class="menu-item placeholder">📄 List Files (Coming Soon)</a>
+            <a href="/upload" class="menu-item">📤 Upload Files</a>
+            <a href="/files" class="menu-item">📄 List Files</a>
             <a href="/search" class="menu-item placeholder">🔍 Search (Coming Soon)</a>
             
             <h3 class="menu-title">Management</h3>
@@ -889,6 +1018,548 @@ def change_password():
     '''
 
 # UI Rendering Functions
+def render_upload_form(case):
+    """Render file upload form"""
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Upload Files - {case.name} - caseScope 7.1</title>
+        <style>
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                display: flex; 
+                min-height: 100vh; 
+            }}
+            .sidebar {{ 
+                width: 280px; 
+                background: linear-gradient(145deg, #303f9f, #283593); 
+                padding: 20px; 
+                box-shadow: 
+                    5px 0 20px rgba(0,0,0,0.4),
+                    inset -1px 0 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+            }}
+            .main-content {{ flex: 1; }}
+            .header {{ 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 15px 30px; 
+                display: flex; 
+                justify-content: space-between; 
+                align-items: center;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                min-height: 60px;
+            }}
+            .case-title {{
+                font-size: 1.3em;
+                font-weight: 600;
+            }}
+            .user-info {{ 
+                display: flex; 
+                align-items: center; 
+                gap: 20px;
+                font-size: 1em;
+                line-height: 1.2;
+            }}
+            .sidebar-logo {{
+                text-align: center;
+                font-size: 2.2em;
+                font-weight: 300;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                margin-bottom: 15px;
+                padding: 5px 0 8px 0;
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+            }}
+            .sidebar-logo .case {{ color: #4caf50; }}
+            .sidebar-logo .scope {{ color: white; }}
+            .version-badge {{
+                font-size: 0.4em;
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 3px 6px;
+                border-radius: 6px;
+                margin-top: 5px;
+                display: inline-block;
+                box-shadow: 0 2px 4px rgba(76,175,80,0.3);
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .content {{ padding: 30px; }}
+            .menu-item {{ 
+                display: block; 
+                color: white; 
+                text-decoration: none; 
+                padding: 12px 16px; 
+                margin: 6px 0; 
+                border-radius: 12px; 
+                background: linear-gradient(145deg, #3949ab, #283593);
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+                font-size: 0.95em;
+            }}
+            .menu-item:hover {{ 
+                background: linear-gradient(145deg, #5c6bc0, #3949ab);
+                transform: translateX(5px);
+                box-shadow: 
+                    0 8px 15px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
+            }}
+            .menu-item.active {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+            }}
+            .menu-item.placeholder {{ 
+                background: linear-gradient(145deg, #424242, #2e2e2e); 
+                color: #aaa; 
+                cursor: not-allowed;
+                opacity: 0.7;
+            }}
+            .menu-item.placeholder:hover {{
+                transform: none;
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+            }}
+            h3.menu-title {{
+                font-size: 1.1em;
+                margin: 15px 0 8px 0;
+                color: #4caf50;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+                padding-bottom: 4px;
+            }}
+            .logout-btn {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                color: white !important;
+                padding: 8px 16px;
+                border-radius: 8px;
+                text-decoration: none;
+                font-size: 0.9em;
+                font-weight: 500;
+                box-shadow: 0 4px 8px rgba(244,67,54,0.3);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .logout-btn:hover {{
+                background: linear-gradient(145deg, #ef5350, #f44336);
+                box-shadow: 0 6px 12px rgba(244,67,54,0.4);
+                transform: translateY(-1px);
+                color: white !important;
+            }}
+            .upload-container {{
+                background: linear-gradient(145deg, #283593, #1e88e5);
+                padding: 30px;
+                border-radius: 15px;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+                max-width: 800px;
+            }}
+            .file-input {{
+                display: block;
+                width: 100%;
+                padding: 20px;
+                border: 2px dashed rgba(255,255,255,0.3);
+                border-radius: 10px;
+                background: rgba(255,255,255,0.05);
+                cursor: pointer;
+                text-align: center;
+                transition: all 0.3s ease;
+                margin: 20px 0;
+            }}
+            .file-input:hover {{
+                border-color: #4caf50;
+                background: rgba(76,175,80,0.1);
+            }}
+            .btn {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 12px 24px;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 16px;
+                font-weight: 600;
+                box-shadow: 0 4px 8px rgba(76,175,80,0.3);
+                transition: all 0.3s ease;
+                margin-right: 10px;
+            }}
+            .btn:hover {{
+                background: linear-gradient(145deg, #66bb6a, #4caf50);
+                transform: translateY(-1px);
+            }}
+            .btn-secondary {{
+                background: linear-gradient(145deg, #757575, #616161);
+            }}
+            .btn-secondary:hover {{
+                background: linear-gradient(145deg, #9e9e9e, #757575);
+            }}
+            .info-box {{
+                background: rgba(33,150,243,0.2);
+                border-left: 4px solid #2196f3;
+                padding: 15px;
+                margin: 20px 0;
+                border-radius: 5px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
+            </div>
+            
+            <h3 class="menu-title">Navigation</h3>
+            <a href="/dashboard" class="menu-item">📊 Dashboard</a>
+            <a href="/case/select" class="menu-item">📁 Case Selection</a>
+            <a href="/upload" class="menu-item active">📤 Upload Files</a>
+            <a href="/files" class="menu-item">📄 List Files</a>
+            <a href="/search" class="menu-item placeholder">🔍 Search (Coming Soon)</a>
+            
+            <h3 class="menu-title">Management</h3>
+            <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
+            <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
+            <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
+            <a href="/settings" class="menu-item placeholder">⚙️ System Settings (Coming Soon)</a>
+        </div>
+        <div class="main-content">
+            <div class="header">
+                <div class="case-title">📁 {case.name}</div>
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
+                    <a href="/logout" class="logout-btn">Logout</a>
+                </div>
+            </div>
+            <div class="content">
+                <h1>📤 Upload Files</h1>
+                <div class="info-box">
+                    <strong>Upload Limits:</strong><br>
+                    • Maximum 5 files per upload<br>
+                    • Maximum 3GB per file<br>
+                    • Duplicate detection via SHA256 hash<br>
+                    • Supported formats: .evtx, .json, .csv, .log, .txt, .xml
+                </div>
+                
+                <div class="upload-container">
+                    <form method="POST" enctype="multipart/form-data">
+                        <div class="file-input" onclick="document.getElementById('fileInput').click()">
+                            <p style="font-size: 3em; margin: 0;">📁</p>
+                            <p>Click to select files or drag and drop</p>
+                            <p style="font-size: 0.9em; color: rgba(255,255,255,0.7);">Up to 5 files, 3GB each</p>
+                        </div>
+                        <input type="file" id="fileInput" name="files" multiple style="display: none;" onchange="showSelectedFiles(this)">
+                        
+                        <div id="selectedFiles" style="margin: 20px 0;"></div>
+                        
+                        <div style="text-align: center; margin-top: 25px;">
+                            <button type="submit" class="btn">Upload Files</button>
+                            <button type="button" class="btn btn-secondary" onclick="window.location.href='/files'">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <script>
+            function showSelectedFiles(input) {{
+                const container = document.getElementById('selectedFiles');
+                container.innerHTML = '';
+                
+                if (input.files.length > 0) {{
+                    const fileList = document.createElement('div');
+                    fileList.style.cssText = 'background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;';
+                    
+                    const title = document.createElement('h4');
+                    title.textContent = 'Selected Files:';
+                    title.style.marginTop = '0';
+                    fileList.appendChild(title);
+                    
+                    for (let i = 0; i < input.files.length; i++) {{
+                        const file = input.files[i];
+                        const fileInfo = document.createElement('p');
+                        fileInfo.textContent = `${{i+1}}. ${{file.name}} (${{(file.size / 1024 / 1024).toFixed(2)}} MB)`;
+                        fileInfo.style.margin = '5px 0';
+                        fileList.appendChild(fileInfo);
+                    }}
+                    
+                    container.appendChild(fileList);
+                }}
+            }}
+        </script>
+    </body>
+    </html>
+    '''
+
+def render_file_list(case, files):
+    """Render file list for case"""
+    file_rows = ""
+    for file in files:
+        file_size_mb = file.file_size / (1024 * 1024)
+        status_class = file.indexing_status.lower().replace(' ', '-')
+        
+        file_rows += f'''
+        <tr>
+            <td>{file.original_filename}</td>
+            <td>{file_size_mb:.2f} MB</td>
+            <td>{file.mime_type}</td>
+            <td><span class="status-{status_class}">{file.indexing_status}</span></td>
+            <td>{file.uploaded_at.strftime('%Y-%m-%d %H:%M')}</td>
+            <td>{file.uploader.username}</td>
+            <td><button class="btn-small" onclick="alert('Hash: {file.file_hash}')">View Hash</button></td>
+        </tr>
+        '''
+    
+    if not file_rows:
+        file_rows = '<tr><td colspan="7" style="text-align: center; padding: 40px;">No files uploaded yet. Click "Upload Files" to add files to this case.</td></tr>'
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Files - {case.name} - caseScope 7.1</title>
+        <style>
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                display: flex; 
+                min-height: 100vh; 
+            }}
+            .sidebar {{ 
+                width: 280px; 
+                background: linear-gradient(145deg, #303f9f, #283593); 
+                padding: 20px; 
+                box-shadow: 
+                    5px 0 20px rgba(0,0,0,0.4),
+                    inset -1px 0 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+            }}
+            .main-content {{ flex: 1; }}
+            .header {{ 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 15px 30px; 
+                display: flex; 
+                justify-content: space-between; 
+                align-items: center;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                min-height: 60px;
+            }}
+            .case-title {{
+                font-size: 1.3em;
+                font-weight: 600;
+            }}
+            .user-info {{ 
+                display: flex; 
+                align-items: center; 
+                gap: 20px;
+                font-size: 1em;
+                line-height: 1.2;
+            }}
+            .sidebar-logo {{
+                text-align: center;
+                font-size: 2.2em;
+                font-weight: 300;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                margin-bottom: 15px;
+                padding: 5px 0 8px 0;
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+            }}
+            .sidebar-logo .case {{ color: #4caf50; }}
+            .sidebar-logo .scope {{ color: white; }}
+            .version-badge {{
+                font-size: 0.4em;
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 3px 6px;
+                border-radius: 6px;
+                margin-top: 5px;
+                display: inline-block;
+                box-shadow: 0 2px 4px rgba(76,175,80,0.3);
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .content {{ padding: 30px; }}
+            .menu-item {{ 
+                display: block; 
+                color: white; 
+                text-decoration: none; 
+                padding: 12px 16px; 
+                margin: 6px 0; 
+                border-radius: 12px; 
+                background: linear-gradient(145deg, #3949ab, #283593);
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+                font-size: 0.95em;
+            }}
+            .menu-item:hover {{ 
+                background: linear-gradient(145deg, #5c6bc0, #3949ab);
+                transform: translateX(5px);
+                box-shadow: 
+                    0 8px 15px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
+            }}
+            .menu-item.active {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+            }}
+            .menu-item.placeholder {{ 
+                background: linear-gradient(145deg, #424242, #2e2e2e); 
+                color: #aaa; 
+                cursor: not-allowed;
+                opacity: 0.7;
+            }}
+            .menu-item.placeholder:hover {{
+                transform: none;
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+            }}
+            h3.menu-title {{
+                font-size: 1.1em;
+                margin: 15px 0 8px 0;
+                color: #4caf50;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+                padding-bottom: 4px;
+            }}
+            .logout-btn {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                color: white !important;
+                padding: 8px 16px;
+                border-radius: 8px;
+                text-decoration: none;
+                font-size: 0.9em;
+                font-weight: 500;
+                box-shadow: 0 4px 8px rgba(244,67,54,0.3);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .logout-btn:hover {{
+                background: linear-gradient(145deg, #ef5350, #f44336);
+                box-shadow: 0 6px 12px rgba(244,67,54,0.4);
+                transform: translateY(-1px);
+                color: white !important;
+            }}
+            .file-table {{
+                width: 100%;
+                background: linear-gradient(145deg, #3f51b5, #283593);
+                border-radius: 15px;
+                overflow: hidden;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+                margin-top: 20px;
+            }}
+            .file-table th, .file-table td {{
+                padding: 15px;
+                text-align: left;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }}
+            .file-table th {{
+                background: #283593;
+                font-weight: 600;
+                color: white;
+            }}
+            .status-pending {{ color: #ffb74d; }}
+            .status-processing {{ color: #2196f3; }}
+            .status-complete {{ color: #4caf50; }}
+            .status-failed {{ color: #f44336; }}
+            .btn {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 12px 24px;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 16px;
+                font-weight: 600;
+                box-shadow: 0 4px 8px rgba(76,175,80,0.3);
+                transition: all 0.3s ease;
+                text-decoration: none;
+                display: inline-block;
+            }}
+            .btn:hover {{
+                background: linear-gradient(145deg, #66bb6a, #4caf50);
+                transform: translateY(-1px);
+            }}
+            .btn-small {{
+                background: linear-gradient(145deg, #2196f3, #1976d2);
+                color: white;
+                padding: 6px 12px;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 12px;
+                box-shadow: 0 2px 4px rgba(33,150,243,0.3);
+            }}
+            .btn-small:hover {{
+                background: linear-gradient(145deg, #42a5f5, #2196f3);
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
+            </div>
+            
+            <h3 class="menu-title">Navigation</h3>
+            <a href="/dashboard" class="menu-item">📊 Dashboard</a>
+            <a href="/case/select" class="menu-item">📁 Case Selection</a>
+            <a href="/upload" class="menu-item">📤 Upload Files</a>
+            <a href="/files" class="menu-item active">📄 List Files</a>
+            <a href="/search" class="menu-item placeholder">🔍 Search (Coming Soon)</a>
+            
+            <h3 class="menu-title">Management</h3>
+            <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
+            <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
+            <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
+            <a href="/settings" class="menu-item placeholder">⚙️ System Settings (Coming Soon)</a>
+        </div>
+        <div class="main-content">
+            <div class="header">
+                <div class="case-title">📁 {case.name}</div>
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
+                    <a href="/logout" class="logout-btn">Logout</a>
+                </div>
+            </div>
+            <div class="content">
+                <h1>📄 Case Files</h1>
+                <p>Files uploaded to: {case.name}</p>
+                
+                <div style="margin: 20px 0;">
+                    <a href="/upload" class="btn">📤 Upload Files</a>
+                </div>
+                
+                <table class="file-table">
+                    <thead>
+                        <tr>
+                            <th>Filename</th>
+                            <th>Size</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Uploaded</th>
+                            <th>Uploaded By</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {file_rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
+
 def render_case_form():
     """Render case creation form"""
     return f'''
@@ -1484,8 +2155,8 @@ def render_case_dashboard(case):
             <h3 class="menu-title">Navigation</h3>
             <a href="/dashboard" class="menu-item">📊 Dashboard</a>
             <a href="/case/select" class="menu-item">📁 Case Selection</a>
-            <a href="/upload" class="menu-item placeholder">📤 Upload Files (Coming Soon)</a>
-            <a href="/files" class="menu-item placeholder">📄 List Files (Coming Soon)</a>
+            <a href="/upload" class="menu-item">📤 Upload Files</a>
+            <a href="/files" class="menu-item">📄 List Files</a>
             <a href="/search" class="menu-item placeholder">🔍 Search (Coming Soon)</a>
             
             <h3 class="menu-title">Management</h3>
