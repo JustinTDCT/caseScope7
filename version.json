@@ -1,16 +1,11 @@
 {
-<<<<<<< HEAD
-  "version": "7.0.158",
-  "release_date": "2025-09-27",
-  "description": "SEARCH TEMPLATE FIX: Replaced old search.html with working template + fixed routing",
-  "build": "production"
-=======
-  "version": "7.1.1",
+  "version": "7.1.3",
   "release_date": "2025-09-28",
-  "description": "Initial caseScope 7.1 architecture - Core system foundation",
+  "description": "Fixed web UI port 80 access, database path configuration, and service monitoring",
   "build": "production",
   "changelog": {
-    "7.1.1": "Initial release - Core architecture, user management, case framework"
+    "7.1.1": "Initial release - Core architecture, user management, case framework",
+    "7.1.2": "Bugfix - Fixed requirements.txt copying and added fallback dependency installation",
+    "7.1.3": "Bugfix - Fixed database path to absolute, improved service status checks, added Nginx troubleshooting"
   }
->>>>>>> casescope-7.1
 }

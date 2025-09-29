@@ -350,13 +350,32 @@ EOF
 copy_application() {
     log "Copying application files..."
     
-    # Copy all application files
-    cp -r . /opt/casescope/app/
+    # Get the directory where the install script is located
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    
+    # Copy all application files from script directory
+    cp -r "$SCRIPT_DIR"/* /opt/casescope/app/ 2>/dev/null || true
+    
+    # Ensure key files are copied
+    [ -f "$SCRIPT_DIR/main.py" ] && cp "$SCRIPT_DIR/main.py" /opt/casescope/app/
+    [ -f "$SCRIPT_DIR/requirements.txt" ] && cp "$SCRIPT_DIR/requirements.txt" /opt/casescope/app/
+    [ -f "$SCRIPT_DIR/version.json" ] && cp "$SCRIPT_DIR/version.json" /opt/casescope/app/
+    [ -f "$SCRIPT_DIR/wsgi.py" ] && cp "$SCRIPT_DIR/wsgi.py" /opt/casescope/app/
     
     # Set ownership
     chown -R casescope:casescope /opt/casescope/app
     
-    log "Application files copied"
+    # Verify critical files exist
+    if [ ! -f "/opt/casescope/app/main.py" ]; then
+        log_error "main.py not found after copying. Installation cannot continue."
+        exit 1
+    fi
+    
+    if [ ! -f "/opt/casescope/app/requirements.txt" ]; then
+        log_warning "requirements.txt not found. Will install basic dependencies."
+    fi
+    
+    log "Application files copied successfully"
 }
 
 # Setup Python environment
@@ -368,7 +387,27 @@ setup_python() {
     
     # Install requirements
     sudo -u casescope /opt/casescope/venv/bin/pip install --upgrade pip
-    sudo -u casescope /opt/casescope/venv/bin/pip install -r /opt/casescope/app/requirements.txt
+    
+    # Check if requirements.txt exists and install dependencies
+    if [ -f "/opt/casescope/app/requirements.txt" ]; then
+        log "Installing Python dependencies from requirements.txt..."
+        sudo -u casescope /opt/casescope/venv/bin/pip install -r /opt/casescope/app/requirements.txt
+    else
+        log_warning "requirements.txt not found, installing basic dependencies..."
+        sudo -u casescope /opt/casescope/venv/bin/pip install \
+            Flask==3.0.0 \
+            Flask-Login==0.6.3 \
+            Flask-SQLAlchemy==3.1.1 \
+            Flask-WTF==1.2.1 \
+            WTForms==3.1.1 \
+            Werkzeug==3.0.1 \
+            bcrypt==4.1.2 \
+            SQLAlchemy==2.0.23 \
+            opensearch-py==2.4.2 \
+            celery==5.3.4 \
+            redis==5.0.1 \
+            gunicorn==21.2.0
+    fi
     
     log "Python environment configured"
 }
@@ -436,14 +475,45 @@ EOF
 start_services() {
     log "Starting services..."
     
-    # Start in order
+    # Start services in order with status checks
+    log "Starting Redis..."
     systemctl start redis-server
-    systemctl start opensearch
-    sleep 10  # Wait for OpenSearch to start
-    systemctl start casescope-web
-    systemctl start nginx
+    if ! systemctl is-active --quiet redis-server; then
+        log_error "Redis failed to start"
+        systemctl status redis-server
+    fi
     
-    log "Services started"
+    log "Starting OpenSearch..."
+    systemctl start opensearch
+    sleep 15  # Wait for OpenSearch to start
+    if ! systemctl is-active --quiet opensearch; then
+        log_error "OpenSearch failed to start"
+        systemctl status opensearch
+    fi
+    
+    log "Starting caseScope web application..."
+    systemctl start casescope-web
+    sleep 5  # Give the app time to start
+    if ! systemctl is-active --quiet casescope-web; then
+        log_error "caseScope web service failed to start"
+        systemctl status casescope-web
+        log_error "Check the service logs with: journalctl -u casescope-web -n 50"
+    fi
+    
+    log "Starting Nginx..."
+    systemctl start nginx
+    if ! systemctl is-active --quiet nginx; then
+        log_error "Nginx failed to start"
+        systemctl status nginx
+    fi
+    
+    # Test Nginx configuration
+    nginx -t
+    if [ $? -ne 0 ]; then
+        log_error "Nginx configuration test failed"
+    fi
+    
+    log "All services startup attempted"
 }
 
 # Initialize database
@@ -481,20 +551,58 @@ main() {
     initialize_database
     start_services
     
-    # Installation complete
+    # Verify services are running
+    log "Verifying service status..."
     echo
-    echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║                 Installation Complete!                      ║${NC}"
-    echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${BLUE}Service Status Check:${NC}"
+    
+    services=("redis-server" "opensearch" "casescope-web" "nginx")
+    all_running=true
+    
+    for service in "${services[@]}"; do
+        if systemctl is-active --quiet "$service"; then
+            echo -e "  ✓ $service: ${GREEN}Running${NC}"
+        else
+            echo -e "  ✗ $service: ${RED}Failed${NC}"
+            all_running=false
+        fi
+    done
+    
     echo
-    echo -e "caseScope 7.1 is now installed and running!"
-    echo
-    echo -e "${BLUE}Access Information:${NC}"
-    echo -e "URL: ${GREEN}http://$(hostname -I | awk '{print $1}')${NC}"
-    echo -e "Default Username: ${GREEN}administrator${NC}"
-    echo -e "Default Password: ${GREEN}ChangeMe!${NC}"
-    echo
-    echo -e "${YELLOW}Important:${NC} You will be required to change the default password on first login."
+    
+    if [ "$all_running" = true ]; then
+        echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${GREEN}║                 Installation Complete!                      ║${NC}"
+        echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo
+        echo -e "caseScope 7.1 is now installed and running!"
+        echo
+        echo -e "${BLUE}Access Information:${NC}"
+        echo -e "URL: ${GREEN}http://$(hostname -I | awk '{print $1}')${NC}"
+        echo -e "Alternative: ${GREEN}http://localhost${NC}"
+        echo -e "Default Username: ${GREEN}administrator${NC}"
+        echo -e "Default Password: ${GREEN}ChangeMe!${NC}"
+        echo
+        echo -e "${YELLOW}Important:${NC} You will be required to change the default password on first login."
+    else
+        echo -e "${RED}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${RED}║              Installation Issues Detected!                  ║${NC}"
+        echo -e "${RED}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo
+        echo -e "${RED}Some services failed to start properly.${NC}"
+        echo
+        echo -e "${BLUE}Troubleshooting Commands:${NC}"
+        echo -e "Check service status: ${YELLOW}sudo systemctl status casescope-web${NC}"
+        echo -e "View service logs: ${YELLOW}sudo journalctl -u casescope-web -f${NC}"
+        echo -e "Check Nginx config: ${YELLOW}sudo nginx -t${NC}"
+        echo -e "Test port 5000: ${YELLOW}curl http://localhost:5000${NC}"
+        echo
+        echo -e "If you see the Nginx default page instead of caseScope:"
+        echo -e "1. ${YELLOW}sudo rm -f /etc/nginx/sites-enabled/default${NC}"
+        echo -e "2. ${YELLOW}sudo systemctl restart nginx${NC}"
+        echo -e "3. ${YELLOW}sudo systemctl restart casescope-web${NC}"
+    fi
+    
     echo
     echo -e "${BLUE}Installation Type:${NC} $INSTALL_TYPE"
     echo -e "${BLUE}Version:${NC} $VERSION"
