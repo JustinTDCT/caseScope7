@@ -1,7 +1,7 @@
 {
-  "version": "7.1.44",
+  "version": "7.1.45",
   "release_date": "2025-09-29",
-  "description": "UI Polish - Fixed progress bar display, removed checkmarks, improved button alignment",
+  "description": "Bugfix - Added missing jsonify import for API endpoint",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -47,6 +47,7 @@
     "7.1.41": "Debug - Enhanced Celery worker logging: changed service Type to simple (from forking), added DEBUG log level, comprehensive signal handlers (worker_ready, worker_shutdown, task_prerun, task_postrun, task_failure), added ExecStartPre for directory creation, improved journalctl output with SyslogIdentifier, removed PID file complexity, added verbose logging to celery_app.py and tasks.py",
     "7.1.42": "Bugfix - Fixed Celery worker service ExecStartPre commands: use full paths (/bin/mkdir, /bin/chown, /bin/echo) instead of relying on shell PATH, added full PATH environment variable, changed ExecStop to use ExecStopPost for kill command",
     "7.1.43": "UI Enhancement - Added Case Dashboard to left menu (below System Dashboard), implemented real-time progress tracking: /api/file/progress/<id> endpoint, visual progress bars for Indexing/Running Rules status, auto-updating event counts, 3-second polling for active files, progress bar styling with gradients and animations, auto-reload on completion/failure",
-    "7.1.44": "UI Polish - Fixed progress bar detection using data-file-id attributes, removed checkmarks/emojis from Completed/Failed status, improved button alignment with flexbox layout and consistent spacing, increased button font size to 13px, added console logging for progress debugging, reduced polling to 2 seconds, set minimum progress bar width to 5%, separate CSS classes for indexing-bar and rules-bar"
+    "7.1.44": "UI Polish - Fixed progress bar detection using data-file-id attributes, removed checkmarks/emojis from Completed/Failed status, improved button alignment with flexbox layout and consistent spacing, increased button font size to 13px, added console logging for progress debugging, reduced polling to 2 seconds, set minimum progress bar width to 5%, separate CSS classes for indexing-bar and rules-bar",
+    "7.1.45": "Bugfix - Added missing jsonify import to Flask imports, fixes NameError in /api/file/progress/<id> endpoint"
   }
 }
