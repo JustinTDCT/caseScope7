@@ -8,17 +8,33 @@ import os
 import sys
 import time
 import json
+import logging
 from datetime import datetime
 from celery_app import celery_app
 from opensearchpy import OpenSearch, helpers
 import Evtx.Evtx as evtx
 import xmltodict
 
+# Setup logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s',
+    stream=sys.stdout
+)
+logger = logging.getLogger(__name__)
+
+logger.info("="*80)
+logger.info("TASKS MODULE LOADED")
+logger.info("="*80)
+
 # Add app directory to path for imports
 sys.path.insert(0, '/opt/casescope/app')
+logger.info("Importing Flask app and database models...")
 from main import app, db, CaseFile, Case
+logger.info("Flask app and models imported successfully")
 
 # OpenSearch connection
+logger.info("Initializing OpenSearch client...")
 opensearch_client = OpenSearch(
     hosts=[{'host': 'localhost', 'port': 9200}],
     http_compress=True,
@@ -27,6 +43,7 @@ opensearch_client = OpenSearch(
     ssl_assert_hostname=False,
     ssl_show_warn=False
 )
+logger.info("OpenSearch client initialized")
 
 @celery_app.task(bind=True, name='tasks.index_evtx_file')
 def index_evtx_file(self, file_id):
@@ -36,11 +53,17 @@ def index_evtx_file(self, file_id):
     Args:
         file_id: Database ID of the CaseFile to process
     """
+    logger.info("="*80)
+    logger.info(f"STARTING EVTX INDEXING - File ID: {file_id}")
+    logger.info("="*80)
+    
     with app.app_context():
         try:
             # Get file record
+            logger.info(f"Querying database for file ID {file_id}...")
             case_file = CaseFile.query.get(file_id)
             if not case_file:
+                logger.error(f"File ID {file_id} not found in database")
                 return {'status': 'error', 'message': f'File ID {file_id} not found'}
             
             case = Case.query.get(case_file.case_id)
@@ -61,7 +84,9 @@ def index_evtx_file(self, file_id):
                 return {'status': 'error', 'message': f'File not found: {case_file.file_path}'}
             
             # Parse EVTX file
-            print(f"[Indexing] Starting EVTX parsing: {case_file.original_filename}")
+            logger.info(f"Starting EVTX parsing: {case_file.original_filename}")
+            logger.info(f"File path: {case_file.file_path}")
+            logger.info(f"Index name: {index_name}")
             events = []
             event_count = 0
             
@@ -107,10 +132,10 @@ def index_evtx_file(self, file_id):
                                     meta={'current': event_count, 'status': f'Indexed {event_count:,} events'}
                                 )
                                 
-                                print(f"[Indexing] Progress: {event_count:,} events indexed")
+                                logger.info(f"Progress: {event_count:,} events indexed")
                     
                     except Exception as e:
-                        print(f"[Indexing] Error parsing record {record.record_num()}: {e}")
+                        logger.warning(f"Error parsing record {record.record_num()}: {e}")
                         continue
             
             # Index remaining events
@@ -124,7 +149,9 @@ def index_evtx_file(self, file_id):
             case_file.indexing_status = 'Running Rules'
             db.session.commit()
             
-            print(f"[Indexing] Completed: {event_count:,} events indexed from {case_file.original_filename}")
+            logger.info("="*80)
+            logger.info(f"INDEXING COMPLETED: {event_count:,} events indexed from {case_file.original_filename}")
+            logger.info("="*80)
             
             # Queue SIGMA rule processing
             process_sigma_rules.delay(file_id, index_name)
@@ -137,9 +164,11 @@ def index_evtx_file(self, file_id):
             }
         
         except Exception as e:
-            print(f"[Indexing] Fatal error: {e}")
+            logger.error("="*80)
+            logger.error(f"INDEXING FAILED: {e}")
+            logger.error("="*80)
             import traceback
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
             
             # Update status to Failed
             case_file = CaseFile.query.get(file_id)

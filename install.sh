@@ -718,25 +718,31 @@ Description=caseScope Celery Worker
 After=network.target redis.service opensearch.service
 
 [Service]
-Type=forking
+Type=simple
 User=casescope
 Group=casescope
 WorkingDirectory=/opt/casescope/app
 Environment=PATH=/opt/casescope/venv/bin
 Environment=PYTHONPATH=/opt/casescope/app
-PIDFile=/opt/casescope/tmp/celery_worker.pid
+Environment=CELERY_WORKER_LOG_LEVEL=DEBUG
+ExecStartPre=/bin/sh -c 'echo "[Worker] Starting Celery worker with DEBUG logging..."'
+ExecStartPre=/bin/sh -c 'mkdir -p /opt/casescope/tmp /opt/casescope/logs'
+ExecStartPre=/bin/sh -c 'chown -R casescope:casescope /opt/casescope/tmp /opt/casescope/logs'
 ExecStart=/opt/casescope/venv/bin/celery -A celery_app worker \
-    --loglevel=info \
+    --loglevel=DEBUG \
     --concurrency=2 \
     --max-tasks-per-child=50 \
-    --pidfile=/opt/casescope/tmp/celery_worker.pid \
     --logfile=/opt/casescope/logs/celery_worker.log \
-    --detach
-ExecStop=/bin/sh -c '/opt/casescope/venv/bin/celery -A celery_app control shutdown || /bin/kill -TERM $(cat /opt/casescope/tmp/celery_worker.pid 2>/dev/null) 2>/dev/null || true'
+    --pidfile=/opt/casescope/tmp/celery_worker.pid
+ExecStop=/bin/sh -c 'echo "[Worker] Stopping Celery worker..."; kill -TERM $MAINPID; exit 0'
 Restart=always
 RestartSec=10
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=casescope-worker
 
 [Install]
 WantedBy=multi-user.target
