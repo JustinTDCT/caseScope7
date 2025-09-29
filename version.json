@@ -1,7 +1,7 @@
 {
-  "version": "7.1.39",
+  "version": "7.1.40",
   "release_date": "2025-09-29",
-  "description": "Bugfix - Fixed Celery worker systemd service PIDFile and ExecStop configuration",
+  "description": "Feature - Implemented Re-index and Re-run Rules functionality with UI integration",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -42,6 +42,7 @@
     "7.1.36": "File Status UI - Fixed upload container overflow (max-width: 95%), updated status workflow (Uploaded/Pending → Indexing → Running Rules → Completed), added Events and Violations columns to file list, prepared for progress bar display",
     "7.1.37": "Bugfix - Fixed inconsistent upload directory paths, standardized to /opt/casescope/uploads/{case_id} throughout codebase",
     "7.1.38": "EVTX Indexing System - Implemented Celery worker with EVTX parsing (python-evtx), OpenSearch bulk indexing with flattened event structure, real-time progress tracking, automatic task queuing on upload, systemd service integration, status transitions (Uploaded → Indexing → Running Rules → Completed)",
-    "7.1.39": "Bugfix - Fixed Celery worker systemd service: added PIDFile directive, fixed ExecStop to use PID file instead of $MAINPID variable, added graceful shutdown with fallback"
+    "7.1.39": "Bugfix - Fixed Celery worker systemd service: added PIDFile directive, fixed ExecStop to use PID file instead of $MAINPID variable, added graceful shutdown with fallback",
+    "7.1.40": "Feature - Implemented Re-index and Re-run Rules functionality: /file/reindex/<id> route resets file status and re-queues indexing, /file/rerun-rules/<id> route re-processes SIGMA rules, updated UI with confirmation dialogs, Re-index available for all files, Re-run Rules only for indexed files"
   }
 }

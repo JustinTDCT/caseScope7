@@ -372,6 +372,92 @@ def list_files():
     
     return render_file_list(case, files)
 
+
+@app.route('/file/reindex/<int:file_id>', methods=['POST'])
+@login_required
+def reindex_file(file_id):
+    """Re-index a file (discard existing index and re-process)"""
+    case_file = CaseFile.query.get_or_404(file_id)
+    
+    # Verify file belongs to active case
+    active_case_id = session.get('active_case_id')
+    if not active_case_id or case_file.case_id != active_case_id:
+        flash('Access denied.', 'error')
+        return redirect(url_for('list_files'))
+    
+    try:
+        # Reset file status
+        case_file.indexing_status = 'Uploaded'
+        case_file.is_indexed = False
+        case_file.indexed_at = None
+        case_file.event_count = 0
+        case_file.violation_count = 0
+        db.session.commit()
+        
+        # Queue indexing task
+        try:
+            from tasks import start_file_indexing
+            start_file_indexing.delay(file_id)
+            flash(f'Re-indexing started for {case_file.original_filename}', 'success')
+            print(f"[Re-index] Queued re-indexing for file ID {file_id}: {case_file.original_filename}")
+        except Exception as e:
+            print(f"[Re-index] Error queuing task: {e}")
+            flash(f'Re-index queued but worker may not be running. Check logs.', 'warning')
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error re-indexing file: {str(e)}', 'error')
+        print(f"[Re-index] Database error: {e}")
+    
+    return redirect(url_for('list_files'))
+
+
+@app.route('/file/rerun-rules/<int:file_id>', methods=['POST'])
+@login_required
+def rerun_rules(file_id):
+    """Re-run SIGMA rules on a file (discard existing violations and re-process)"""
+    case_file = CaseFile.query.get_or_404(file_id)
+    
+    # Verify file belongs to active case
+    active_case_id = session.get('active_case_id')
+    if not active_case_id or case_file.case_id != active_case_id:
+        flash('Access denied.', 'error')
+        return redirect(url_for('list_files'))
+    
+    # Verify file is indexed
+    if not case_file.is_indexed:
+        flash('File must be indexed before running rules.', 'warning')
+        return redirect(url_for('list_files'))
+    
+    try:
+        # Reset violation status
+        case_file.indexing_status = 'Running Rules'
+        case_file.violation_count = 0
+        db.session.commit()
+        
+        # Queue SIGMA rule processing
+        try:
+            from tasks import process_sigma_rules
+            # Generate index name (same logic as in tasks.py)
+            import os
+            name = os.path.splitext(case_file.original_filename)[0]
+            name = name.replace('%', '_').replace(' ', '_').replace('-', '_').lower()[:100]
+            index_name = f"case{case_file.case_id}_{name}"
+            
+            process_sigma_rules.delay(file_id, index_name)
+            flash(f'Re-running SIGMA rules for {case_file.original_filename}', 'success')
+            print(f"[Re-run Rules] Queued rule processing for file ID {file_id}: {case_file.original_filename}")
+        except Exception as e:
+            print(f"[Re-run Rules] Error queuing task: {e}")
+            flash(f'Rule processing queued but worker may not be running. Check logs.', 'warning')
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error re-running rules: {str(e)}', 'error')
+        print(f"[Re-run Rules] Database error: {e}")
+    
+    return redirect(url_for('list_files'))
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -1357,8 +1443,11 @@ def render_file_list(case, files):
         # Build action buttons based on user role
         actions = f'<button class="btn-action btn-info" onclick="showFileDetails({file.id})">📋 Details</button>'
         
-        if file.indexing_status == 'Completed':
-            actions += f' <button class="btn-action btn-reindex" onclick="confirmReindex({file.id})">🔄 Re-index</button>'
+        # Re-index available for any file (will reset and restart indexing)
+        actions += f' <button class="btn-action btn-reindex" onclick="confirmReindex({file.id})">🔄 Re-index</button>'
+        
+        # Re-run Rules only available for indexed files
+        if file.is_indexed and file.indexing_status in ['Running Rules', 'Completed', 'Failed']:
             actions += f' <button class="btn-action btn-rules" onclick="confirmRerunRules({file.id})">⚡ Re-run Rules</button>'
         
         if current_user.role == 'administrator':
@@ -1656,15 +1745,21 @@ def render_file_list(case, files):
             
             function confirmReindex(fileId) {{
                 if (confirm('Re-index this file? This will discard all existing event records and re-parse the file.')) {{
-                    alert('Re-indexing not yet implemented. File ID: ' + fileId);
-                    // TODO: POST to /files/reindex/<fileId>
+                    var form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = '/file/reindex/' + fileId;
+                    document.body.appendChild(form);
+                    form.submit();
                 }}
             }}
             
             function confirmRerunRules(fileId) {{
                 if (confirm('Re-run SIGMA rules on this file? This will discard existing rule tags and re-scan all events.')) {{
-                    alert('Rule re-run not yet implemented. File ID: ' + fileId);
-                    // TODO: POST to /files/rerun-rules/<fileId>
+                    var form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = '/file/rerun-rules/' + fileId;
+                    document.body.appendChild(form);
+                    form.submit();
                 }}
             }}
             
