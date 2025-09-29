@@ -993,12 +993,24 @@ def render_case_form():
     '''
 
 def render_case_selection(cases, active_case_id):
-    """Render case selection page"""
-    case_options = ""
+    """Render case selection page with integrated layout"""
+    case_rows = ""
     for case in cases:
-        selected = "selected" if case.id == active_case_id else ""
-        case_options += f'<option value="{case.id}" {selected}>{case.case_number} - {case.name}</option>'
+        active_class = "active-case" if case.id == active_case_id else ""
+        case_rows += f'''
+        <tr class="case-row {active_class}" onclick="selectCase({case.id})">
+            <td>{case.case_number}</td>
+            <td>{case.name}</td>
+            <td><span class="priority-{case.priority.lower()}">{case.priority}</span></td>
+            <td><span class="status-{case.status.lower().replace(' ', '-')}">{case.status}</span></td>
+            <td>{case.file_count}</td>
+            <td>{case.created_at.strftime('%Y-%m-%d')}</td>
+            <td>{case.creator.username}</td>
+            <td>{'✓ Active' if case.id == active_case_id else ''}</td>
+        </tr>
+        '''
     
+    # Use the main dashboard layout but with case selection content
     return f'''
     <!DOCTYPE html>
     <html>
@@ -1010,135 +1022,521 @@ def render_case_selection(cases, active_case_id):
                 background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
                 color: white; 
                 margin: 0; 
-                padding: 20px;
-                min-height: 100vh;
+                display: flex; 
+                min-height: 100vh; 
             }}
-            .container {{ max-width: 800px; margin: 0 auto; }}
-            .header {{ text-align: center; margin-bottom: 30px; }}
-            .case-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }}
-            .case-card {{ 
-                background: linear-gradient(145deg, #3f51b5, #283593); 
+            .sidebar {{ 
+                width: 280px; 
+                background: linear-gradient(145deg, #303f9f, #283593); 
                 padding: 20px; 
-                border-radius: 15px; 
-                box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+                box-shadow: 
+                    5px 0 20px rgba(0,0,0,0.4),
+                    inset -1px 0 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+            }}
+            .main-content {{ flex: 1; }}
+            .header {{ 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 15px 30px; 
+                display: flex; 
+                justify-content: flex-end; 
+                align-items: center;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                min-height: 60px;
+            }}
+            .user-info {{ 
+                display: flex; 
+                align-items: center; 
+                gap: 20px;
+                font-size: 1em;
+                line-height: 1.2;
+            }}
+            .sidebar-logo {{
+                text-align: center;
+                font-size: 2.2em;
+                font-weight: 300;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                margin-bottom: 15px;
+                padding: 5px 0 8px 0;
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+            }}
+            .sidebar-logo .case {{ color: #4caf50; }}
+            .sidebar-logo .scope {{ color: white; }}
+            .version-badge {{
+                font-size: 0.4em;
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 3px 6px;
+                border-radius: 6px;
+                margin-top: 5px;
+                display: inline-block;
+                box-shadow: 0 2px 4px rgba(76,175,80,0.3);
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .content {{ padding: 30px; }}
+            .menu-item {{ 
+                display: block; 
+                color: white; 
+                text-decoration: none; 
+                padding: 12px 16px; 
+                margin: 6px 0; 
+                border-radius: 12px; 
+                background: linear-gradient(145deg, #3949ab, #283593);
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+                font-size: 0.95em;
+            }}
+            .menu-item:hover {{ 
+                background: linear-gradient(145deg, #5c6bc0, #3949ab);
+                transform: translateX(5px);
+                box-shadow: 
+                    0 8px 15px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
+            }}
+            .menu-item.active {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+            }}
+            .menu-item.placeholder {{ 
+                background: linear-gradient(145deg, #424242, #2e2e2e); 
+                color: #aaa; 
+                cursor: not-allowed;
+                opacity: 0.7;
+            }}
+            .menu-item.placeholder:hover {{
+                transform: none;
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+            }}
+            h3.menu-title {{
+                font-size: 1.1em;
+                margin: 15px 0 8px 0;
+                color: #4caf50;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+                padding-bottom: 4px;
+            }}
+            .logout-btn {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                color: white !important;
+                padding: 8px 16px;
+                border-radius: 8px;
+                text-decoration: none;
+                font-size: 0.9em;
+                font-weight: 500;
+                box-shadow: 0 4px 8px rgba(244,67,54,0.3);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .logout-btn:hover {{
+                background: linear-gradient(145deg, #ef5350, #f44336);
+                box-shadow: 0 6px 12px rgba(244,67,54,0.4);
+                transform: translateY(-1px);
+                color: white !important;
+            }}
+            .search-container {{
+                margin-bottom: 20px;
+                display: flex;
+                gap: 15px;
+                align-items: center;
+            }}
+            .search-input {{
+                flex: 1;
+                padding: 12px 16px;
+                border: none;
+                border-radius: 8px;
+                background: rgba(255,255,255,0.1);
+                color: white;
+                font-size: 14px;
+                box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .search-input::placeholder {{ color: rgba(255,255,255,0.7); }}
+            .create-btn {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 12px 20px;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                font-weight: 600;
+                text-decoration: none;
+                transition: all 0.3s ease;
+                box-shadow: 0 4px 8px rgba(76,175,80,0.3);
+            }}
+            .create-btn:hover {{
+                background: linear-gradient(145deg, #66bb6a, #4caf50);
+                transform: translateY(-1px);
+            }}
+            .case-table {{
+                width: 100%;
+                background: linear-gradient(145deg, #3f51b5, #283593);
+                border-radius: 15px;
+                overflow: hidden;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+            }}
+            .case-table th, .case-table td {{
+                padding: 15px;
+                text-align: left;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }}
+            .case-table th {{
+                background: linear-gradient(145deg, #283593, #1e88e5);
+                font-weight: 600;
+                color: rgba(255,255,255,0.9);
+            }}
+            .case-row {{
                 cursor: pointer;
                 transition: all 0.3s ease;
             }}
-            .case-card:hover {{ transform: translateY(-3px); box-shadow: 0 12px 24px rgba(0,0,0,0.4); }}
-            .case-card.active {{ border: 2px solid #4caf50; }}
-            .create-new {{ 
-                background: linear-gradient(145deg, #4caf50, #388e3c); 
-                text-align: center;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 1.2em;
-                font-weight: 600;
+            .case-row:hover {{
+                background: rgba(255,255,255,0.1);
             }}
-            .create-new:hover {{ background: linear-gradient(145deg, #66bb6a, #4caf50); }}
+            .case-row.active-case {{
+                background: rgba(76,175,80,0.2);
+                border-left: 4px solid #4caf50;
+            }}
+            .priority-low {{ color: #81c784; }}
+            .priority-medium {{ color: #ffb74d; }}
+            .priority-high {{ color: #ff8a65; }}
+            .priority-critical {{ color: #e57373; }}
+            .status-open {{ color: #4caf50; }}
+            .status-in-progress {{ color: #2196f3; }}
+            .status-closed {{ color: #9e9e9e; }}
+            .status-archived {{ color: #757575; }}
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-                <h1>Select Active Case</h1>
-                <p>Choose a case to work with or create a new one</p>
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
             </div>
-            <div class="case-grid">
-                <div class="case-card create-new" onclick="window.location.href='/case/create'">
-                    <div>➕ Create New Case</div>
+            
+            <h3 class="menu-title">Navigation</h3>
+            <a href="/dashboard" class="menu-item">📊 Dashboard</a>
+            <a href="/case/select" class="menu-item active">📁 Case Selection</a>
+            <a href="/upload" class="menu-item placeholder">📤 Upload Files (Coming Soon)</a>
+            <a href="/files" class="menu-item placeholder">📄 List Files (Coming Soon)</a>
+            <a href="/search" class="menu-item placeholder">🔍 Search (Coming Soon)</a>
+            
+            <h3 class="menu-title">Management</h3>
+            <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
+            <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
+            <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
+            <a href="/settings" class="menu-item placeholder">⚙️ System Settings (Coming Soon)</a>
+        </div>
+        <div class="main-content">
+            <div class="header">
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
+                    <a href="/logout" class="logout-btn">Logout</a>
                 </div>
-                {"".join([f'''
-                <div class="case-card {'active' if case.id == active_case_id else ''}" onclick="window.location.href='/case/set/{case.id}'">
-                    <h3>{case.case_number}</h3>
-                    <h4>{case.name}</h4>
-                    <p>Priority: {case.priority} | Status: {case.status}</p>
-                    <p>Files: {case.file_count} | Created: {case.created_at.strftime('%Y-%m-%d')}</p>
-                    <p>By: {case.creator.username}</p>
+            </div>
+            <div class="content">
+                <h1>📁 Case Selection</h1>
+                <p>Select a case to work with or create a new one</p>
+                
+                <div class="search-container">
+                    <input type="text" class="search-input" placeholder="Search cases by name..." id="caseSearch" onkeyup="filterCases()">
+                    <a href="/case/create" class="create-btn">➕ Create New Case</a>
                 </div>
-                ''' for case in cases])}
+                
+                <table class="case-table">
+                    <thead>
+                        <tr>
+                            <th>Case Number</th>
+                            <th>Name</th>
+                            <th>Priority</th>
+                            <th>Status</th>
+                            <th>Files</th>
+                            <th>Created</th>
+                            <th>Created By</th>
+                            <th>Active</th>
+                        </tr>
+                    </thead>
+                    <tbody id="caseTableBody">
+                        {case_rows}
+                    </tbody>
+                </table>
             </div>
         </div>
+        
+        <script>
+            function selectCase(caseId) {{
+                window.location.href = '/case/set/' + caseId;
+            }}
+            
+            function filterCases() {{
+                const searchTerm = document.getElementById('caseSearch').value.toLowerCase();
+                const rows = document.querySelectorAll('.case-row');
+                
+                rows.forEach(row => {{
+                    const caseName = row.cells[1].textContent.toLowerCase();
+                    const caseNumber = row.cells[0].textContent.toLowerCase();
+                    
+                    if (caseName.includes(searchTerm) || caseNumber.includes(searchTerm)) {{
+                        row.style.display = '';
+                    }} else {{
+                        row.style.display = 'none';
+                    }}
+                }});
+            }}
+        </script>
     </body>
     </html>
     '''
 
 def render_case_dashboard(case):
-    """Render case-specific dashboard"""
+    """Render case-specific dashboard with integrated layout"""
     return f'''
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Case Dashboard - {case.name}</title>
+        <title>Case Dashboard - {case.name} - caseScope 7.1</title>
         <style>
             body {{ 
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
                 background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
                 color: white; 
                 margin: 0; 
-                padding: 20px;
-                min-height: 100vh;
+                display: flex; 
+                min-height: 100vh; 
             }}
-            .container {{ max-width: 1200px; margin: 0 auto; }}
-            .header {{ background: linear-gradient(145deg, #283593, #1e88e5); padding: 20px; border-radius: 15px; margin-bottom: 20px; }}
-            .tiles {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }}
+            .sidebar {{ 
+                width: 280px; 
+                background: linear-gradient(145deg, #303f9f, #283593); 
+                padding: 20px; 
+                box-shadow: 
+                    5px 0 20px rgba(0,0,0,0.4),
+                    inset -1px 0 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+            }}
+            .main-content {{ flex: 1; }}
+            .header {{ 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 15px 30px; 
+                display: flex; 
+                justify-content: space-between; 
+                align-items: center;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                min-height: 60px;
+            }}
+            .case-title {{
+                font-size: 1.3em;
+                font-weight: 600;
+            }}
+            .user-info {{ 
+                display: flex; 
+                align-items: center; 
+                gap: 20px;
+                font-size: 1em;
+                line-height: 1.2;
+            }}
+            .sidebar-logo {{
+                text-align: center;
+                font-size: 2.2em;
+                font-weight: 300;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                margin-bottom: 15px;
+                padding: 5px 0 8px 0;
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+            }}
+            .sidebar-logo .case {{ color: #4caf50; }}
+            .sidebar-logo .scope {{ color: white; }}
+            .version-badge {{
+                font-size: 0.4em;
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 3px 6px;
+                border-radius: 6px;
+                margin-top: 5px;
+                display: inline-block;
+                box-shadow: 0 2px 4px rgba(76,175,80,0.3);
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .content {{ padding: 30px; }}
+            .menu-item {{ 
+                display: block; 
+                color: white; 
+                text-decoration: none; 
+                padding: 12px 16px; 
+                margin: 6px 0; 
+                border-radius: 12px; 
+                background: linear-gradient(145deg, #3949ab, #283593);
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+                font-size: 0.95em;
+            }}
+            .menu-item:hover {{ 
+                background: linear-gradient(145deg, #5c6bc0, #3949ab);
+                transform: translateX(5px);
+                box-shadow: 
+                    0 8px 15px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
+            }}
+            .menu-item.placeholder {{ 
+                background: linear-gradient(145deg, #424242, #2e2e2e); 
+                color: #aaa; 
+                cursor: not-allowed;
+                opacity: 0.7;
+            }}
+            .menu-item.placeholder:hover {{
+                transform: none;
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+            }}
+            h3.menu-title {{
+                font-size: 1.1em;
+                margin: 15px 0 8px 0;
+                color: #4caf50;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+                padding-bottom: 4px;
+            }}
+            .logout-btn {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                color: white !important;
+                padding: 8px 16px;
+                border-radius: 8px;
+                text-decoration: none;
+                font-size: 0.9em;
+                font-weight: 500;
+                box-shadow: 0 4px 8px rgba(244,67,54,0.3);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .logout-btn:hover {{
+                background: linear-gradient(145deg, #ef5350, #f44336);
+                box-shadow: 0 6px 12px rgba(244,67,54,0.4);
+                transform: translateY(-1px);
+                color: white !important;
+            }}
+            .case-info {{
+                background: linear-gradient(145deg, #283593, #1e88e5);
+                padding: 20px;
+                border-radius: 15px;
+                margin-bottom: 25px;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+            }}
+            .tiles {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; }}
             .tile {{ 
                 background: linear-gradient(145deg, #3f51b5, #283593); 
-                padding: 20px; 
+                padding: 25px; 
                 border-radius: 15px; 
-                box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+                box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+                transition: all 0.3s ease;
             }}
-            .actions {{ margin-top: 20px; text-align: center; }}
+            .tile:hover {{
+                transform: translateY(-3px);
+                box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+            }}
+            .tile h3 {{
+                margin-top: 0;
+                margin-bottom: 15px;
+                font-size: 1.3em;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            }}
+            .actions {{ margin-top: 25px; text-align: center; }}
             .btn {{ 
                 background: linear-gradient(145deg, #4caf50, #388e3c); 
                 color: white; 
-                padding: 10px 20px; 
+                padding: 12px 24px; 
                 text-decoration: none; 
                 border-radius: 8px; 
-                margin: 0 10px;
+                margin: 0 10px 10px 10px;
                 display: inline-block;
                 transition: all 0.3s ease;
+                font-weight: 600;
+                box-shadow: 0 4px 8px rgba(76,175,80,0.3);
             }}
-            .btn:hover {{ background: linear-gradient(145deg, #66bb6a, #4caf50); transform: translateY(-1px); }}
-            .btn-secondary {{ background: linear-gradient(145deg, #2196f3, #1976d2); }}
-            .btn-secondary:hover {{ background: linear-gradient(145deg, #42a5f5, #2196f3); }}
+            .btn:hover {{ 
+                background: linear-gradient(145deg, #66bb6a, #4caf50); 
+                transform: translateY(-1px);
+                box-shadow: 0 6px 12px rgba(76,175,80,0.4);
+            }}
+            .btn-secondary {{ 
+                background: linear-gradient(145deg, #2196f3, #1976d2);
+                box-shadow: 0 4px 8px rgba(33,150,243,0.3);
+            }}
+            .btn-secondary:hover {{ 
+                background: linear-gradient(145deg, #42a5f5, #2196f3);
+                box-shadow: 0 6px 12px rgba(33,150,243,0.4);
+            }}
         </style>
     </head>
     <body>
-        <div class="container">
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
+            </div>
+            
+            <h3 class="menu-title">Navigation</h3>
+            <a href="/dashboard" class="menu-item">📊 Dashboard</a>
+            <a href="/case/select" class="menu-item">📁 Case Selection</a>
+            <a href="/upload" class="menu-item placeholder">📤 Upload Files (Coming Soon)</a>
+            <a href="/files" class="menu-item placeholder">📄 List Files (Coming Soon)</a>
+            <a href="/search" class="menu-item placeholder">🔍 Search (Coming Soon)</a>
+            
+            <h3 class="menu-title">Management</h3>
+            <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
+            <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
+            <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
+            <a href="/settings" class="menu-item placeholder">⚙️ System Settings (Coming Soon)</a>
+        </div>
+        <div class="main-content">
             <div class="header">
-                <h1>📁 {case.name}</h1>
-                <p><strong>Case Number:</strong> {case.case_number}</p>
-                <p><strong>Description:</strong> {case.description or 'No description provided'}</p>
-                <p><strong>Priority:</strong> {case.priority} | <strong>Status:</strong> {case.status}</p>
-                <p><strong>Created:</strong> {case.created_at.strftime('%Y-%m-%d %H:%M')} by {case.creator.username}</p>
-            </div>
-            
-            <div class="tiles">
-                <div class="tile">
-                    <h3>📄 Files</h3>
-                    <p><strong>Total Files:</strong> {case.file_count}</p>
-                    <p><strong>Storage Used:</strong> {case.storage_size / (1024*1024):.1f} MB</p>
-                    <a href="/files" class="btn btn-secondary">View Files</a>
-                </div>
-                <div class="tile">
-                    <h3>📊 Events</h3>
-                    <p><strong>Total Events:</strong> {case.total_events:,}</p>
-                    <p><strong>Indexed:</strong> Coming Soon</p>
-                    <a href="/search" class="btn btn-secondary">Search Events</a>
-                </div>
-                <div class="tile">
-                    <h3>🛡️ Violations</h3>
-                    <p><strong>SIGMA Hits:</strong> Coming Soon</p>
-                    <p><strong>Last Scan:</strong> Not Yet Run</p>
-                    <a href="#" class="btn btn-secondary">View Violations</a>
+                <div class="case-title">📁 {case.name}</div>
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
+                    <a href="/logout" class="logout-btn">Logout</a>
                 </div>
             </div>
-            
-            <div class="actions">
-                <a href="/upload" class="btn">📤 Upload Files</a>
-                <a href="/case/select" class="btn btn-secondary">🔄 Switch Case</a>
-                <a href="/dashboard" class="btn btn-secondary">🏠 Main Dashboard</a>
+            <div class="content">
+                <div class="case-info">
+                    <h2>Case Details</h2>
+                    <p><strong>Case Number:</strong> {case.case_number}</p>
+                    <p><strong>Description:</strong> {case.description or 'No description provided'}</p>
+                    <p><strong>Priority:</strong> {case.priority} | <strong>Status:</strong> {case.status}</p>
+                    <p><strong>Created:</strong> {case.created_at.strftime('%Y-%m-%d %H:%M')} by {case.creator.username}</p>
+                </div>
+                
+                <div class="tiles">
+                    <div class="tile">
+                        <h3>📄 Files</h3>
+                        <p><strong>Total Files:</strong> {case.file_count}</p>
+                        <p><strong>Storage Used:</strong> {case.storage_size / (1024*1024):.1f} MB</p>
+                        <a href="/files" class="btn btn-secondary">View Files</a>
+                    </div>
+                    <div class="tile">
+                        <h3>📊 Events</h3>
+                        <p><strong>Total Events:</strong> {case.total_events:,}</p>
+                        <p><strong>Indexed:</strong> Coming Soon</p>
+                        <a href="/search" class="btn btn-secondary">Search Events</a>
+                    </div>
+                    <div class="tile">
+                        <h3>🛡️ Violations</h3>
+                        <p><strong>SIGMA Hits:</strong> Coming Soon</p>
+                        <p><strong>Last Scan:</strong> Not Yet Run</p>
+                        <a href="#" class="btn btn-secondary">View Violations</a>
+                    </div>
+                </div>
+                
+                <div class="actions">
+                    <a href="/upload" class="btn">📤 Upload Files</a>
+                    <a href="/case/select" class="btn btn-secondary">🔄 Switch Case</a>
+                    <a href="/dashboard" class="btn btn-secondary">🏠 Main Dashboard</a>
+                </div>
             </div>
         </div>
     </body>
