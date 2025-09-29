@@ -102,6 +102,7 @@ class CaseFile(db.Model):
     is_indexed = db.Column(db.Boolean, default=False)
     is_deleted = db.Column(db.Boolean, default=False)
     event_count = db.Column(db.Integer, default=0)
+    violation_count = db.Column(db.Integer, default=0)
     indexing_status = db.Column(db.String(20), default='Uploaded')  # Uploaded, Indexing, Running Rules, Completed, Failed
     
     # Relationships
@@ -1468,15 +1469,17 @@ def render_file_list(case, files):
         else:
             status_display = '<div id="status-{0}" class="status-text">{1}</div>'.format(file.id, file.indexing_status)
         
-        # Event count display
-        if file.event_count > 0:
-            events_display = f'{file.event_count:,}'
+        # Event count display - update dynamically with ID for JavaScript
+        if file.event_count and file.event_count > 0:
+            events_display = f'<span id="event-count-{file.id}">{file.event_count:,}</span>'
         else:
-            events_display = '-'
+            events_display = f'<span id="event-count-{file.id}">-</span>'
         
-        # Violations count (placeholder for now)
-        # TODO: Add violations_count field to CaseFile model
-        violations_display = '-'
+        # Violations count
+        if file.violation_count and file.violation_count > 0:
+            violations_display = f'<span id="violation-count-{file.id}">{file.violation_count:,}</span>'
+        else:
+            violations_display = f'<span id="violation-count-{file.id}">-</span>'
         
         # Build action buttons based on user role
         actions_list = []
@@ -1650,9 +1653,13 @@ def render_file_list(case, files):
                 margin-top: 20px;
             }}
             .file-table th, .file-table td {{
-                padding: 15px;
+                padding: 12px 15px;
                 text-align: left;
                 border-bottom: 1px solid rgba(255,255,255,0.1);
+                vertical-align: middle;
+            }}
+            .file-table td:last-child {{
+                padding: 8px 15px;
             }}
             .file-table th {{
                 background: #283593;
@@ -1895,6 +1902,18 @@ def render_file_list(case, files):
                             const statusElem = document.getElementById('status-' + fileId);
                             
                             console.log('Progress update for file', fileId, ':', data);
+                            
+                            // Update event count in table
+                            const eventCountElem = document.getElementById('event-count-' + fileId);
+                            if (eventCountElem && data.event_count > 0) {{
+                                eventCountElem.textContent = data.event_count.toLocaleString();
+                            }}
+                            
+                            // Update violation count in table
+                            const violationCountElem = document.getElementById('violation-count-' + fileId);
+                            if (violationCountElem && data.violation_count > 0) {{
+                                violationCountElem.textContent = data.violation_count.toLocaleString();
+                            }}
                             
                             if (data.status === 'Indexing') {{
                                 if (progressBar) {{

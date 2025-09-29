@@ -1,7 +1,7 @@
 {
-  "version": "7.1.45",
+  "version": "7.1.46",
   "release_date": "2025-09-29",
-  "description": "Bugfix - Added missing jsonify import for API endpoint",
+  "description": "Bugfix - Added violation_count to CaseFile model, fixed event count display, improved table alignment",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -48,6 +48,7 @@
     "7.1.42": "Bugfix - Fixed Celery worker service ExecStartPre commands: use full paths (/bin/mkdir, /bin/chown, /bin/echo) instead of relying on shell PATH, added full PATH environment variable, changed ExecStop to use ExecStopPost for kill command",
     "7.1.43": "UI Enhancement - Added Case Dashboard to left menu (below System Dashboard), implemented real-time progress tracking: /api/file/progress/<id> endpoint, visual progress bars for Indexing/Running Rules status, auto-updating event counts, 3-second polling for active files, progress bar styling with gradients and animations, auto-reload on completion/failure",
     "7.1.44": "UI Polish - Fixed progress bar detection using data-file-id attributes, removed checkmarks/emojis from Completed/Failed status, improved button alignment with flexbox layout and consistent spacing, increased button font size to 13px, added console logging for progress debugging, reduced polling to 2 seconds, set minimum progress bar width to 5%, separate CSS classes for indexing-bar and rules-bar",
-    "7.1.45": "Bugfix - Added missing jsonify import to Flask imports, fixes NameError in /api/file/progress/<id> endpoint"
+    "7.1.45": "Bugfix - Added missing jsonify import to Flask imports, fixes NameError in /api/file/progress/<id> endpoint",
+    "7.1.46": "Bugfix - Added violation_count column to CaseFile model (default 0), added dynamic span IDs for event_count and violation_count for real-time updates, JavaScript now updates event/violation counts in table as indexing progresses, improved table cell vertical alignment, reduced action button cell padding for better visual balance"
   }
 }
