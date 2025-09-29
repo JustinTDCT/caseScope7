@@ -523,42 +523,65 @@ EOF
 copy_application() {
     log "Copying application files..."
     
-    # Get the directory where the install script is located
+    # Get the directory where the install script is located and current working directory
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    CURRENT_DIR="$(pwd)"
     
     log "Script directory: $SCRIPT_DIR"
+    log "Current working directory: $CURRENT_DIR"
     log "Available files in script directory:"
-    ls -la "$SCRIPT_DIR" | head -20
+    ls -la "$SCRIPT_DIR" | head -10
+    log "Available files in current directory:"
+    ls -la "$CURRENT_DIR" | head -10
     
     # Try to find application files in common locations
     APP_SOURCE_DIR=""
     
-    # Check if files are in the same directory as the script
-    if [ -f "$SCRIPT_DIR/main.py" ]; then
+    # Priority 1: Check current working directory first (most common case)
+    if [ -f "$CURRENT_DIR/main.py" ]; then
+        APP_SOURCE_DIR="$CURRENT_DIR"
+        log "Found application files in current working directory: $CURRENT_DIR"
+    # Priority 2: Check if files are in the same directory as the script
+    elif [ -f "$SCRIPT_DIR/main.py" ]; then
         APP_SOURCE_DIR="$SCRIPT_DIR"
         log "Found application files in script directory: $SCRIPT_DIR"
-    # Check if we're in a git repository (common case)
-    elif [ -f "./main.py" ]; then
-        APP_SOURCE_DIR="$(pwd)"
-        log "Found application files in current working directory: $(pwd)"
-    # Check parent directory
-    elif [ -f "../main.py" ]; then
-        APP_SOURCE_DIR="$(cd .. && pwd)"
+    # Priority 3: Check parent directory of current working directory
+    elif [ -f "$CURRENT_DIR/../main.py" ]; then
+        APP_SOURCE_DIR="$(cd "$CURRENT_DIR/.." && pwd)"
         log "Found application files in parent directory: $APP_SOURCE_DIR"
-    # Check if user has a casescope directory
+    # Priority 4: Check parent directory of script
+    elif [ -f "$SCRIPT_DIR/../main.py" ]; then
+        APP_SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+        log "Found application files in script parent directory: $APP_SOURCE_DIR"
+    # Priority 5: Check if user has a casescope directory (common git clone location)
+    elif [ -d "/home/jdube/caseScope7" ] && [ -f "/home/jdube/caseScope7/main.py" ]; then
+        APP_SOURCE_DIR="/home/jdube/caseScope7"
+        log "Found application files in user caseScope7 directory: $APP_SOURCE_DIR"
+    # Priority 5.5: Check other common casescope directory names
+    elif [ -d "/home/jdube/casescope" ] && [ -f "/home/jdube/casescope/main.py" ]; then
+        APP_SOURCE_DIR="/home/jdube/casescope"
+        log "Found application files in user casescope directory: $APP_SOURCE_DIR"
+    # Priority 6: Search broadly for casescope directories
     elif [ -f "/home/*/casescope*/main.py" ]; then
         APP_SOURCE_DIR="$(dirname $(ls /home/*/casescope*/main.py | head -1))"
         log "Found application files in user directory: $APP_SOURCE_DIR"
     else
         log_error "Cannot locate application files (main.py, requirements.txt, etc.)"
-        log_error "Please ensure you're running this installer from the caseScope directory"
-        log_error "Or place the application files in the same directory as install.sh"
         log_error ""
+        log_error "DEBUGGING INFORMATION:"
         log_error "Expected files: main.py, requirements.txt, version.json, wsgi.py"
         log_error "Current script location: $SCRIPT_DIR"
-        log_error "Current working directory: $(pwd)"
+        log_error "Current working directory: $CURRENT_DIR"
         log_error ""
-        log_error "Try running: cd /path/to/casescope && sudo ./install.sh"
+        log_error "FILES IN CURRENT DIRECTORY:"
+        ls -la "$CURRENT_DIR"
+        log_error ""
+        log_error "FILES IN SCRIPT DIRECTORY:"
+        ls -la "$SCRIPT_DIR"
+        log_error ""
+        log_error "SOLUTION:"
+        log_error "Ensure you're running: cd /home/jdube/caseScope7 && sudo ./install.sh"
+        log_error "Current command appears to be running from: $CURRENT_DIR"
         exit 1
     fi
     
