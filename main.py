@@ -581,12 +581,16 @@ def search():
                               source.get('System_Provider_Name') or \
                               'N/A'
                     
+                    # Get event description
+                    event_description = get_event_description(event_id, channel, provider, source)
+                    
                     results.append({
                         'index': hit['_index'],
                         'id': hit['_id'],
                         'score': hit['_score'],
                         'timestamp': timestamp,
                         'event_id': event_id,
+                        'event_type': event_description,
                         'source_file': source_file,
                         'computer': computer,
                         'channel': channel,
@@ -599,6 +603,104 @@ def search():
                 print(f"[Search] Error: {e}")
     
     return render_search_page(case, query_str, results, total_hits, page, per_page, error_message, len(indexed_files))
+
+
+def get_event_description(event_id, channel, provider, event_data):
+    """
+    Get a human-friendly description of what the event represents
+    Based on common Windows Event IDs and context
+    """
+    event_id_str = str(event_id) if event_id != 'N/A' else ''
+    
+    # Common Windows Security Events
+    security_events = {
+        '4624': 'Successful Logon',
+        '4625': 'Failed Logon',
+        '4634': 'Logoff',
+        '4648': 'Logon with Explicit Credentials',
+        '4672': 'Special Privileges Assigned',
+        '4688': 'Process Created',
+        '4689': 'Process Terminated',
+        '4720': 'User Account Created',
+        '4722': 'User Account Enabled',
+        '4723': 'Password Change Attempted',
+        '4724': 'Password Reset Attempted',
+        '4725': 'User Account Disabled',
+        '4726': 'User Account Deleted',
+        '4732': 'User Added to Security Group',
+        '4733': 'User Removed from Security Group',
+        '4740': 'User Account Locked Out',
+        '4756': 'Member Added to Security Group',
+        '4767': 'User Account Unlocked',
+        '5140': 'Network Share Accessed',
+        '5142': 'Network Share Object Added',
+        '5145': 'Network Share Object Checked'
+    }
+    
+    # System Events
+    system_events = {
+        '1074': 'System Shutdown/Restart',
+        '6005': 'Event Log Service Started',
+        '6006': 'Event Log Service Stopped',
+        '6008': 'Unexpected Shutdown',
+        '7034': 'Service Crashed',
+        '7035': 'Service Control Event',
+        '7036': 'Service State Change',
+        '7040': 'Service Startup Type Changed'
+    }
+    
+    # PowerShell Events
+    powershell_events = {
+        '4103': 'PowerShell Module Logging',
+        '4104': 'PowerShell Script Block',
+        '4105': 'PowerShell Script Start',
+        '4106': 'PowerShell Script Stop'
+    }
+    
+    # Windows Defender Events
+    defender_events = {
+        '1000': 'Defender Scan Started',
+        '1001': 'Defender Scan Completed',
+        '1006': 'Defender Malware Detected',
+        '1007': 'Defender Action Taken',
+        '1008': 'Defender Action Failed',
+        '1116': 'Defender Malware Detected',
+        '1117': 'Defender Action Taken',
+        '1151': 'Defender Signature Updated',
+        '2000': 'Defender Definition Update',
+        '2001': 'Defender Definition Update Failed',
+        '5001': 'Defender Real-Time Protection Disabled',
+        '5007': 'Defender Configuration Changed'
+    }
+    
+    # Check event ID in our mappings
+    if event_id_str in security_events:
+        return security_events[event_id_str]
+    elif event_id_str in system_events:
+        return system_events[event_id_str]
+    elif event_id_str in powershell_events:
+        return powershell_events[event_id_str]
+    elif event_id_str in defender_events:
+        return defender_events[event_id_str]
+    
+    # Fallback to provider-based description
+    if provider and provider != 'N/A':
+        if 'Defender' in provider:
+            return 'Windows Defender Event'
+        elif 'PowerShell' in provider:
+            return 'PowerShell Activity'
+        elif 'Security' in str(channel):
+            return 'Security Event'
+        elif 'System' in str(channel):
+            return 'System Event'
+        elif 'Application' in str(channel):
+            return 'Application Event'
+    
+    # Final fallback
+    if event_id_str:
+        return f'Event ID {event_id_str}'
+    
+    return 'Unknown Event'
 
 
 def build_opensearch_query(query_str):
@@ -624,7 +726,8 @@ def build_opensearch_query(query_str):
         'Provider': 'System.Provider.@Name',
         'Level': 'System.Level',
         'Task': 'System.Task',
-        'TimeCreated': 'System.TimeCreated.@SystemTime'
+        'TimeCreated': 'System.TimeCreated.@SystemTime',
+        'source_filename': '_casescope_metadata.filename'
     }
     
     # Replace field names in query (simple string replacement)
@@ -2352,13 +2455,12 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             <tr class="result-row" onclick="toggleDetails('{result_id}')">
                 <td>{result['event_id']}</td>
                 <td>{result['timestamp'][:19] if result['timestamp'] != 'N/A' else 'N/A'}</td>
+                <td>{result['event_type']}</td>
                 <td><span class="field-tag" onclick="addToQuery(event, 'source_filename', '{result['source_file']}')">{result['source_file']}</span></td>
-                <td><span class="field-tag" onclick="addToQuery(event, 'System_Computer', '{result['computer']}')">{result['computer']}</span></td>
-                <td><span class="field-tag" onclick="addToQuery(event, 'System_Channel', '{result['channel']}')">{result['channel']}</span></td>
-                <td><span class="field-tag" onclick="addToQuery(event, 'System_Provider_Name', '{result['provider']}')">{result['provider']}</span></td>
+                <td><span class="field-tag" onclick="addToQuery(event, 'Computer', '{result['computer']}')">{result['computer']}</span></td>
             </tr>
             <tr id="{result_id}" class="details-row" style="display: none;">
-                <td colspan="6">
+                <td colspan="5">
                     <div class="event-details">
                         <h4>Full Event Data</h4>
                         <pre>{json.dumps(result['full_data'], indent=2)}</pre>
@@ -2367,12 +2469,12 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             </tr>
             '''
     elif query_str and not error_message:
-        result_rows = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #aaa;">No results found for your query.</td></tr>'
+        result_rows = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: #aaa;">No results found for your query.</td></tr>'
     elif not query_str:
-        result_rows = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #aaa;">Enter a search query above to search indexed events.</td></tr>'
+        result_rows = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: #aaa;">Enter a search query above to search indexed events.</td></tr>'
     
     if error_message:
-        result_rows = f'<tr><td colspan="6" style="text-align: center; padding: 40px; color: #f44336;"><strong>Error:</strong> {error_message}</td></tr>'
+        result_rows = f'<tr><td colspan="5" style="text-align: center; padding: 40px; color: #f44336;"><strong>Error:</strong> {error_message}</td></tr>'
     
     # Pagination
     total_pages = (total_hits + per_page - 1) // per_page if total_hits > 0 else 1
@@ -2860,10 +2962,9 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                         <tr>
                             <th>Event ID</th>
                             <th>Timestamp</th>
+                            <th>Event Type</th>
                             <th>Source File</th>
                             <th>Computer</th>
-                            <th>Channel</th>
-                            <th>Provider</th>
                         </tr>
                     </thead>
                     <tbody>
