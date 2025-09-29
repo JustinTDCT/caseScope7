@@ -759,12 +759,19 @@ start_services() {
     export DISABLE_INSTALL_DEMO_CONFIG=true
     
     log "Issuing start command to OpenSearch service..."
-    systemctl start opensearch
+    systemctl start opensearch --no-block
+    START_RESULT=$?
     
-    if [ $? -eq 0 ]; then
+    log "Start command exit code: $START_RESULT"
+    
+    if [ $START_RESULT -eq 0 ]; then
         log "Start command accepted by systemd. Beginning startup monitoring..."
+        # Give a moment for the service to register
+        sleep 2
     else
-        log_error "Failed to issue start command to OpenSearch service"
+        log_error "Failed to issue start command to OpenSearch service (exit code: $START_RESULT)"
+        log_error "Checking service status for more details..."
+        systemctl status opensearch --no-pager
         return 1
     fi
     
