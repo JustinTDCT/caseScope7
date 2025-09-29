@@ -1365,7 +1365,8 @@ def render_upload_form(case):
             </div>
             
             <h3 class="menu-title">Navigation</h3>
-            <a href="/dashboard" class="menu-item">📊 Dashboard</a>
+            <a href="/dashboard" class="menu-item">📊 System Dashboard</a>
+            <a href="/case/dashboard" class="menu-item">🎯 Case Dashboard</a>
             <a href="/case/select" class="menu-item">📁 Case Selection</a>
             <a href="/upload" class="menu-item active">📤 Upload Files</a>
             <a href="/files" class="menu-item">📄 List Files</a>
@@ -1797,7 +1798,8 @@ def render_file_list(case, files):
             </div>
             
             <h3 class="menu-title">Navigation</h3>
-            <a href="/dashboard" class="menu-item">📊 Dashboard</a>
+            <a href="/dashboard" class="menu-item">📊 System Dashboard</a>
+            <a href="/case/dashboard" class="menu-item">🎯 Case Dashboard</a>
             <a href="/case/select" class="menu-item">📁 Case Selection</a>
             <a href="/upload" class="menu-item">📤 Upload Files</a>
             <a href="/files" class="menu-item active">📄 List Files</a>
