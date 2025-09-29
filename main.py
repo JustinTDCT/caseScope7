@@ -102,7 +102,7 @@ class CaseFile(db.Model):
     is_indexed = db.Column(db.Boolean, default=False)
     is_deleted = db.Column(db.Boolean, default=False)
     event_count = db.Column(db.Integer, default=0)
-    indexing_status = db.Column(db.String(20), default='Pending')  # Pending, Processing, Complete, Failed
+    indexing_status = db.Column(db.String(20), default='Uploaded')  # Uploaded, Processing, Indexed, Failed
     
     # Relationships
     case = db.relationship('Case', backref='files')
@@ -312,7 +312,7 @@ def upload_files():
                     file_hash=sha256_hash,
                     mime_type=mime_type,
                     uploaded_by=current_user.id,
-                    indexing_status='Pending'
+                    indexing_status='Uploaded'
                 )
                 
                 db.session.add(case_file)
@@ -1156,7 +1156,8 @@ def render_upload_form(case):
                 padding: 30px;
                 border-radius: 15px;
                 box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-                max-width: 800px;
+                max-width: 1000px;
+                margin: 0 auto;
             }}
             .file-input {{
                 display: block;
@@ -1301,20 +1302,39 @@ def render_file_list(case, files):
         file_size_mb = file.file_size / (1024 * 1024)
         status_class = file.indexing_status.lower().replace(' ', '-')
         
+        # Determine status display
+        if file.indexing_status == 'Uploaded':
+            status_display = 'Uploaded / Pending Indexing'
+        elif file.indexing_status == 'Processing':
+            status_display = 'Processing'
+        elif file.indexing_status == 'Indexed':
+            status_display = 'Indexed'
+        else:
+            status_display = file.indexing_status
+        
+        # Build action buttons based on user role
+        actions = f'<button class="btn-action btn-info" onclick="showFileDetails({file.id})">📋 Details</button>'
+        
+        if file.indexing_status == 'Indexed':
+            actions += f' <button class="btn-action btn-reindex" onclick="confirmReindex({file.id})">🔄 Re-index</button>'
+            actions += f' <button class="btn-action btn-rules" onclick="confirmRerunRules({file.id})">⚡ Re-run Rules</button>'
+        
+        if current_user.role == 'administrator':
+            actions += f' <button class="btn-action btn-delete" onclick="confirmDelete({file.id}, \\'{file.original_filename}\\')">🗑️ Delete</button>'
+        
         file_rows += f'''
         <tr>
             <td>{file.original_filename}</td>
-            <td>{file_size_mb:.2f} MB</td>
-            <td>{file.mime_type}</td>
-            <td><span class="status-{status_class}">{file.indexing_status}</span></td>
             <td>{file.uploaded_at.strftime('%Y-%m-%d %H:%M')}</td>
+            <td>{file_size_mb:.2f} MB</td>
             <td>{file.uploader.username}</td>
-            <td><button class="btn-small" onclick="alert('Hash: {file.file_hash}')">View Hash</button></td>
+            <td><span class="status-{status_class}">{status_display}</span></td>
+            <td>{actions}</td>
         </tr>
         '''
     
     if not file_rows:
-        file_rows = '<tr><td colspan="7" style="text-align: center; padding: 40px;">No files uploaded yet. Click "Upload Files" to add files to this case.</td></tr>'
+        file_rows = '<tr><td colspan="6" style="text-align: center; padding: 40px;">No files uploaded yet. Click "Upload Files" to add files to this case.</td></tr>'
     
     return f'''
     <!DOCTYPE html>
@@ -1465,9 +1485,9 @@ def render_file_list(case, files):
                 font-weight: 600;
                 color: white;
             }}
-            .status-pending {{ color: #ffb74d; }}
+            .status-uploaded {{ color: #ffb74d; }}
             .status-processing {{ color: #2196f3; }}
-            .status-complete {{ color: #4caf50; }}
+            .status-indexed {{ color: #4caf50; }}
             .status-failed {{ color: #f44336; }}
             .btn {{
                 background: linear-gradient(145deg, #4caf50, #388e3c);
@@ -1487,18 +1507,43 @@ def render_file_list(case, files):
                 background: linear-gradient(145deg, #66bb6a, #4caf50);
                 transform: translateY(-1px);
             }}
-            .btn-small {{
-                background: linear-gradient(145deg, #2196f3, #1976d2);
+            .btn-action {{
                 color: white;
-                padding: 6px 12px;
+                padding: 6px 10px;
                 border: none;
                 border-radius: 6px;
                 cursor: pointer;
-                font-size: 12px;
+                font-size: 11px;
+                margin: 2px;
+                transition: all 0.2s ease;
+            }}
+            .btn-info {{
+                background: linear-gradient(145deg, #2196f3, #1976d2);
                 box-shadow: 0 2px 4px rgba(33,150,243,0.3);
             }}
-            .btn-small:hover {{
+            .btn-info:hover {{
                 background: linear-gradient(145deg, #42a5f5, #2196f3);
+            }}
+            .btn-reindex {{
+                background: linear-gradient(145deg, #ff9800, #f57c00);
+                box-shadow: 0 2px 4px rgba(255,152,0,0.3);
+            }}
+            .btn-reindex:hover {{
+                background: linear-gradient(145deg, #ffa726, #ff9800);
+            }}
+            .btn-rules {{
+                background: linear-gradient(145deg, #9c27b0, #7b1fa2);
+                box-shadow: 0 2px 4px rgba(156,39,176,0.3);
+            }}
+            .btn-rules:hover {{
+                background: linear-gradient(145deg, #ab47bc, #9c27b0);
+            }}
+            .btn-delete {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                box-shadow: 0 2px 4px rgba(244,67,54,0.3);
+            }}
+            .btn-delete:hover {{
+                background: linear-gradient(145deg, #ef5350, #f44336);
             }}
         </style>
     </head>
@@ -1542,11 +1587,10 @@ def render_file_list(case, files):
                     <thead>
                         <tr>
                             <th>Filename</th>
-                            <th>Size</th>
-                            <th>Type</th>
-                            <th>Status</th>
                             <th>Uploaded</th>
+                            <th>Size</th>
                             <th>Uploaded By</th>
+                            <th>Status</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -1556,6 +1600,36 @@ def render_file_list(case, files):
                 </table>
             </div>
         </div>
+        
+        <script>
+            function showFileDetails(fileId) {{
+                alert('File details view coming soon. File ID: ' + fileId);
+                // TODO: Open modal with full file details including hash, metadata, etc.
+            }}
+            
+            function confirmReindex(fileId) {{
+                if (confirm('Re-index this file? This will discard all existing event records and re-parse the file.')) {{
+                    alert('Re-indexing not yet implemented. File ID: ' + fileId);
+                    // TODO: POST to /files/reindex/<fileId>
+                }}
+            }}
+            
+            function confirmRerunRules(fileId) {{
+                if (confirm('Re-run SIGMA rules on this file? This will discard existing rule tags and re-scan all events.')) {{
+                    alert('Rule re-run not yet implemented. File ID: ' + fileId);
+                    // TODO: POST to /files/rerun-rules/<fileId>
+                }}
+            }}
+            
+            function confirmDelete(fileId, filename) {{
+                if (confirm('DELETE file "' + filename + '"? This will remove the file, all indexed events, and rule violations. This cannot be undone.')) {{
+                    if (confirm('Are you ABSOLUTELY SURE? This is permanent!')) {{
+                        alert('File deletion not yet implemented. File ID: ' + fileId);
+                        // TODO: POST to /files/delete/<fileId>
+                    }}
+                }}
+            }}
+        </script>
     </body>
     </html>
     '''
