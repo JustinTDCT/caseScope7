@@ -1,7 +1,7 @@
 {
-  "version": "7.1.9",
+  "version": "7.1.10",
   "release_date": "2025-09-29",
-  "description": "Fixed OpenSearch configuration with minimal safe settings, removed all invalid plugin configurations",
+  "description": "Major performance enhancement - comprehensive startup optimizations for OpenSearch including JVM tuning, system configuration, and cache optimization",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -12,6 +12,7 @@
     "7.1.6": "Bugfix - Fixed OpenSearch startup timeouts, optimized config, disabled unnecessary plugins, dynamic heap sizing",
     "7.1.7": "Enhancement - Comprehensive installer verbosity, detailed service monitoring, API response verification, extensive troubleshooting guidance",
     "7.1.8": "Bugfix - Fixed OpenSearch 2.11.1 compatibility by removing invalid plugin settings causing AbstractScopedSettings errors",
-    "7.1.9": "Bugfix - Simplified OpenSearch config to minimal safe settings, removed all problematic plugin configurations"
+    "7.1.9": "Bugfix - Simplified OpenSearch config to minimal safe settings, removed all problematic plugin configurations",
+    "7.1.10": "Performance - Major startup optimization: JIT compiler tuning, G1GC optimization, system limits, cache tuning, logging reduction"
   }
 }

@@ -211,7 +211,30 @@ create_directories() {
     chmod 755 /opt/casescope/uploads
     chmod 755 /opt/casescope/logs
     
-    log "Directory structure created"
+    # System optimizations for faster OpenSearch startup
+    log "Applying system optimizations for faster OpenSearch startup..."
+    
+    # Increase virtual memory map limit for OpenSearch
+    if ! grep -q "vm.max_map_count" /etc/sysctl.conf; then
+        echo 'vm.max_map_count=262144' >> /etc/sysctl.conf
+    fi
+    sysctl -w vm.max_map_count=262144
+    
+    # Optimize file descriptor limits
+    if ! grep -q "casescope.*nofile" /etc/security/limits.conf; then
+        echo 'casescope soft nofile 65536' >> /etc/security/limits.conf
+        echo 'casescope hard nofile 65536' >> /etc/security/limits.conf
+        echo 'casescope soft nproc 4096' >> /etc/security/limits.conf
+        echo 'casescope hard nproc 4096' >> /etc/security/limits.conf
+    fi
+    
+    # Optimize swappiness for better Java performance
+    if ! grep -q "vm.swappiness" /etc/sysctl.conf; then
+        echo 'vm.swappiness=1' >> /etc/sysctl.conf
+    fi
+    sysctl -w vm.swappiness=1
+    
+    log "Directory structure created and system optimized"
 }
 
 # Handle data based on installation type
@@ -300,8 +323,9 @@ install_opensearch() {
         chown -R casescope:casescope /opt/opensearch
     fi
     
-    # Configure OpenSearch with minimal, safe settings
+    # Configure OpenSearch with optimized startup settings
     cat > /opt/opensearch/config/opensearch.yml << 'EOF'
+# Basic cluster configuration
 cluster.name: casescope-cluster
 node.name: casescope-node
 path.data: /opt/opensearch/data
@@ -309,17 +333,54 @@ path.logs: /opt/opensearch/logs
 network.host: 127.0.0.1
 http.port: 9200
 discovery.type: single-node
+
+# Security settings
 plugins.security.disabled: true
 bootstrap.memory_lock: false
 
-# Performance optimizations for faster startup
+# Startup performance optimizations
 action.auto_create_index: true
 cluster.routing.allocation.disk.threshold_enabled: false
-indices.fielddata.cache.size: 20%
-indices.memory.index_buffer_size: 10%
+cluster.routing.allocation.awareness.attributes: ""
+cluster.routing.rebalance.enable: none
 
-# Only disable plugins that are confirmed to exist in OpenSearch 2.11.1
+# Index and cache optimizations for faster startup
+indices.fielddata.cache.size: 15%
+indices.memory.index_buffer_size: 5%
+indices.memory.min_index_buffer_size: 48mb
+indices.queries.cache.size: 5%
+indices.requests.cache.size: 1%
+
+# Network and timeout optimizations
+http.max_content_length: 100mb
+http.compression: true
+http.compression_level: 3
+network.tcp.keep_alive: true
+network.tcp.reuse_address: true
+
+# Discovery and cluster formation optimizations
+discovery.zen.minimum_master_nodes: 1
+discovery.zen.ping_timeout: 3s
+discovery.zen.fd.ping_timeout: 10s
+discovery.zen.fd.ping_retries: 2
+
+# Thread pool optimizations for faster startup
+thread_pool.write.queue_size: 200
+thread_pool.search.queue_size: 500
+thread_pool.get.queue_size: 500
+
+# Gateway and recovery settings for faster startup
+gateway.recover_after_nodes: 1
+gateway.expected_nodes: 1
+gateway.recover_after_time: 0s
+
+# Plugin management - only disable what we know exists
 plugins.index_state_management.enabled: false
+
+# Logging optimizations
+logger.level: WARN
+logger.org.opensearch.discovery: ERROR
+logger.org.opensearch.cluster.service: ERROR
 EOF
     
     # Ensure security plugin is disabled and demo config is not installed
@@ -335,13 +396,13 @@ EOF
     # Set proper permissions for OpenSearch config
     chown -R casescope:casescope /opt/opensearch/config
     
-    # Set JVM options optimized for startup performance
+    # Set JVM options optimized for fastest startup performance
     TOTAL_MEM=$(free -m | awk 'NR==2{printf "%.0f", $2}')
     if [ "$TOTAL_MEM" -lt 4096 ]; then
         # Less than 4GB RAM - use 1GB heap
         HEAP_SIZE="1g"
     elif [ "$TOTAL_MEM" -lt 8192 ]; then
-        # 4-8GB RAM - use 2GB heap
+        # 4-8GB RAM - use 2GB heap  
         HEAP_SIZE="2g"
     else
         # 8GB+ RAM - use 4GB heap
@@ -349,19 +410,48 @@ EOF
     fi
     
     cat > /opt/opensearch/config/jvm.options << EOF
+# Heap Settings - Fixed size for faster startup
 -Xms${HEAP_SIZE}
 -Xmx${HEAP_SIZE}
+
+# GC Settings optimized for startup speed
 -XX:+UseG1GC
 -XX:G1HeapRegionSize=16m
+-XX:MaxGCPauseMillis=100
+-XX:G1NewSizePercent=20
+-XX:G1MaxNewSizePercent=30
+-XX:InitiatingHeapOccupancyPercent=45
 -XX:+DisableExplicitGC
 -XX:+UseStringDeduplication
--XX:MaxGCPauseMillis=200
+
+# JIT Compiler optimizations for faster startup
+-XX:TieredStopAtLevel=1
+-XX:+UseSharedSpaces
+-XX:+UnlockExperimentalVMOptions
+-XX:+UseContainerSupport
+
+# Class loading optimizations
+-XX:+UnlockDiagnosticVMOptions
+-XX:+LogVMOutput
+-XX:+UseTransparentHugePages
+
+# I/O and Security optimizations
 -Djava.io.tmpdir=/opt/opensearch/tmp
 -Dlog4j2.formatMsgNoLookups=true
 -Djava.security.policy=file:///opt/opensearch/config/opensearch.policy
+-Dfile.encoding=UTF-8
+-Djava.awt.headless=true
+
+# Network optimizations
+-Dopensearch.networkaddress.cache.ttl=60
+-Dopensearch.networkaddress.cache.negative.ttl=10
+
+# Disable unnecessary features for faster startup
+-Dopensearch.scripting.update.ctx_in_params=false
+-Dopensearch.allow_insecure_settings=true
 EOF
     
-    log "Configured JVM heap size: ${HEAP_SIZE} (Total RAM: ${TOTAL_MEM}MB)"
+    log "Configured JVM with startup optimizations - heap size: ${HEAP_SIZE} (Total RAM: ${TOTAL_MEM}MB)"
     
     # Create systemd service
     cat > /etc/systemd/system/opensearch.service << 'EOF'
