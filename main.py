@@ -1908,6 +1908,15 @@ def render_file_list(case, files):
                     updateFileProgress();
                     setInterval(updateFileProgress, 2000); // Update every 2 seconds
                 }}
+                
+                // Auto-refresh page every 5 seconds if there are active files
+                // This ensures status changes are reflected (Uploaded -> Indexing, etc.)
+                if (activeFiles.length > 0) {{
+                    setInterval(function() {{
+                        console.log('Auto-refreshing page to update file statuses...');
+                        window.location.reload();
+                    }}, 5000); // Refresh every 5 seconds
+                }}
             }});
             
             function updateFileProgress() {{
