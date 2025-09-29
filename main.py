@@ -165,7 +165,7 @@ def login():
                 max-width: 420px; 
                 width: 90%; 
                 background: linear-gradient(145deg, #283593, #1e88e5); 
-                padding: 40px; 
+                padding: 30px; 
                 border-radius: 20px; 
                 box-shadow: 
                     0 20px 40px rgba(0,0,0,0.4),
@@ -176,14 +176,14 @@ def login():
             .logo {{ 
                 text-align: center; 
                 font-size: 3em; 
-                margin-bottom: 40px; 
+                margin-bottom: 30px; 
                 text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
                 font-weight: 300;
             }}
             .logo .case {{ color: #4caf50; }}
             .logo .scope {{ color: white; }}
             .form-group {{
-                margin-bottom: 20px;
+                margin-bottom: 18px;
             }}
             input {{ 
                 width: 100%; 
@@ -319,28 +319,28 @@ def dashboard():
             .main-content {{ flex: 1; }}
             .header {{ 
                 background: linear-gradient(145deg, #283593, #1e88e5); 
-                padding: 30px 40px; 
+                padding: 15px 30px; 
                 display: flex; 
                 justify-content: flex-end; 
                 align-items: center;
                 box-shadow: 0 4px 20px rgba(0,0,0,0.3);
                 border-bottom: 1px solid rgba(255,255,255,0.1);
-                min-height: 80px;
+                min-height: 60px;
             }}
             .user-info {{ 
                 display: flex; 
                 align-items: center; 
-                gap: 25px;
+                gap: 20px;
                 font-size: 1em;
-                padding: 10px 0;
+                line-height: 1.2;
             }}
             .sidebar-logo {{
                 text-align: center;
                 font-size: 2.2em;
                 font-weight: 300;
                 text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-                margin-bottom: 30px;
-                padding: 20px 0;
+                margin-bottom: 25px;
+                padding: 15px 0 15px 0;
                 border-bottom: 1px solid rgba(76,175,80,0.3);
             }}
             .sidebar-logo .case {{ color: #4caf50; }}
@@ -356,7 +356,7 @@ def dashboard():
                 box-shadow: 0 2px 4px rgba(76,175,80,0.3);
                 border: 1px solid rgba(255,255,255,0.1);
             }}
-            .content {{ padding: 40px; }}
+            .content {{ padding: 30px; }}
             .tile {{ 
                 background: linear-gradient(145deg, #3f51b5, #283593); 
                 padding: 30px; 
@@ -422,11 +422,11 @@ def dashboard():
             }}
             h3.menu-title {{
                 font-size: 1.1em;
-                margin: 25px 0 15px 0;
+                margin: 20px 0 12px 0;
                 color: #4caf50;
                 text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
                 border-bottom: 1px solid rgba(76,175,80,0.3);
-                padding-bottom: 8px;
+                padding-bottom: 6px;
             }}
             a {{ color: #4caf50; text-decoration: none; transition: color 0.3s ease; }}
             a:hover {{ color: #66bb6a; }}
@@ -618,7 +618,7 @@ def change_password():
                 max-width: 500px; 
                 width: 90%; 
                 background: linear-gradient(145deg, #283593, #1e88e5); 
-                padding: 40px; 
+                padding: 30px; 
                 border-radius: 20px; 
                 box-shadow: 
                     0 20px 40px rgba(0,0,0,0.4),
@@ -643,12 +643,12 @@ def change_password():
             }}
             p {{
                 text-align: center;
-                margin-bottom: 30px;
+                margin-bottom: 25px;
                 color: rgba(255,255,255,0.8);
                 font-size: 0.95em;
             }}
             .form-group {{
-                margin-bottom: 20px;
+                margin-bottom: 18px;
             }}
             input {{ 
                 width: 100%; 
