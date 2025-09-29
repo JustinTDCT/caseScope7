@@ -381,9 +381,8 @@ http.compression_level: 3
 network.tcp.keep_alive: true
 network.tcp.reuse_address: true
 
-# Discovery and cluster formation optimizations (OpenSearch 2.11.1 compatible)
-cluster.initial_master_nodes: ["casescope-node"]
-discovery.seed_hosts: ["127.0.0.1"]
+# Discovery is handled automatically by discovery.type: single-node
+# No additional discovery settings needed for single-node mode
 
 # Thread pool optimizations for faster startup
 thread_pool.write.queue_size: 200
