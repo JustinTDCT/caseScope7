@@ -102,6 +102,7 @@ class CaseFile(db.Model):
     is_indexed = db.Column(db.Boolean, default=False)
     is_deleted = db.Column(db.Boolean, default=False)
     event_count = db.Column(db.Integer, default=0)
+    estimated_event_count = db.Column(db.Integer, default=0)  # Estimated total events for progress
     violation_count = db.Column(db.Integer, default=0)
     indexing_status = db.Column(db.String(20), default='Uploaded')  # Uploaded, Indexing, Running Rules, Completed, Failed
     
@@ -471,15 +472,22 @@ def file_progress(file_id):
     if not active_case_id or case_file.case_id != active_case_id:
         return jsonify({'error': 'Access denied'}), 403
     
+    # If estimated_event_count is not set and we're indexing, use fallback estimation
+    # (This shouldn't happen normally since counting happens first, but just in case)
+    if case_file.indexing_status == 'Indexing':
+        if not case_file.estimated_event_count or case_file.estimated_event_count == 0:
+            case_file.estimated_event_count = int((case_file.file_size / 1048576) * 1000)
+            db.session.commit()
+    
     # Calculate progress percentage
     progress = 0
-    if case_file.indexing_status == 'Indexing' and case_file.event_count > 0:
-        # Estimate based on file size (rough estimate: 100 events per MB for EVTX)
-        estimated_total = (case_file.file_size / 1048576) * 100  # MB to bytes, ~100 events/MB
-        if estimated_total > 0:
-            progress = min(int((case_file.event_count / estimated_total) * 100), 99)
+    if case_file.indexing_status == 'Indexing':
+        if case_file.estimated_event_count > 0 and case_file.event_count > 0:
+            progress = min(int((case_file.event_count / case_file.estimated_event_count) * 100), 99)
+        else:
+            progress = 5  # Show small progress when starting
     elif case_file.indexing_status == 'Running Rules':
-        progress = 50  # Placeholder for rule processing
+        progress = 100  # Rules processing is after indexing
     elif case_file.indexing_status == 'Completed':
         progress = 100
     
@@ -487,6 +495,7 @@ def file_progress(file_id):
         'status': case_file.indexing_status,
         'progress': progress,
         'event_count': case_file.event_count or 0,
+        'estimated_event_count': case_file.estimated_event_count or 0,
         'violation_count': case_file.violation_count or 0,
         'is_indexed': case_file.is_indexed
     })
@@ -1443,20 +1452,29 @@ def render_file_list(case, files):
         
         # Determine status display with progress - will be updated via JavaScript
         if file.indexing_status == 'Uploaded':
-            status_display = '<div id="status-{0}" class="status-text">Uploaded/Pending</div>'.format(file.id)
+            # Check if we're still counting events
+            if file.estimated_event_count and file.estimated_event_count > 0:
+                status_display = '<div id="status-{0}" class="status-text">Preparing to Index...</div>'.format(file.id)
+            else:
+                status_display = '<div id="status-{0}" class="status-text">Counting Events...</div>'.format(file.id)
             status_class = 'uploaded'
         elif file.indexing_status == 'Indexing':
+            # Calculate initial progress
+            estimated = file.estimated_event_count or int((file.file_size / 1048576) * 1000)
+            current_events = file.event_count or 0
+            initial_progress = min(int((current_events / estimated) * 100), 99) if estimated > 0 else 5
+            
             progress_html = '''<div id="status-{0}" class="progress-container" data-file-id="{0}">
                 <div class="progress-text">Indexing...</div>
-                <div class="progress-bar-bg"><div class="progress-bar indexing-bar" id="progress-{0}" style="width: 5%"></div></div>
-                <div class="progress-events" id="events-{0}">0 events</div>
-            </div>'''.format(file.id)
+                <div class="progress-bar-bg"><div class="progress-bar indexing-bar" id="progress-{0}" style="width: {2}%"></div></div>
+                <div class="progress-events" id="events-{0}">{3:,} / {4:,} events</div>
+            </div>'''.format(file.id, file.id, initial_progress, current_events, estimated)
             status_display = progress_html
             status_class = 'indexing'
         elif file.indexing_status == 'Running Rules':
             progress_html = '''<div id="status-{0}" class="progress-container" data-file-id="{0}">
                 <div class="progress-text">Running Rules...</div>
-                <div class="progress-bar-bg"><div class="progress-bar rules-bar" id="progress-{0}" style="width: 50%"></div></div>
+                <div class="progress-bar-bg"><div class="progress-bar rules-bar" id="progress-{0}" style="width: 100%"></div></div>
             </div>'''.format(file.id)
             status_display = progress_html
             status_class = 'running-rules'
@@ -1495,7 +1513,7 @@ def render_file_list(case, files):
         if current_user.role == 'administrator':
             actions_list.append(f'<button class="btn-action btn-delete" onclick="confirmDelete({file.id}, \'{file.original_filename}\')">🗑️ Delete</button>')
         
-        actions = '<div style="display: flex; flex-wrap: wrap; gap: 4px;">' + ''.join(actions_list) + '</div>'
+        actions = '<div style="display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">' + ''.join(actions_list) + '</div>'
         
         file_rows += f'''
         <tr>
@@ -1917,15 +1935,17 @@ def render_file_list(case, files):
                             
                             if (data.status === 'Indexing') {{
                                 if (progressBar) {{
-                                    const newWidth = Math.max(5, data.progress);
+                                    const newWidth = Math.max(5, Math.min(data.progress, 99));
                                     progressBar.style.width = newWidth + '%';
                                 }}
                                 if (eventsText) {{
-                                    eventsText.textContent = data.event_count.toLocaleString() + ' events';
+                                    const currentEvents = data.event_count.toLocaleString();
+                                    const totalEvents = data.estimated_event_count.toLocaleString();
+                                    eventsText.textContent = currentEvents + ' / ' + totalEvents + ' events';
                                 }}
                             }} else if (data.status === 'Running Rules') {{
                                 if (progressBar) {{
-                                    progressBar.style.width = '75%';
+                                    progressBar.style.width = '100%';
                                 }}
                             }} else if (data.status === 'Completed') {{
                                 // Reload page to show final status
@@ -2607,7 +2627,7 @@ def init_db():
         
         # Run migrations for existing databases
         try:
-            # Check if violation_count column exists in case_file table
+            # Check if violation_count and estimated_event_count columns exist
             from sqlalchemy import inspect, text
             inspector = inspect(db.engine)
             columns = [col['name'] for col in inspector.get_columns('case_file')]
@@ -2617,6 +2637,12 @@ def init_db():
                 db.session.execute(text('ALTER TABLE case_file ADD COLUMN violation_count INTEGER DEFAULT 0'))
                 db.session.commit()
                 print("Migration completed: violation_count column added")
+            
+            if 'estimated_event_count' not in columns:
+                print("Running migration: Adding estimated_event_count column to case_file table...")
+                db.session.execute(text('ALTER TABLE case_file ADD COLUMN estimated_event_count INTEGER DEFAULT 0'))
+                db.session.commit()
+                print("Migration completed: estimated_event_count column added")
         except Exception as e:
             print(f"Migration check/execution note: {e}")
             db.session.rollback()

@@ -301,10 +301,81 @@ def bulk_index_events(index_name, events):
         raise
 
 
+@celery_app.task(bind=True, name='tasks.count_evtx_events')
+def count_evtx_events(self, file_id):
+    """
+    Count total events in EVTX file before indexing
+    This provides accurate progress tracking
+    """
+    logger.info("="*80)
+    logger.info(f"COUNTING EVENTS - File ID: {file_id}")
+    logger.info("="*80)
+    
+    with app.app_context():
+        try:
+            case_file = CaseFile.query.get(file_id)
+            if not case_file:
+                logger.error(f"File ID {file_id} not found in database")
+                return {'status': 'error', 'message': f'File ID {file_id} not found'}
+            
+            if not os.path.exists(case_file.file_path):
+                logger.error(f"File not found: {case_file.file_path}")
+                return {'status': 'error', 'message': f'File not found: {case_file.file_path}'}
+            
+            logger.info(f"Counting events in: {case_file.original_filename}")
+            logger.info(f"File path: {case_file.file_path}")
+            
+            # Count total events
+            total_events = 0
+            with evtx.Evtx(case_file.file_path) as log:
+                for _ in log.records():
+                    total_events += 1
+                    
+                    # Update count every 10000 events
+                    if total_events % 10000 == 0:
+                        logger.info(f"Counted {total_events:,} events so far...")
+            
+            logger.info(f"Total events counted: {total_events:,}")
+            
+            # Update database with actual count
+            case_file.estimated_event_count = total_events
+            db.session.commit()
+            
+            logger.info("="*80)
+            logger.info(f"EVENT COUNT COMPLETE: {total_events:,} events")
+            logger.info("="*80)
+            
+            # Now start the actual indexing
+            index_evtx_file.delay(file_id)
+            
+            return {
+                'status': 'success',
+                'total_events': total_events
+            }
+        
+        except Exception as e:
+            logger.error("="*80)
+            logger.error(f"EVENT COUNTING FAILED: {e}")
+            logger.error("="*80)
+            import traceback
+            logger.error(traceback.format_exc())
+            
+            # Fall back to estimation and start indexing anyway
+            case_file = CaseFile.query.get(file_id)
+            if case_file:
+                case_file.estimated_event_count = int((case_file.file_size / 1048576) * 1000)
+                db.session.commit()
+                logger.warning(f"Falling back to estimated count: {case_file.estimated_event_count:,}")
+                index_evtx_file.delay(file_id)
+            
+            return {'status': 'error', 'message': str(e)}
+
+
 @celery_app.task(name='tasks.start_file_indexing')
 def start_file_indexing(file_id):
     """
     Trigger to start indexing a file
     This is called immediately after file upload
+    First counts events, then indexes
     """
-    return index_evtx_file.delay(file_id)
+    return count_evtx_events.delay(file_id)
