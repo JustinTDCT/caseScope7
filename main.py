@@ -527,7 +527,10 @@ def search():
                     "query": os_query,
                     "from": from_offset,
                     "size": per_page,
-                    "sort": [{"@timestamp": {"order": "desc"}}],
+                    "sort": [
+                        {"System_TimeCreated_SystemTime": {"order": "desc", "unmapped_type": "date"}},
+                        {"_score": {"order": "desc"}}
+                    ],
                     "_source": True
                 }
                 
@@ -540,11 +543,18 @@ def search():
                 
                 for hit in response['hits']['hits']:
                     source = hit['_source']
+                    
+                    # Get timestamp from various possible fields
+                    timestamp = source.get('System_TimeCreated_SystemTime') or \
+                               source.get('@timestamp') or \
+                               source.get('TimeCreated') or \
+                               'N/A'
+                    
                     results.append({
                         'index': hit['_index'],
                         'id': hit['_id'],
                         'score': hit['_score'],
-                        'timestamp': source.get('@timestamp', 'N/A'),
+                        'timestamp': timestamp,
                         'event_id': source.get('System_EventID', source.get('EventID', 'N/A')),
                         'source_file': source.get('source_filename', 'Unknown'),
                         'computer': source.get('System_Computer', source.get('Computer', 'N/A')),

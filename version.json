@@ -1,7 +1,7 @@
 {
-  "version": "7.1.55",
+  "version": "7.1.56",
   "release_date": "2025-09-29",
-  "description": "Feature Complete - Event Search Interface with advanced query builder and expandable results",
+  "description": "Bugfix - Fixed search sorting to use System_TimeCreated_SystemTime instead of missing @timestamp field",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -58,6 +58,7 @@
     "7.1.52": "Bugfix - Added missing Case Dashboard link to upload form and file list navigation menus, changed 'Dashboard' to 'System Dashboard' for consistency across all pages",
     "7.1.53": "Enhancement - Added prominent flash message display to upload page: shows success/warning/error messages at top of content area with colored gradient backgrounds (green/orange/red), includes emoji icons (✅⚠️❌), dismissible with X button, smooth slide-in animation, properly displays duplicate file warnings and upload errors to users",
     "7.1.54": "Bugfix - Extended flash message display system to file list page: messages now persist through redirect from upload to file list, duplicate file warnings and upload errors appear prominently at top of file list with same styling (gradient backgrounds, icons, dismiss button), ensures users always see feedback after upload attempts",
-    "7.1.55": "Feature Complete - Event Search Interface: /search route with OpenSearch integration, query_string parser supporting AND/OR/NOT/parentheses/wildcards/phrase matching, results table with Event ID/Timestamp/Computer/Channel/Provider columns, expandable row details showing full JSON event data, clickable field tags to build queries, pagination (50 results per page), collapsible query help with syntax examples, searches across all indexed files in active case, modern 3D UI matching application theme"
+    "7.1.55": "Feature Complete - Event Search Interface: /search route with OpenSearch integration, query_string parser supporting AND/OR/NOT/parentheses/wildcards/phrase matching, results table with Event ID/Timestamp/Computer/Channel/Provider columns, expandable row details showing full JSON event data, clickable field tags to build queries, pagination (50 results per page), collapsible query help with syntax examples, searches across all indexed files in active case, modern 3D UI matching application theme",
+    "7.1.56": "Bugfix - Fixed search RequestError 400: Changed sort field from @timestamp (not indexed) to System_TimeCreated_SystemTime with unmapped_type fallback, added fallback timestamp detection (System_TimeCreated_SystemTime → @timestamp → TimeCreated → N/A), secondary sort by _score for relevance when timestamp unavailable"
   }
 }
