@@ -1442,31 +1442,31 @@ def render_file_list(case, files):
         
         # Determine status display with progress - will be updated via JavaScript
         if file.indexing_status == 'Uploaded':
-            status_display = '<span id="status-{0}">Uploaded/Pending</span>'.format(file.id)
+            status_display = '<div id="status-{0}" class="status-text">Uploaded/Pending</div>'.format(file.id)
             status_class = 'uploaded'
         elif file.indexing_status == 'Indexing':
-            progress_html = '''<div id="status-{0}" class="progress-container">
+            progress_html = '''<div id="status-{0}" class="progress-container" data-file-id="{0}">
                 <div class="progress-text">Indexing...</div>
-                <div class="progress-bar-bg"><div class="progress-bar" id="progress-{0}" style="width: 0%"></div></div>
+                <div class="progress-bar-bg"><div class="progress-bar indexing-bar" id="progress-{0}" style="width: 5%"></div></div>
                 <div class="progress-events" id="events-{0}">0 events</div>
             </div>'''.format(file.id)
             status_display = progress_html
             status_class = 'indexing'
         elif file.indexing_status == 'Running Rules':
-            progress_html = '''<div id="status-{0}" class="progress-container">
+            progress_html = '''<div id="status-{0}" class="progress-container" data-file-id="{0}">
                 <div class="progress-text">Running Rules...</div>
-                <div class="progress-bar-bg"><div class="progress-bar" id="progress-{0}" style="width: 50%"></div></div>
+                <div class="progress-bar-bg"><div class="progress-bar rules-bar" id="progress-{0}" style="width: 50%"></div></div>
             </div>'''.format(file.id)
             status_display = progress_html
             status_class = 'running-rules'
         elif file.indexing_status == 'Completed':
-            status_display = '<span id="status-{0}">✅ Completed</span>'.format(file.id)
+            status_display = '<div id="status-{0}" class="status-text">Completed</div>'.format(file.id)
             status_class = 'completed'
         elif file.indexing_status == 'Failed':
-            status_display = '<span id="status-{0}">❌ Failed</span>'.format(file.id)
+            status_display = '<div id="status-{0}" class="status-text">Failed</div>'.format(file.id)
             status_class = 'failed'
         else:
-            status_display = '<span id="status-{0}">{1}</span>'.format(file.id, file.indexing_status)
+            status_display = '<div id="status-{0}" class="status-text">{1}</div>'.format(file.id, file.indexing_status)
         
         # Event count display
         if file.event_count > 0:
@@ -1479,17 +1479,20 @@ def render_file_list(case, files):
         violations_display = '-'
         
         # Build action buttons based on user role
-        actions = f'<button class="btn-action btn-info" onclick="showFileDetails({file.id})">📋 Details</button>'
+        actions_list = []
+        actions_list.append(f'<button class="btn-action btn-info" onclick="showFileDetails({file.id})">📋 Details</button>')
         
         # Re-index available for any file (will reset and restart indexing)
-        actions += f' <button class="btn-action btn-reindex" onclick="confirmReindex({file.id})">🔄 Re-index</button>'
+        actions_list.append(f'<button class="btn-action btn-reindex" onclick="confirmReindex({file.id})">🔄 Re-index</button>')
         
         # Re-run Rules only available for indexed files
         if file.is_indexed and file.indexing_status in ['Running Rules', 'Completed', 'Failed']:
-            actions += f' <button class="btn-action btn-rules" onclick="confirmRerunRules({file.id})">⚡ Re-run Rules</button>'
+            actions_list.append(f'<button class="btn-action btn-rules" onclick="confirmRerunRules({file.id})">⚡ Re-run Rules</button>')
         
         if current_user.role == 'administrator':
-            actions += f' <button class="btn-action btn-delete" onclick="confirmDelete({file.id}, \'{file.original_filename}\')">🗑️ Delete</button>'
+            actions_list.append(f'<button class="btn-action btn-delete" onclick="confirmDelete({file.id}, \'{file.original_filename}\')">🗑️ Delete</button>')
+        
+        actions = '<div style="display: flex; flex-wrap: wrap; gap: 4px;">' + ''.join(actions_list) + '</div>'
         
         file_rows += f'''
         <tr>
@@ -1679,14 +1682,23 @@ def render_file_list(case, files):
             }}
             .progress-bar {{
                 height: 100%;
-                background: linear-gradient(90deg, #2196f3, #42a5f5);
                 border-radius: 10px;
-                transition: width 0.3s ease;
+                transition: width 0.5s ease;
+            }}
+            .indexing-bar {{
+                background: linear-gradient(90deg, #2196f3, #42a5f5);
                 box-shadow: 0 0 10px rgba(33,150,243,0.5);
+            }}
+            .rules-bar {{
+                background: linear-gradient(90deg, #9c27b0, #ab47bc);
+                box-shadow: 0 0 10px rgba(156,39,176,0.5);
             }}
             .progress-events {{
                 font-size: 0.85em;
                 color: rgba(255,255,255,0.7);
+            }}
+            .status-text {{
+                font-weight: 600;
             }}
             .btn {{
                 background: linear-gradient(145deg, #4caf50, #388e3c);
@@ -1708,13 +1720,17 @@ def render_file_list(case, files):
             }}
             .btn-action {{
                 color: white;
-                padding: 6px 10px;
+                padding: 8px 12px;
                 border: none;
                 border-radius: 6px;
                 cursor: pointer;
-                font-size: 11px;
+                font-size: 13px;
+                font-weight: 500;
                 margin: 2px;
                 transition: all 0.2s ease;
+                display: inline-block;
+                vertical-align: middle;
+                white-space: nowrap;
             }}
             .btn-info {{
                 background: linear-gradient(145deg, #2196f3, #1976d2);
@@ -1842,19 +1858,30 @@ def render_file_list(case, files):
             
             // Collect all file IDs that are being processed
             document.addEventListener('DOMContentLoaded', function() {{
+                // Find all progress containers with data-file-id attribute
+                const progressContainers = document.querySelectorAll('.progress-container[data-file-id]');
+                progressContainers.forEach(function(elem) {{
+                    const fileId = elem.getAttribute('data-file-id');
+                    if (fileId && !activeFiles.includes(fileId)) {{
+                        activeFiles.push(fileId);
+                    }}
+                }});
+                
+                // Also check for Uploaded/Pending status
                 const statusElements = document.querySelectorAll('[id^="status-"]');
                 statusElements.forEach(function(elem) {{
                     const fileId = elem.id.split('-')[1];
                     const statusText = elem.textContent;
-                    if (statusText.includes('Uploaded/Pending') || statusText.includes('Indexing') || statusText.includes('Running Rules')) {{
+                    if (statusText.includes('Uploaded/Pending') && !activeFiles.includes(fileId)) {{
                         activeFiles.push(fileId);
                     }}
                 }});
                 
                 // Start polling for active files
                 if (activeFiles.length > 0) {{
+                    console.log('Starting progress tracking for files:', activeFiles);
                     updateFileProgress();
-                    setInterval(updateFileProgress, 3000); // Update every 3 seconds
+                    setInterval(updateFileProgress, 2000); // Update every 2 seconds
                 }}
             }});
             
@@ -1867,9 +1894,12 @@ def render_file_list(case, files):
                             const eventsText = document.getElementById('events-' + fileId);
                             const statusElem = document.getElementById('status-' + fileId);
                             
+                            console.log('Progress update for file', fileId, ':', data);
+                            
                             if (data.status === 'Indexing') {{
                                 if (progressBar) {{
-                                    progressBar.style.width = data.progress + '%';
+                                    const newWidth = Math.max(5, data.progress);
+                                    progressBar.style.width = newWidth + '%';
                                 }}
                                 if (eventsText) {{
                                     eventsText.textContent = data.event_count.toLocaleString() + ' events';
@@ -1877,13 +1907,14 @@ def render_file_list(case, files):
                             }} else if (data.status === 'Running Rules') {{
                                 if (progressBar) {{
                                     progressBar.style.width = '75%';
-                                    progressBar.style.background = 'linear-gradient(90deg, #9c27b0, #ab47bc)';
                                 }}
                             }} else if (data.status === 'Completed') {{
                                 // Reload page to show final status
+                                console.log('File completed, reloading page...');
                                 window.location.reload();
                             }} else if (data.status === 'Failed') {{
                                 // Reload page to show failure
+                                console.log('File failed, reloading page...');
                                 window.location.reload();
                             }}
                         }})
