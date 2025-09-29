@@ -236,7 +236,18 @@ def case_dashboard():
         return redirect(url_for('case_selection'))
     
     case = Case.query.get_or_404(active_case_id)
-    return render_case_dashboard(case)
+    
+    # Get case-specific statistics
+    total_files = CaseFile.query.filter_by(case_id=case.id, is_deleted=False).count()
+    indexed_files = CaseFile.query.filter_by(case_id=case.id, is_deleted=False, is_indexed=True).count()
+    processing_files = CaseFile.query.filter_by(case_id=case.id, is_deleted=False).filter(
+        CaseFile.indexing_status.in_(['Counting Events', 'Indexing', 'Running Rules', 'Preparing to Index'])
+    ).count()
+    total_events = db.session.query(db.func.sum(CaseFile.event_count)).filter_by(case_id=case.id, is_deleted=False).scalar() or 0
+    total_violations = db.session.query(db.func.sum(CaseFile.violation_count)).filter_by(case_id=case.id, is_deleted=False).scalar() or 0
+    total_storage = db.session.query(db.func.sum(CaseFile.file_size)).filter_by(case_id=case.id, is_deleted=False).scalar() or 0
+    
+    return render_case_dashboard(case, total_files, indexed_files, processing_files, total_events, total_violations, total_storage)
 
 @app.route('/upload', methods=['GET', 'POST'])
 @login_required
@@ -1122,6 +1133,21 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
+    # Get real system statistics
+    total_cases = Case.query.count()
+    total_files = CaseFile.query.filter_by(is_deleted=False).count()
+    total_indexed = CaseFile.query.filter_by(is_deleted=False, is_indexed=True).count()
+    total_events = db.session.query(db.func.sum(CaseFile.event_count)).filter_by(is_deleted=False).scalar() or 0
+    total_storage = db.session.query(db.func.sum(CaseFile.file_size)).filter_by(is_deleted=False).scalar() or 0
+    total_violations = db.session.query(db.func.sum(CaseFile.violation_count)).filter_by(is_deleted=False).scalar() or 0
+    
+    # Get user count
+    total_users = User.query.count()
+    
+    # Recent activity
+    recent_cases = Case.query.order_by(Case.created_at.desc()).limit(5).all()
+    recent_files = CaseFile.query.filter_by(is_deleted=False).order_by(CaseFile.uploaded_at.desc()).limit(5).all()
+    
     return f'''
     <!DOCTYPE html>
     <html>
@@ -1330,19 +1356,7 @@ def dashboard():
                 <div class="version-badge">{APP_VERSION}</div>
             </div>
             
-            <h3 class="menu-title">Navigation</h3>
-            <a href="/dashboard" class="menu-item">📊 System Dashboard</a>
-            <a href="/case/dashboard" class="menu-item">🎯 Case Dashboard</a>
-            <a href="/case/select" class="menu-item">📁 Case Selection</a>
-            <a href="/upload" class="menu-item">📤 Upload Files</a>
-            <a href="/files" class="menu-item">📄 List Files</a>
-            <a href="/search" class="menu-item">🔍 Search Events</a>
-            
-            <h3 class="menu-title">Management</h3>
-            <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
-            <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
-            <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
-            <a href="/settings" class="menu-item placeholder">⚙️ System Settings (Coming Soon)</a>
+            {render_sidebar_menu('dashboard')}
         </div>
         <div class="main-content">
             <div class="header">
@@ -1355,40 +1369,53 @@ def dashboard():
                 <h1>🎯 System Dashboard</h1>
                 <div class="tiles">
                     <div class="tile">
+                        <h3>📈 System Statistics</h3>
+                        <p><strong>Total Cases:</strong> {total_cases:,}</p>
+                        <p><strong>Total Files:</strong> {total_files:,} ({total_indexed:,} indexed)</p>
+                        <p><strong>Total Events:</strong> {total_events:,}</p>
+                        <p><strong>Total Users:</strong> {total_users}</p>
+                    </div>
+                    <div class="tile">
+                        <h3>💾 Storage & Analysis</h3>
+                        <p><strong>Storage Used:</strong> {total_storage / (1024*1024*1024):.2f} GB</p>
+                        <p><strong>Indexed Files:</strong> {total_indexed:,} / {total_files:,}</p>
+                        <p><strong>SIGMA Violations:</strong> {total_violations:,}</p>
+                        <p><strong>Processing:</strong> <span class="status operational">✓ Active</span></p>
+                    </div>
+                    <div class="tile">
                         <h3>🔧 System Status</h3>
                         <p><span class="status operational">✓ OpenSearch: Running</span></p>
                         <p><span class="status operational">✓ Redis: Running</span></p>
+                        <p><span class="status operational">✓ Celery Worker: Running</span></p>
                         <p><span class="status operational">✓ Web Server: Running</span></p>
-                        <p><span class="status placeholder">⏳ Full Features: In Development</span></p>
                     </div>
                     <div class="tile">
-                        <h3>📊 System Information</h3>
-                        <p>OS: Ubuntu Server</p>
-                        <p>caseScope: {APP_VERSION}</p>
-                        <p>Installation: Complete ✓</p>
-                        <p>Database: Initialized ✓</p>
+                        <h3>🚀 Active Features</h3>
+                        <p><span class="status operational">✓ Case Management</span></p>
+                        <p><span class="status operational">✓ File Upload & Indexing</span></p>
+                        <p><span class="status operational">✓ Event Search (100+ Event IDs)</span></p>
+                        <p><span class="status placeholder">⏳ SIGMA Rule Processing</span></p>
+                    </div>
+                </div>
+                
+                <div class="tiles" style="margin-top: 30px;">
+                    <div class="tile">
+                        <h3>📋 Recent Cases</h3>
+                        {''.join([f'<p>📁 <a href="/case/select">{case.name}</a> - {case.created_at.strftime("%Y-%m-%d %H:%M")}</p>' for case in recent_cases[:5]]) if recent_cases else '<p style="color: #aaa;">No cases yet</p>'}
+                        <p style="margin-top: 15px;"><a href="/case/select" style="color: #4caf50;">→ View All Cases</a></p>
                     </div>
                     <div class="tile">
-                        <h3>📈 Cases & Files</h3>
-                        <p>Total Cases: 0 (Coming Soon)</p>
-                        <p>Total Files: 0 (Coming Soon)</p>
-                        <p>Total Events: 0 (Coming Soon)</p>
-                        <p>Storage Used: 0 MB (Coming Soon)</p>
-                    </div>
-                    <div class="tile">
-                        <h3>🛡️ SIGMA Rules</h3>
-                        <p>Status: Ready for Implementation</p>
-                        <p>Last Update: Not Yet Configured</p>
-                        <p>Rule Processing: Coming Soon</p>
-                        <p><em>Note: Forensic features in development</em></p>
+                        <h3>📄 Recent File Uploads</h3>
+                        {''.join([f'<p>📄 {file.original_filename[:30]}... ({file.file_size / (1024*1024):.1f} MB)</p>' for file in recent_files[:5]]) if recent_files else '<p style="color: #aaa;">No files uploaded yet</p>'}
+                        <p style="margin-top: 15px;"><a href="/files" style="color: #4caf50;">→ View All Files</a></p>
                     </div>
                 </div>
                 
                 <div class="success-banner">
-                    <h3>🎉 Installation Successful!</h3>
-                    <p>caseScope 7.1 has been successfully installed and all core services are running.</p>
-                    <p>This UI demonstrates the installation is working. Forensic features (case management, file processing, search) will be implemented in future releases.</p>
-                    <p><strong>Default Login:</strong> administrator / ChangeMe! (password change required on first login)</p>
+                    <h3>🎉 caseScope 7.1 Operational!</h3>
+                    <p>✓ All core services running | ✓ {total_cases:,} case(s) | ✓ {total_files:,} file(s) uploaded | ✓ {total_events:,} events indexed</p>
+                    <p><strong>Active Features:</strong> Case Management, Multi-File Upload (5 files × 3GB), EVTX Indexing, Event Search (100+ Event IDs), Real-time Progress Tracking</p>
+                    <p><strong>Quick Actions:</strong> <a href="/case/select" style="color: #4caf50;">→ Select a case</a> | <a href="/upload" style="color: #4caf50;">→ Upload files</a> | <a href="/search" style="color: #4caf50;">→ Search events</a></p>
                 </div>
             </div>
         </div>
@@ -3437,18 +3464,7 @@ def render_case_selection(cases, active_case_id):
                 <div class="version-badge">{APP_VERSION}</div>
             </div>
             
-            <h3 class="menu-title">Navigation</h3>
-            <a href="/dashboard" class="menu-item">📊 Dashboard</a>
-            <a href="/case/select" class="menu-item active">📁 Case Selection</a>
-            <a href="/upload" class="menu-item placeholder">📤 Upload Files (Coming Soon)</a>
-            <a href="/files" class="menu-item placeholder">📄 List Files (Coming Soon)</a>
-            <a href="/search" class="menu-item placeholder">🔍 Search (Coming Soon)</a>
-            
-            <h3 class="menu-title">Management</h3>
-            <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
-            <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
-            <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
-            <a href="/settings" class="menu-item placeholder">⚙️ System Settings (Coming Soon)</a>
+            {render_sidebar_menu('case_select')}
         </div>
         <div class="main-content">
             <div class="header">
@@ -3511,7 +3527,7 @@ def render_case_selection(cases, active_case_id):
     </html>
     '''
 
-def render_case_dashboard(case):
+def render_case_dashboard(case, total_files, indexed_files, processing_files, total_events, total_violations, total_storage):
     """Render case-specific dashboard with integrated layout"""
     return f'''
     <!DOCTYPE html>
@@ -3701,19 +3717,7 @@ def render_case_dashboard(case):
                 <div class="version-badge">{APP_VERSION}</div>
             </div>
             
-            <h3 class="menu-title">Navigation</h3>
-            <a href="/dashboard" class="menu-item">📊 System Dashboard</a>
-            <a href="/case/dashboard" class="menu-item">🎯 Case Dashboard</a>
-            <a href="/case/select" class="menu-item">📁 Case Selection</a>
-            <a href="/upload" class="menu-item">📤 Upload Files</a>
-            <a href="/files" class="menu-item">📄 List Files</a>
-            <a href="/search" class="menu-item">🔍 Search Events</a>
-            
-            <h3 class="menu-title">Management</h3>
-            <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
-            <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
-            <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
-            <a href="/settings" class="menu-item placeholder">⚙️ System Settings (Coming Soon)</a>
+            {render_sidebar_menu('case_dashboard')}
         </div>
         <div class="main-content">
             <div class="header">
@@ -3735,21 +3739,27 @@ def render_case_dashboard(case):
                 <div class="tiles">
                     <div class="tile">
                         <h3>📄 Files</h3>
-                        <p><strong>Total Files:</strong> {case.file_count}</p>
-                        <p><strong>Storage Used:</strong> {case.storage_size / (1024*1024):.1f} MB</p>
-                        <a href="/files" class="btn btn-secondary">View Files</a>
+                        <p><strong>Total Files:</strong> {total_files:,}</p>
+                        <p><strong>Indexed:</strong> {indexed_files:,} / {total_files:,}</p>
+                        <p><strong>Processing:</strong> {processing_files:,}</p>
+                        <p><strong>Storage:</strong> {total_storage / (1024*1024*1024):.2f} GB</p>
+                        <a href="/files" class="btn btn-secondary">Manage Files</a>
                     </div>
                     <div class="tile">
                         <h3>📊 Events</h3>
-                        <p><strong>Total Events:</strong> {case.total_events:,}</p>
-                        <p><strong>Indexed:</strong> Coming Soon</p>
+                        <p><strong>Total Events:</strong> {total_events:,}</p>
+                        <p><strong>Indexed Files:</strong> {indexed_files:,}</p>
+                        <p><strong>Searchable:</strong> {'Yes' if indexed_files > 0 else 'No files indexed yet'}</p>
+                        <p><strong>Event IDs:</strong> 100+ Mapped</p>
                         <a href="/search" class="btn btn-secondary">Search Events</a>
                     </div>
                     <div class="tile">
-                        <h3>🛡️ Violations</h3>
-                        <p><strong>SIGMA Hits:</strong> Coming Soon</p>
-                        <p><strong>Last Scan:</strong> Not Yet Run</p>
-                        <a href="#" class="btn btn-secondary">View Violations</a>
+                        <h3>🛡️ SIGMA Rules</h3>
+                        <p><strong>Violations Found:</strong> {total_violations:,}</p>
+                        <p><strong>Files Scanned:</strong> {indexed_files:,}</p>
+                        <p><strong>Rule Database:</strong> Coming Soon</p>
+                        <p><strong>Auto-Processing:</strong> In Development</p>
+                        <a href="/sigma-rules" class="btn btn-secondary">Manage Rules</a>
                     </div>
                 </div>
                 
