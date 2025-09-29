@@ -1185,9 +1185,9 @@ def render_case_selection(cases, active_case_id):
                 border-bottom: 1px solid rgba(255,255,255,0.1);
             }}
             .case-table th {{
-                background: linear-gradient(145deg, #283593, #1e88e5);
+                background: #283593;
                 font-weight: 600;
-                color: rgba(255,255,255,0.9);
+                color: white;
             }}
             .case-row {{
                 cursor: pointer;
