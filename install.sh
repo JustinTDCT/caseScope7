@@ -722,19 +722,20 @@ Type=simple
 User=casescope
 Group=casescope
 WorkingDirectory=/opt/casescope/app
-Environment=PATH=/opt/casescope/venv/bin
+Environment=PATH=/opt/casescope/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=PYTHONPATH=/opt/casescope/app
 Environment=CELERY_WORKER_LOG_LEVEL=DEBUG
-ExecStartPre=/bin/sh -c 'echo "[Worker] Starting Celery worker with DEBUG logging..."'
-ExecStartPre=/bin/sh -c 'mkdir -p /opt/casescope/tmp /opt/casescope/logs'
-ExecStartPre=/bin/sh -c 'chown -R casescope:casescope /opt/casescope/tmp /opt/casescope/logs'
+ExecStartPre=/bin/echo "[Worker] Starting Celery worker with DEBUG logging..."
+ExecStartPre=/bin/mkdir -p /opt/casescope/tmp /opt/casescope/logs
+ExecStartPre=/bin/chown -R casescope:casescope /opt/casescope/tmp /opt/casescope/logs
 ExecStart=/opt/casescope/venv/bin/celery -A celery_app worker \
     --loglevel=DEBUG \
     --concurrency=2 \
     --max-tasks-per-child=50 \
     --logfile=/opt/casescope/logs/celery_worker.log \
     --pidfile=/opt/casescope/tmp/celery_worker.pid
-ExecStop=/bin/sh -c 'echo "[Worker] Stopping Celery worker..."; kill -TERM $MAINPID; exit 0'
+ExecStop=/bin/echo "[Worker] Stopping Celery worker..."
+ExecStopPost=/bin/kill -TERM $MAINPID
 Restart=always
 RestartSec=10
 TimeoutStopSec=30

@@ -1,7 +1,7 @@
 {
-  "version": "7.1.41",
+  "version": "7.1.42",
   "release_date": "2025-09-29",
-  "description": "Debug - Enhanced Celery worker with comprehensive DEBUG logging and fixed service configuration",
+  "description": "Bugfix - Fixed Celery worker service ExecStartPre commands to use full paths",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -44,6 +44,7 @@
     "7.1.38": "EVTX Indexing System - Implemented Celery worker with EVTX parsing (python-evtx), OpenSearch bulk indexing with flattened event structure, real-time progress tracking, automatic task queuing on upload, systemd service integration, status transitions (Uploaded → Indexing → Running Rules → Completed)",
     "7.1.39": "Bugfix - Fixed Celery worker systemd service: added PIDFile directive, fixed ExecStop to use PID file instead of $MAINPID variable, added graceful shutdown with fallback",
     "7.1.40": "Feature - Implemented Re-index and Re-run Rules functionality: /file/reindex/<id> route resets file status and re-queues indexing, /file/rerun-rules/<id> route re-processes SIGMA rules, updated UI with confirmation dialogs, Re-index available for all files, Re-run Rules only for indexed files",
-    "7.1.41": "Debug - Enhanced Celery worker logging: changed service Type to simple (from forking), added DEBUG log level, comprehensive signal handlers (worker_ready, worker_shutdown, task_prerun, task_postrun, task_failure), added ExecStartPre for directory creation, improved journalctl output with SyslogIdentifier, removed PID file complexity, added verbose logging to celery_app.py and tasks.py"
+    "7.1.41": "Debug - Enhanced Celery worker logging: changed service Type to simple (from forking), added DEBUG log level, comprehensive signal handlers (worker_ready, worker_shutdown, task_prerun, task_postrun, task_failure), added ExecStartPre for directory creation, improved journalctl output with SyslogIdentifier, removed PID file complexity, added verbose logging to celery_app.py and tasks.py",
+    "7.1.42": "Bugfix - Fixed Celery worker service ExecStartPre commands: use full paths (/bin/mkdir, /bin/chown, /bin/echo) instead of relying on shell PATH, added full PATH environment variable, changed ExecStop to use ExecStopPost for kill command"
   }
 }
