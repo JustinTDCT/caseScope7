@@ -27,6 +27,7 @@ xmltodict==0.13.0
 # SIGMA Rules
 pysigma==0.10.9
 pysigma-backend-opensearch==1.0.1
+pyparsing==3.0.9
 
 # System Utilities
 psutil==5.9.6
