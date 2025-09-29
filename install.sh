@@ -300,7 +300,7 @@ install_opensearch() {
         chown -R casescope:casescope /opt/opensearch
     fi
     
-    # Configure OpenSearch
+    # Configure OpenSearch with minimal, safe settings
     cat > /opt/opensearch/config/opensearch.yml << 'EOF'
 cluster.name: casescope-cluster
 node.name: casescope-node
@@ -318,15 +318,8 @@ cluster.routing.allocation.disk.threshold_enabled: false
 indices.fielddata.cache.size: 20%
 indices.memory.index_buffer_size: 10%
 
-# Disable unnecessary features for faster startup (only valid settings for 2.11.1)
+# Only disable plugins that are confirmed to exist in OpenSearch 2.11.1
 plugins.index_state_management.enabled: false
-plugins.alerting.enabled: false
-plugins.anomaly_detection.enabled: false
-plugins.ml_commons.enabled: false
-plugins.notifications.enabled: false
-plugins.observability.enabled: false
-plugins.reports_scheduler.enabled: false
-plugins.sql.enabled: false
 EOF
     
     # Ensure security plugin is disabled and demo config is not installed

@@ -1,7 +1,7 @@
 {
-  "version": "7.1.8",
+  "version": "7.1.9",
   "release_date": "2025-09-29",
-  "description": "Fixed OpenSearch 2.11.1 configuration compatibility issues with invalid plugin settings",
+  "description": "Fixed OpenSearch configuration with minimal safe settings, removed all invalid plugin configurations",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -11,6 +11,7 @@
     "7.1.5": "Bugfix - Fixed OpenSearch temp directory creation, ensures all required directories exist",
     "7.1.6": "Bugfix - Fixed OpenSearch startup timeouts, optimized config, disabled unnecessary plugins, dynamic heap sizing",
     "7.1.7": "Enhancement - Comprehensive installer verbosity, detailed service monitoring, API response verification, extensive troubleshooting guidance",
-    "7.1.8": "Bugfix - Fixed OpenSearch 2.11.1 compatibility by removing invalid plugin settings causing AbstractScopedSettings errors"
+    "7.1.8": "Bugfix - Fixed OpenSearch 2.11.1 compatibility by removing invalid plugin settings causing AbstractScopedSettings errors",
+    "7.1.9": "Bugfix - Simplified OpenSearch config to minimal safe settings, removed all problematic plugin configurations"
   }
 }
