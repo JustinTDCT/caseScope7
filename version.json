@@ -1,7 +1,7 @@
 {
-  "version": "7.1.53",
+  "version": "7.1.54",
   "release_date": "2025-09-29",
-  "description": "Enhancement - Added visible flash message display with dismiss button on upload page",
+  "description": "Bugfix - Added flash message display to file list page so duplicate warnings appear after redirect",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -56,6 +56,7 @@
     "7.1.50": "Enhancement - Added automatic page refresh every 5 seconds when files are processing: ensures status transitions are visible (Uploaded → Counting Events → Indexing → Running Rules → Completed), combined with 2-second progress bar updates for smooth real-time feedback, only refreshes when active files detected",
     "7.1.51": "Bugfix - Enhanced duplicate file detection feedback: shows warning emoji and original filename when duplicate detected, improved error message clarity, fixed auto-refresh detection to include 'Uploaded/Pending/Counting/Preparing' statuses, changed error message color to red when all files fail, ensures auto-refresh triggers immediately after upload",
     "7.1.52": "Bugfix - Added missing Case Dashboard link to upload form and file list navigation menus, changed 'Dashboard' to 'System Dashboard' for consistency across all pages",
-    "7.1.53": "Enhancement - Added prominent flash message display to upload page: shows success/warning/error messages at top of content area with colored gradient backgrounds (green/orange/red), includes emoji icons (✅⚠️❌), dismissible with X button, smooth slide-in animation, properly displays duplicate file warnings and upload errors to users"
+    "7.1.53": "Enhancement - Added prominent flash message display to upload page: shows success/warning/error messages at top of content area with colored gradient backgrounds (green/orange/red), includes emoji icons (✅⚠️❌), dismissible with X button, smooth slide-in animation, properly displays duplicate file warnings and upload errors to users",
+    "7.1.54": "Bugfix - Extended flash message display system to file list page: messages now persist through redirect from upload to file list, duplicate file warnings and upload errors appear prominently at top of file list with same styling (gradient backgrounds, icons, dismiss button), ensures users always see feedback after upload attempts"
   }
 }

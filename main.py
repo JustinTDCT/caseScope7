@@ -1526,6 +1526,20 @@ def render_upload_form(case):
 
 def render_file_list(case, files):
     """Render file list for case"""
+    # Get flash messages
+    from flask import get_flashed_messages
+    flash_messages_html = ""
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        icon = "⚠️" if category == "warning" else "❌" if category == "error" else "✅"
+        flash_messages_html += f'''
+        <div class="flash-message flash-{category}">
+            <span class="flash-icon">{icon}</span>
+            <span class="flash-text">{message}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        '''
+    
     file_rows = ""
     for file in files:
         file_size_mb = file.file_size / (1024 * 1024)
@@ -1866,6 +1880,67 @@ def render_file_list(case, files):
             .btn-delete:hover {{
                 background: linear-gradient(145deg, #ef5350, #f44336);
             }}
+            .flash-message {{
+                padding: 15px 20px;
+                margin: 20px 0;
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                animation: slideIn 0.3s ease;
+            }}
+            .flash-success {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                border: 1px solid rgba(255,255,255,0.2);
+            }}
+            .flash-warning {{
+                background: linear-gradient(145deg, #ff9800, #f57c00);
+                border: 1px solid rgba(255,255,255,0.2);
+            }}
+            .flash-error {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                border: 1px solid rgba(255,255,255,0.2);
+            }}
+            .flash-icon {{
+                font-size: 1.5em;
+                flex-shrink: 0;
+            }}
+            .flash-text {{
+                flex: 1;
+                font-size: 1em;
+                line-height: 1.4;
+            }}
+            .flash-close {{
+                background: rgba(255,255,255,0.2);
+                border: none;
+                color: white;
+                font-size: 24px;
+                font-weight: bold;
+                cursor: pointer;
+                width: 32px;
+                height: 32px;
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s ease;
+                flex-shrink: 0;
+            }}
+            .flash-close:hover {{
+                background: rgba(255,255,255,0.3);
+                transform: scale(1.1);
+            }}
+            @keyframes slideIn {{
+                from {{
+                    transform: translateY(-20px);
+                    opacity: 0;
+                }}
+                to {{
+                    transform: translateY(0);
+                    opacity: 1;
+                }}
+            }}
         </style>
     </head>
     <body>
@@ -1900,6 +1975,8 @@ def render_file_list(case, files):
             <div class="content">
                 <h1>📄 Case Files</h1>
                 <p>Files uploaded to: {case.name}</p>
+                
+                {flash_messages_html}
                 
                 <div style="margin: 20px 0;">
                     <a href="/upload" class="btn">📤 Upload Files</a>
