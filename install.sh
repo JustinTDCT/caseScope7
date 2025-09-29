@@ -530,15 +530,51 @@ copy_application() {
     log "Available files in script directory:"
     ls -la "$SCRIPT_DIR" | head -20
     
-    # Copy all application files from script directory, excluding install.sh
+    # Try to find application files in common locations
+    APP_SOURCE_DIR=""
+    
+    # Check if files are in the same directory as the script
+    if [ -f "$SCRIPT_DIR/main.py" ]; then
+        APP_SOURCE_DIR="$SCRIPT_DIR"
+        log "Found application files in script directory: $SCRIPT_DIR"
+    # Check if we're in a git repository (common case)
+    elif [ -f "./main.py" ]; then
+        APP_SOURCE_DIR="$(pwd)"
+        log "Found application files in current working directory: $(pwd)"
+    # Check parent directory
+    elif [ -f "../main.py" ]; then
+        APP_SOURCE_DIR="$(cd .. && pwd)"
+        log "Found application files in parent directory: $APP_SOURCE_DIR"
+    # Check if user has a casescope directory
+    elif [ -f "/home/*/casescope*/main.py" ]; then
+        APP_SOURCE_DIR="$(dirname $(ls /home/*/casescope*/main.py | head -1))"
+        log "Found application files in user directory: $APP_SOURCE_DIR"
+    else
+        log_error "Cannot locate application files (main.py, requirements.txt, etc.)"
+        log_error "Please ensure you're running this installer from the caseScope directory"
+        log_error "Or place the application files in the same directory as install.sh"
+        log_error ""
+        log_error "Expected files: main.py, requirements.txt, version.json, wsgi.py"
+        log_error "Current script location: $SCRIPT_DIR"
+        log_error "Current working directory: $(pwd)"
+        log_error ""
+        log_error "Try running: cd /path/to/casescope && sudo ./install.sh"
+        exit 1
+    fi
+    
+    log "Using application source directory: $APP_SOURCE_DIR"
+    log "Available files in application source directory:"
+    ls -la "$APP_SOURCE_DIR" | head -20
+    
+    # Copy all application files from source directory, excluding install.sh
     log "Copying all files except install.sh..."
-    find "$SCRIPT_DIR" -maxdepth 1 -type f ! -name "install.sh" -exec cp {} /opt/casescope/app/ \; 2>/dev/null || true
+    find "$APP_SOURCE_DIR" -maxdepth 1 -type f ! -name "install.sh" -exec cp {} /opt/casescope/app/ \; 2>/dev/null || true
     
     # Also copy any subdirectories (like templates, static)
     for dir in templates static; do
-        if [ -d "$SCRIPT_DIR/$dir" ]; then
+        if [ -d "$APP_SOURCE_DIR/$dir" ]; then
             log "Copying directory: $dir"
-            cp -r "$SCRIPT_DIR/$dir" /opt/casescope/app/ 2>/dev/null || true
+            cp -r "$APP_SOURCE_DIR/$dir" /opt/casescope/app/ 2>/dev/null || true
         fi
     done
     
@@ -550,11 +586,11 @@ copy_application() {
     log "Checking for critical application files..."
     
     for file in main.py requirements.txt version.json wsgi.py; do
-        if [ -f "$SCRIPT_DIR/$file" ]; then
+        if [ -f "$APP_SOURCE_DIR/$file" ]; then
             log "✓ Found $file in source directory"
-            cp "$SCRIPT_DIR/$file" /opt/casescope/app/ 2>/dev/null || log_error "Failed to copy $file"
+            cp "$APP_SOURCE_DIR/$file" /opt/casescope/app/ 2>/dev/null || log_error "Failed to copy $file"
         else
-            log_warning "✗ $file not found in source directory: $SCRIPT_DIR"
+            log_warning "✗ $file not found in source directory: $APP_SOURCE_DIR"
         fi
         
         if [ -f "/opt/casescope/app/$file" ]; then
@@ -570,12 +606,17 @@ copy_application() {
     # Final verification with detailed error reporting
     if [ ! -f "/opt/casescope/app/main.py" ]; then
         log_error "CRITICAL: main.py not found after copying"
-        log_error "Source directory: $SCRIPT_DIR"
+        log_error "Source directory: $APP_SOURCE_DIR"
         log_error "Source directory contents:"
-        ls -la "$SCRIPT_DIR"
+        ls -la "$APP_SOURCE_DIR"
         log_error "Destination directory contents:"
         ls -la /opt/casescope/app/
-        log_error "Installation cannot continue without main.py"
+        log_error ""
+        log_error "SOLUTION: Run the installer from the caseScope project directory:"
+        log_error "1. cd /path/to/your/casescope/directory"
+        log_error "2. sudo ./install.sh"
+        log_error ""
+        log_error "Or copy the application files to the same directory as install.sh"
         exit 1
     fi
     
@@ -583,7 +624,7 @@ copy_application() {
         log_warning "requirements.txt not found. Will install basic dependencies."
     fi
     
-    log "Application files copied successfully"
+    log "Application files copied successfully from: $APP_SOURCE_DIR"
 }
 
 # Setup Python environment

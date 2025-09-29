@@ -1,7 +1,7 @@
 {
-  "version": "7.1.14",
+  "version": "7.1.15",
   "release_date": "2025-09-29",
-  "description": "Enhanced UI with sidebar navigation, status indicators, and clear indication of working features vs. coming soon",
+  "description": "Fixed application file discovery - installer now searches multiple locations for source files with helpful error messages",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -17,6 +17,7 @@
     "7.1.11": "Bugfix - Fixed JVM experimental flags ordering, enhanced clean install to completely remove all services and data",
     "7.1.12": "Bugfix - Fixed installation order to recreate directories after cleanup, optimized heap sizing (4GB for 8GB RAM, 6GB for 16GB RAM)",
     "7.1.13": "Debug - Enhanced application file copying with comprehensive diagnostics and error reporting",
-    "7.1.14": "UI - Enhanced dashboard with sidebar menu, service status indicators, and clear distinction between working features and development placeholders"
+    "7.1.14": "UI - Enhanced dashboard with sidebar menu, service status indicators, and clear distinction between working features and development placeholders",
+    "7.1.15": "Bugfix - Smart application file discovery, searches current dir, parent dir, and user directories with clear error guidance"
   }
 }
