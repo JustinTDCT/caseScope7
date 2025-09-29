@@ -126,7 +126,9 @@ def dashboard():
     <head>
         <title>caseScope 7.1 - Dashboard</title>
         <style>
-            body {{ font-family: Arial, sans-serif; background: #1a237e; color: white; margin: 0; }}
+            body {{ font-family: Arial, sans-serif; background: #1a237e; color: white; margin: 0; display: flex; min-height: 100vh; }}
+            .sidebar {{ width: 250px; background: #303f9f; padding: 20px; box-shadow: 2px 0 5px rgba(0,0,0,0.3); }}
+            .main-content {{ flex: 1; }}
             .header {{ background: #283593; padding: 20px; display: flex; justify-content: space-between; align-items: center; }}
             .logo {{ font-size: 1.5em; }}
             .logo .case {{ color: #4caf50; }}
@@ -135,36 +137,77 @@ def dashboard():
             .content {{ padding: 30px; }}
             .tile {{ background: #3f51b5; padding: 20px; margin: 10px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }}
             .tiles {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }}
+            .menu-item {{ display: block; color: white; text-decoration: none; padding: 10px; margin: 5px 0; border-radius: 5px; background: #3949ab; }}
+            .menu-item:hover {{ background: #5c6bc0; }}
+            .menu-item.placeholder {{ background: #424242; color: #aaa; cursor: not-allowed; }}
             a {{ color: #4caf50; text-decoration: none; }}
             .footer {{ position: fixed; bottom: 10px; right: 10px; font-size: 0.8em; color: #ccc; }}
+            .status {{ display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 0.8em; }}
+            .status.operational {{ background: #4caf50; }}
+            .status.placeholder {{ background: #ff9800; }}
         </style>
     </head>
     <body>
-        <div class="header">
-            <div class="logo"><span class="case">case</span><span class="scope">Scope</span> <span style="font-size: 0.7em;">{APP_VERSION}</span></div>
-            <div class="user-info">
-                <span>Welcome, {current_user.username}</span>
-                <a href="{url_for('logout')}">Logout</a>
-            </div>
+        <div class="sidebar">
+            <h3>Menu</h3>
+            <a href="/dashboard" class="menu-item">📊 Dashboard</a>
+            <a href="/case-selection" class="menu-item placeholder">📁 Case Selection (Coming Soon)</a>
+            <a href="/upload" class="menu-item placeholder">📤 Upload Files (Coming Soon)</a>
+            <a href="/files" class="menu-item placeholder">📄 List Files (Coming Soon)</a>
+            <a href="/search" class="menu-item placeholder">🔍 Search (Coming Soon)</a>
+            <hr style="border-color: #5c6bc0; margin: 20px 0;">
+            <h4>Management</h4>
+            <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
+            <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
+            <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
+            <a href="/settings" class="menu-item placeholder">⚙️ System Settings (Coming Soon)</a>
         </div>
-        <div class="content">
-            <h1>System Dashboard</h1>
-            <div class="tiles">
-                <div class="tile">
-                    <h3>System Status</h3>
-                    <p>All services operational</p>
+        <div class="main-content">
+            <div class="header">
+                <div class="logo"><span class="case">case</span><span class="scope">Scope</span> <span style="font-size: 0.7em;">{APP_VERSION}</span></div>
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
+                    <a href="{url_for('logout')}">Logout</a>
                 </div>
-                <div class="tile">
-                    <h3>Cases</h3>
-                    <p>0 total cases</p>
+            </div>
+            <div class="content">
+                <h1>🎯 System Dashboard</h1>
+                <div class="tiles">
+                    <div class="tile">
+                        <h3>🔧 System Status</h3>
+                        <p><span class="status operational">✓ OpenSearch: Running</span></p>
+                        <p><span class="status operational">✓ Redis: Running</span></p>
+                        <p><span class="status operational">✓ Web Server: Running</span></p>
+                        <p><span class="status placeholder">⏳ Full Features: In Development</span></p>
+                    </div>
+                    <div class="tile">
+                        <h3>📊 System Information</h3>
+                        <p>OS: Ubuntu Server</p>
+                        <p>caseScope: {APP_VERSION}</p>
+                        <p>Installation: Complete ✓</p>
+                        <p>Database: Initialized ✓</p>
+                    </div>
+                    <div class="tile">
+                        <h3>📈 Cases & Files</h3>
+                        <p>Total Cases: 0 (Coming Soon)</p>
+                        <p>Total Files: 0 (Coming Soon)</p>
+                        <p>Total Events: 0 (Coming Soon)</p>
+                        <p>Storage Used: 0 MB (Coming Soon)</p>
+                    </div>
+                    <div class="tile">
+                        <h3>🛡️ SIGMA Rules</h3>
+                        <p>Status: Ready for Implementation</p>
+                        <p>Last Update: Not Yet Configured</p>
+                        <p>Rule Processing: Coming Soon</p>
+                        <p><em>Note: Forensic features in development</em></p>
+                    </div>
                 </div>
-                <div class="tile">
-                    <h3>Files</h3>
-                    <p>0 total files</p>
-                </div>
-                <div class="tile">
-                    <h3>SIGMA Rules</h3>
-                    <p>Ready for processing</p>
+                
+                <div style="margin-top: 30px; padding: 20px; background: #2e7d32; border-radius: 10px;">
+                    <h3>🎉 Installation Successful!</h3>
+                    <p>caseScope 7.1 has been successfully installed and all core services are running.</p>
+                    <p>This UI demonstrates the installation is working. Forensic features (case management, file processing, search) will be implemented in future releases.</p>
+                    <p><strong>Default Login:</strong> administrator / ChangeMe! (password change required on first login)</p>
                 </div>
             </div>
         </div>

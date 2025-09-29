@@ -526,21 +526,56 @@ copy_application() {
     # Get the directory where the install script is located
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     
-    # Copy all application files from script directory
-    cp -r "$SCRIPT_DIR"/* /opt/casescope/app/ 2>/dev/null || true
+    log "Script directory: $SCRIPT_DIR"
+    log "Available files in script directory:"
+    ls -la "$SCRIPT_DIR" | head -20
     
-    # Ensure key files are copied
-    [ -f "$SCRIPT_DIR/main.py" ] && cp "$SCRIPT_DIR/main.py" /opt/casescope/app/
-    [ -f "$SCRIPT_DIR/requirements.txt" ] && cp "$SCRIPT_DIR/requirements.txt" /opt/casescope/app/
-    [ -f "$SCRIPT_DIR/version.json" ] && cp "$SCRIPT_DIR/version.json" /opt/casescope/app/
-    [ -f "$SCRIPT_DIR/wsgi.py" ] && cp "$SCRIPT_DIR/wsgi.py" /opt/casescope/app/
+    # Copy all application files from script directory, excluding install.sh
+    log "Copying all files except install.sh..."
+    find "$SCRIPT_DIR" -maxdepth 1 -type f ! -name "install.sh" -exec cp {} /opt/casescope/app/ \; 2>/dev/null || true
+    
+    # Also copy any subdirectories (like templates, static)
+    for dir in templates static; do
+        if [ -d "$SCRIPT_DIR/$dir" ]; then
+            log "Copying directory: $dir"
+            cp -r "$SCRIPT_DIR/$dir" /opt/casescope/app/ 2>/dev/null || true
+        fi
+    done
+    
+    # Verify what we actually copied
+    log "Files copied to /opt/casescope/app/:"
+    ls -la /opt/casescope/app/ | head -20
+    
+    # Check for critical files and provide detailed diagnostics
+    log "Checking for critical application files..."
+    
+    for file in main.py requirements.txt version.json wsgi.py; do
+        if [ -f "$SCRIPT_DIR/$file" ]; then
+            log "✓ Found $file in source directory"
+            cp "$SCRIPT_DIR/$file" /opt/casescope/app/ 2>/dev/null || log_error "Failed to copy $file"
+        else
+            log_warning "✗ $file not found in source directory: $SCRIPT_DIR"
+        fi
+        
+        if [ -f "/opt/casescope/app/$file" ]; then
+            log "✓ $file successfully copied to destination"
+        else
+            log_error "✗ $file missing from destination"
+        fi
+    done
     
     # Set ownership
     chown -R casescope:casescope /opt/casescope/app
     
-    # Verify critical files exist
+    # Final verification with detailed error reporting
     if [ ! -f "/opt/casescope/app/main.py" ]; then
-        log_error "main.py not found after copying. Installation cannot continue."
+        log_error "CRITICAL: main.py not found after copying"
+        log_error "Source directory: $SCRIPT_DIR"
+        log_error "Source directory contents:"
+        ls -la "$SCRIPT_DIR"
+        log_error "Destination directory contents:"
+        ls -la /opt/casescope/app/
+        log_error "Installation cannot continue without main.py"
         exit 1
     fi
     
