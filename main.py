@@ -2605,6 +2605,22 @@ def init_db():
     with app.app_context():
         db.create_all()
         
+        # Run migrations for existing databases
+        try:
+            # Check if violation_count column exists in case_file table
+            from sqlalchemy import inspect, text
+            inspector = inspect(db.engine)
+            columns = [col['name'] for col in inspector.get_columns('case_file')]
+            
+            if 'violation_count' not in columns:
+                print("Running migration: Adding violation_count column to case_file table...")
+                db.session.execute(text('ALTER TABLE case_file ADD COLUMN violation_count INTEGER DEFAULT 0'))
+                db.session.commit()
+                print("Migration completed: violation_count column added")
+        except Exception as e:
+            print(f"Migration check/execution note: {e}")
+            db.session.rollback()
+        
         # Create default admin user
         admin = User.query.filter_by(username='administrator').first()
         if not admin:
