@@ -421,15 +421,21 @@ EOF
     
     # Set JVM options optimized for fastest startup performance
     TOTAL_MEM=$(free -m | awk 'NR==2{printf "%.0f", $2}')
-    if [ "$TOTAL_MEM" -lt 4096 ]; then
-        # Less than 4GB RAM - use 1GB heap
+    if [ "$TOTAL_MEM" -lt 2048 ]; then
+        # Less than 2GB RAM - use 1GB heap
         HEAP_SIZE="1g"
-    elif [ "$TOTAL_MEM" -lt 8192 ]; then
-        # 4-8GB RAM - use 2GB heap  
+    elif [ "$TOTAL_MEM" -lt 4096 ]; then
+        # 2-4GB RAM - use 2GB heap
         HEAP_SIZE="2g"
-    else
-        # 8GB+ RAM - use 4GB heap
+    elif [ "$TOTAL_MEM" -lt 8192 ]; then
+        # 4-8GB RAM - use 4GB heap (was 2GB - too conservative)
         HEAP_SIZE="4g"
+    elif [ "$TOTAL_MEM" -lt 16384 ]; then
+        # 8-16GB RAM - use 6GB heap (like the old system)
+        HEAP_SIZE="6g"
+    else
+        # 16GB+ RAM - use 8GB heap
+        HEAP_SIZE="8g"
     fi
     
     cat > /opt/opensearch/config/jvm.options << EOF
@@ -866,8 +872,8 @@ main() {
     check_requirements
     install_dependencies
     create_user
-    create_directories
     handle_existing_data
+    create_directories
     install_opensearch
     copy_application
     setup_python
