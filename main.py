@@ -518,7 +518,8 @@ def search():
         
         if query_str:
             try:
-                # Build OpenSearch query from user input
+                # Build OpenSearch query from user input (this transforms the query)
+                # But we keep query_str unchanged for display
                 os_query = build_opensearch_query(query_str)
                 
                 # Search across all indices for this case
@@ -608,69 +609,167 @@ def search():
 def get_event_description(event_id, channel, provider, event_data):
     """
     Get a human-friendly description of what the event represents
-    Based on common Windows Event IDs and context
+    Based on Windows Event IDs from Ultimate Windows Security Encyclopedia
+    Source: https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/
     """
     event_id_str = str(event_id) if event_id != 'N/A' else ''
     
-    # Common Windows Security Events
+    # Windows Security Events (expanded from Ultimate Windows Security)
     security_events = {
+        # Event Log Events
+        '1100': 'Event Logging Service Shut Down',
+        '1102': 'Audit Log Cleared',
+        '1104': 'Security Log Full',
+        '1108': 'Event Logging Error',
+        
+        # System Integrity Events
+        '4608': 'Windows Starting Up',
+        '4609': 'Windows Shutting Down',
+        '4616': 'System Time Changed',
+        
+        # Logon/Logoff Events
         '4624': 'Successful Logon',
         '4625': 'Failed Logon',
         '4634': 'Logoff',
+        '4647': 'User Initiated Logoff',
         '4648': 'Logon with Explicit Credentials',
+        '4649': 'Replay Attack Detected',
+        
+        # Special Privileges
         '4672': 'Special Privileges Assigned',
-        '4688': 'Process Created',
-        '4689': 'Process Terminated',
+        
+        # Account Management
         '4720': 'User Account Created',
         '4722': 'User Account Enabled',
         '4723': 'Password Change Attempted',
         '4724': 'Password Reset Attempted',
         '4725': 'User Account Disabled',
         '4726': 'User Account Deleted',
-        '4732': 'User Added to Security Group',
-        '4733': 'User Removed from Security Group',
+        '4738': 'User Account Changed',
         '4740': 'User Account Locked Out',
-        '4756': 'Member Added to Security Group',
         '4767': 'User Account Unlocked',
+        '4781': 'Account Name Changed',
+        
+        # Group Management
+        '4727': 'Global Security Group Created',
+        '4728': 'Member Added to Global Security Group',
+        '4729': 'Member Removed from Global Security Group',
+        '4730': 'Global Security Group Deleted',
+        '4731': 'Local Security Group Created',
+        '4732': 'Member Added to Local Security Group',
+        '4733': 'Member Removed from Local Security Group',
+        '4734': 'Local Security Group Deleted',
+        '4735': 'Security Group Changed',
+        '4737': 'Security Group Changed',
+        '4754': 'Universal Security Group Created',
+        '4755': 'Universal Security Group Changed',
+        '4756': 'Member Added to Universal Security Group',
+        '4757': 'Member Removed from Universal Security Group',
+        '4758': 'Universal Security Group Deleted',
+        
+        # Process Tracking
+        '4688': 'Process Created',
+        '4689': 'Process Terminated',
+        
+        # Object Access
+        '4656': 'Handle to Object Requested',
+        '4657': 'Registry Value Modified',
+        '4658': 'Handle to Object Closed',
+        '4660': 'Object Deleted',
+        '4663': 'Attempt to Access Object',
+        '4670': 'Permissions on Object Changed',
+        
+        # Policy Changes
+        '4704': 'User Right Assigned',
+        '4705': 'User Right Removed',
+        '4706': 'Trust to Domain Created',
+        '4707': 'Trust to Domain Removed',
+        '4713': 'Kerberos Policy Changed',
+        '4719': 'System Audit Policy Changed',
+        '4739': 'Domain Policy Changed',
+        '4817': 'Auditing Settings Changed',
+        
+        # Network Share Access
         '5140': 'Network Share Accessed',
-        '5142': 'Network Share Object Added',
-        '5145': 'Network Share Object Checked'
+        '5142': 'Network Share Created',
+        '5143': 'Network Share Modified',
+        '5144': 'Network Share Deleted',
+        '5145': 'Network Share Checked',
+        
+        # Windows Firewall
+        '4946': 'Windows Firewall Exception List Changed',
+        '4947': 'Windows Firewall Rule Modified',
+        '4948': 'Windows Firewall Rule Deleted',
+        '4950': 'Windows Firewall Setting Changed',
+        '4954': 'Windows Firewall Group Policy Changed',
+        '4956': 'Windows Firewall Active Profile Changed',
+        
+        # Account Logon
+        '4768': 'Kerberos TGT Requested',
+        '4769': 'Kerberos Service Ticket Requested',
+        '4770': 'Kerberos Service Ticket Renewed',
+        '4771': 'Kerberos Pre-Authentication Failed',
+        '4776': 'Domain Controller Validated Credentials',
+        '4777': 'Domain Controller Failed to Validate Credentials'
     }
     
     # System Events
     system_events = {
-        '1074': 'System Shutdown/Restart',
+        '1074': 'System Shutdown/Restart Initiated',
         '6005': 'Event Log Service Started',
         '6006': 'Event Log Service Stopped',
         '6008': 'Unexpected Shutdown',
-        '7034': 'Service Crashed',
+        '6009': 'System Information',
+        '6013': 'System Uptime',
+        '7034': 'Service Crashed Unexpectedly',
         '7035': 'Service Control Event',
-        '7036': 'Service State Change',
-        '7040': 'Service Startup Type Changed'
+        '7036': 'Service State Changed',
+        '7040': 'Service Startup Type Changed',
+        '7045': 'Service Installed'
     }
     
     # PowerShell Events
     powershell_events = {
         '4103': 'PowerShell Module Logging',
-        '4104': 'PowerShell Script Block',
+        '4104': 'PowerShell Script Block Logging',
         '4105': 'PowerShell Script Start',
-        '4106': 'PowerShell Script Stop'
+        '4106': 'PowerShell Script Stop',
+        '800': 'PowerShell Pipeline Execution',
+        '403': 'PowerShell Engine State Changed',
+        '600': 'PowerShell Provider Started'
     }
     
     # Windows Defender Events
     defender_events = {
         '1000': 'Defender Scan Started',
         '1001': 'Defender Scan Completed',
+        '1002': 'Defender Scan Stopped',
+        '1005': 'Defender Scan Failed',
         '1006': 'Defender Malware Detected',
         '1007': 'Defender Action Taken',
         '1008': 'Defender Action Failed',
+        '1009': 'Defender Restored Quarantined Item',
+        '1010': 'Defender Deleted Quarantined Item',
+        '1011': 'Defender Restore Failed',
+        '1012': 'Defender Delete Failed',
+        '1013': 'Defender History Deleted',
+        '1015': 'Defender Suspicious Behavior Detected',
         '1116': 'Defender Malware Detected',
-        '1117': 'Defender Action Taken',
+        '1117': 'Defender Malware Action Taken',
+        '1118': 'Defender Malware Action Failed',
+        '1119': 'Defender Critical Malware Detected',
+        '1150': 'Defender Definition Updated',
         '1151': 'Defender Signature Updated',
-        '2000': 'Defender Definition Update',
+        '2000': 'Defender Definition Update Started',
         '2001': 'Defender Definition Update Failed',
+        '2003': 'Defender Engine Updated',
+        '2004': 'Defender Engine Update Failed',
+        '3002': 'Defender Real-Time Protection Error',
         '5001': 'Defender Real-Time Protection Disabled',
-        '5007': 'Defender Configuration Changed'
+        '5004': 'Defender Real-Time Protection Config Changed',
+        '5007': 'Defender Configuration Changed',
+        '5010': 'Defender Scan Disabled',
+        '5012': 'Defender Tamper Protection Changed'
     }
     
     # Check event ID in our mappings
@@ -703,7 +802,31 @@ def get_event_description(event_id, channel, provider, event_data):
     return 'Unknown Event'
 
 
-def build_opensearch_query(query_str):
+def render_sidebar_menu(active_page=''):
+    """
+    Centralized sidebar menu rendering
+    Args:
+        active_page: The current page identifier (e.g., 'dashboard', 'upload', 'files', 'search')
+    """
+    return f'''
+        <h3 class="menu-title">Navigation</h3>
+        <a href="/dashboard" class="menu-item {'active' if active_page == 'dashboard' else ''}">📊 System Dashboard</a>
+        <a href="/case/dashboard" class="menu-item {'active' if active_page == 'case_dashboard' else ''}">🎯 Case Dashboard</a>
+        <a href="/case/select" class="menu-item {'active' if active_page == 'case_select' else ''}">📁 Case Selection</a>
+        <a href="/upload" class="menu-item {'active' if active_page == 'upload' else ''}">📤 Upload Files</a>
+        <a href="/files" class="menu-item {'active' if active_page == 'files' else ''}">📄 List Files</a>
+        <a href="/search" class="menu-item {'active' if active_page == 'search' else ''}">🔍 Search Events</a>
+        
+        <h3 class="menu-title">Management</h3>
+        <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
+        <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
+        <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
+        <a href="/sigma-rules" class="menu-item placeholder">📋 Update SIGMA Rules (Coming Soon)</a>
+        <a href="/event-id-database" class="menu-item placeholder">🔄 Update Event ID Database (Coming Soon)</a>
+    '''
+
+
+def build_opensearch_query(user_query):
     """
     Build OpenSearch query from user input
     Supports: AND, OR, NOT, parentheses, phrase matching with quotes
@@ -714,7 +837,8 @@ def build_opensearch_query(query_str):
     - Computer -> System.Computer
     - Channel -> System.Channel
     """
-    query_str = query_str.strip()
+    # Work on a copy to avoid modifying the original
+    query_str = user_query.strip()
     
     # Map common field names to actual indexed field names
     # This makes queries more user-friendly
@@ -727,7 +851,8 @@ def build_opensearch_query(query_str):
         'Level': 'System.Level',
         'Task': 'System.Task',
         'TimeCreated': 'System.TimeCreated.@SystemTime',
-        'source_filename': '_casescope_metadata.filename'
+        'source_filename': '_casescope_metadata.filename',
+        'filename': '_casescope_metadata.filename'  # Alternative field name
     }
     
     # Replace field names in query (simple string replacement)
@@ -1729,18 +1854,7 @@ def render_upload_form(case):
                 <div class="version-badge">{APP_VERSION}</div>
             </div>
             
-            <h3 class="menu-title">Navigation</h3>
-            <a href="/dashboard" class="menu-item">📊 System Dashboard</a>
-            <a href="/case/dashboard" class="menu-item">🎯 Case Dashboard</a>
-            <a href="/case/select" class="menu-item">📁 Case Selection</a>
-            <a href="/upload" class="menu-item active">📤 Upload Files</a>
-            <a href="/files" class="menu-item">📄 List Files</a>
-            <a href="/search" class="menu-item">🔍 Search Events</a>
-            
-            <h3 class="menu-title">Management</h3>
-            <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
-            <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
-            <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
+            {render_sidebar_menu('upload')}
             <a href="/settings" class="menu-item placeholder">⚙️ System Settings (Coming Soon)</a>
         </div>
         <div class="main-content">
@@ -2240,19 +2354,7 @@ def render_file_list(case, files):
                 <div class="version-badge">{APP_VERSION}</div>
             </div>
             
-            <h3 class="menu-title">Navigation</h3>
-            <a href="/dashboard" class="menu-item">📊 System Dashboard</a>
-            <a href="/case/dashboard" class="menu-item">🎯 Case Dashboard</a>
-            <a href="/case/select" class="menu-item">📁 Case Selection</a>
-            <a href="/upload" class="menu-item">📤 Upload Files</a>
-            <a href="/files" class="menu-item active">📄 List Files</a>
-            <a href="/search" class="menu-item">🔍 Search Events</a>
-            
-            <h3 class="menu-title">Management</h3>
-            <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
-            <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
-            <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
-            <a href="/settings" class="menu-item placeholder">⚙️ System Settings (Coming Soon)</a>
+            {render_sidebar_menu('files')}
         </div>
         <div class="main-content">
             <div class="header">
@@ -2874,18 +2976,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                 <div class="version-badge">{APP_VERSION}</div>
             </div>
             
-            <h3 class="menu-title">Navigation</h3>
-            <a href="/dashboard" class="menu-item">📊 System Dashboard</a>
-            <a href="/case/dashboard" class="menu-item">🎯 Case Dashboard</a>
-            <a href="/case/select" class="menu-item">📁 Case Selection</a>
-            <a href="/upload" class="menu-item">📤 Upload Files</a>
-            <a href="/files" class="menu-item">📄 List Files</a>
-            <a href="/search" class="menu-item active">🔍 Search Events</a>
-            
-            <h3 class="menu-title">Management</h3>
-            <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
-            <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
-            <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
+            {render_sidebar_menu('search')}
         </div>
         <div class="main-content">
             <div class="header">
