@@ -310,7 +310,7 @@ def dashboard():
             .sidebar {{ 
                 width: 280px; 
                 background: linear-gradient(145deg, #303f9f, #283593); 
-                padding: 30px 20px; 
+                padding: 20px; 
                 box-shadow: 
                     5px 0 20px rgba(0,0,0,0.4),
                     inset -1px 0 0 rgba(255,255,255,0.1);
@@ -339,8 +339,8 @@ def dashboard():
                 font-size: 2.2em;
                 font-weight: 300;
                 text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-                margin-bottom: 25px;
-                padding: 15px 0 15px 0;
+                margin-bottom: 15px;
+                padding: 10px 0 8px 0;
                 border-bottom: 1px solid rgba(76,175,80,0.3);
             }}
             .sidebar-logo .case {{ color: #4caf50; }}
@@ -349,9 +349,9 @@ def dashboard():
                 font-size: 0.4em;
                 background: linear-gradient(145deg, #4caf50, #388e3c);
                 color: white;
-                padding: 4px 8px;
+                padding: 3px 6px;
                 border-radius: 6px;
-                margin-top: 8px;
+                margin-top: 5px;
                 display: inline-block;
                 box-shadow: 0 2px 4px rgba(76,175,80,0.3);
                 border: 1px solid rgba(255,255,255,0.1);
@@ -390,8 +390,8 @@ def dashboard():
                 display: block; 
                 color: white; 
                 text-decoration: none; 
-                padding: 15px 20px; 
-                margin: 8px 0; 
+                padding: 12px 16px; 
+                margin: 6px 0; 
                 border-radius: 12px; 
                 background: linear-gradient(145deg, #3949ab, #283593);
                 box-shadow: 
@@ -422,11 +422,11 @@ def dashboard():
             }}
             h3.menu-title {{
                 font-size: 1.1em;
-                margin: 20px 0 12px 0;
+                margin: 15px 0 8px 0;
                 color: #4caf50;
                 text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
                 border-bottom: 1px solid rgba(76,175,80,0.3);
-                padding-bottom: 6px;
+                padding-bottom: 4px;
             }}
             a {{ color: #4caf50; text-decoration: none; transition: color 0.3s ease; }}
             a:hover {{ color: #66bb6a; }}

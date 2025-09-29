@@ -1,7 +1,7 @@
 {
-  "version": "7.1.28",
+  "version": "7.1.29",
   "release_date": "2025-09-29",
-  "description": "UI Optimization - Reduced excessive vertical padding and negative space across all pages for more compact, efficient layout",
+  "description": "UI Compact - Further reduced sidebar spacing, logo margins, and menu item padding for ultra-compact navigation layout",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -31,6 +31,7 @@
     "7.1.25": "Service Enhancement - Added final database verification test to installer, enhanced casescope-web service with debug logging and detailed request tracking",
     "7.1.26": "UI Enhancement - Updated password change page to modern 3D styling, converted logout to styled button, ensured consistent design across all pages",
     "7.1.27": "UI Layout Enhancement - Moved logo to top of navigation sidebar with styled version badge, improved header padding and alignment for better text spacing",
-    "7.1.28": "UI Spacing Optimization - Reduced excessive vertical padding across all pages, tightened form spacing, and eliminated negative space for more compact layout"
+    "7.1.28": "UI Spacing Optimization - Reduced excessive vertical padding across all pages, tightened form spacing, and eliminated negative space for more compact layout",
+    "7.1.29": "UI Ultra-Compact - Further tightened sidebar logo spacing, reduced menu item padding, and minimized all navigation margins for maximum content space"
   }
 }
