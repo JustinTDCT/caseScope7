@@ -283,7 +283,7 @@ def upload_files():
                 ).first()
                 
                 if duplicate:
-                    flash(f'File {file.filename} already exists (duplicate hash).', 'warning')
+                    flash(f'⚠️ File "{file.filename}" already exists in this case (duplicate detected by SHA256 hash). Original file: "{duplicate.original_filename}"', 'warning')
                     error_count += 1
                     continue
                 
@@ -352,8 +352,10 @@ def upload_files():
                 db.session.rollback()
                 flash(f'Database error: {str(e)}', 'error')
         
-        if error_count > 0:
-            flash(f'{error_count} file(s) failed to upload.', 'warning')
+        if error_count > 0 and success_count == 0:
+            flash(f'{error_count} file(s) failed to upload. Check messages above for details.', 'error')
+        elif error_count > 0:
+            flash(f'{error_count} file(s) failed to upload. Check messages above for details.', 'warning')
         
         return redirect(url_for('list_files'))
     
@@ -1892,12 +1894,16 @@ def render_file_list(case, files):
                     }}
                 }});
                 
-                // Also check for Uploaded/Pending status
+                // Also check for Uploaded/Pending/Counting/Preparing status
                 const statusElements = document.querySelectorAll('[id^="status-"]');
                 statusElements.forEach(function(elem) {{
                     const fileId = elem.id.split('-')[1];
                     const statusText = elem.textContent;
-                    if (statusText.includes('Uploaded/Pending') && !activeFiles.includes(fileId)) {{
+                    if ((statusText.includes('Uploaded') || 
+                         statusText.includes('Pending') || 
+                         statusText.includes('Counting') || 
+                         statusText.includes('Preparing')) && 
+                        !activeFiles.includes(fileId)) {{
                         activeFiles.push(fileId);
                     }}
                 }});

@@ -1,7 +1,7 @@
 {
-  "version": "7.1.50",
+  "version": "7.1.51",
   "release_date": "2025-09-29",
-  "description": "Enhancement - Added auto-refresh every 5 seconds when files are processing",
+  "description": "Bugfix - Improved duplicate detection feedback and fixed auto-refresh for Uploaded status",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -53,6 +53,7 @@
     "7.1.47": "Migration - Added automatic database migration in init_db() function: checks if violation_count column exists in case_file table, adds it with ALTER TABLE if missing, uses SQLAlchemy inspect to detect existing columns, graceful error handling with rollback",
     "7.1.48": "Bugfix - Added estimated_event_count column to track total events for progress calculation, changed progress display to 'X / Y events' format, progress bar now shows accurate percentage based on current/estimated ratio, Running Rules status shows 100% progress bar, fixed button alignment with align-items: center in flexbox, API endpoint auto-calculates estimated_event_count if not set (1000 events/MB), added migration for estimated_event_count column",
     "7.1.49": "Enhancement - Added count_evtx_events Celery task that counts actual events before indexing: iterates through EVTX records once to get exact count, updates estimated_event_count with real value, then triggers indexing, shows 'Counting Events...' status during count, shows 'Preparing to Index...' when count complete, logs progress every 10k events, falls back to estimation on error, provides 100% accurate progress tracking",
-    "7.1.50": "Enhancement - Added automatic page refresh every 5 seconds when files are processing: ensures status transitions are visible (Uploaded → Counting Events → Indexing → Running Rules → Completed), combined with 2-second progress bar updates for smooth real-time feedback, only refreshes when active files detected"
+    "7.1.50": "Enhancement - Added automatic page refresh every 5 seconds when files are processing: ensures status transitions are visible (Uploaded → Counting Events → Indexing → Running Rules → Completed), combined with 2-second progress bar updates for smooth real-time feedback, only refreshes when active files detected",
+    "7.1.51": "Bugfix - Enhanced duplicate file detection feedback: shows warning emoji and original filename when duplicate detected, improved error message clarity, fixed auto-refresh detection to include 'Uploaded/Pending/Counting/Preparing' statuses, changed error message color to red when all files fail, ensures auto-refresh triggers immediately after upload"
   }
 }
