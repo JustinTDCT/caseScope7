@@ -21,7 +21,7 @@ celery==5.3.4
 redis==5.0.1
 
 # File Processing
-python-evtx==0.8.2
+python-evtx==0.8.1
 xmltodict==0.13.0
 
 # SIGMA Rules
