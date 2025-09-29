@@ -1,7 +1,7 @@
 {
-  "version": "7.1.54",
+  "version": "7.1.55",
   "release_date": "2025-09-29",
-  "description": "Bugfix - Added flash message display to file list page so duplicate warnings appear after redirect",
+  "description": "Feature Complete - Event Search Interface with advanced query builder and expandable results",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -57,6 +57,7 @@
     "7.1.51": "Bugfix - Enhanced duplicate file detection feedback: shows warning emoji and original filename when duplicate detected, improved error message clarity, fixed auto-refresh detection to include 'Uploaded/Pending/Counting/Preparing' statuses, changed error message color to red when all files fail, ensures auto-refresh triggers immediately after upload",
     "7.1.52": "Bugfix - Added missing Case Dashboard link to upload form and file list navigation menus, changed 'Dashboard' to 'System Dashboard' for consistency across all pages",
     "7.1.53": "Enhancement - Added prominent flash message display to upload page: shows success/warning/error messages at top of content area with colored gradient backgrounds (green/orange/red), includes emoji icons (✅⚠️❌), dismissible with X button, smooth slide-in animation, properly displays duplicate file warnings and upload errors to users",
-    "7.1.54": "Bugfix - Extended flash message display system to file list page: messages now persist through redirect from upload to file list, duplicate file warnings and upload errors appear prominently at top of file list with same styling (gradient backgrounds, icons, dismiss button), ensures users always see feedback after upload attempts"
+    "7.1.54": "Bugfix - Extended flash message display system to file list page: messages now persist through redirect from upload to file list, duplicate file warnings and upload errors appear prominently at top of file list with same styling (gradient backgrounds, icons, dismiss button), ensures users always see feedback after upload attempts",
+    "7.1.55": "Feature Complete - Event Search Interface: /search route with OpenSearch integration, query_string parser supporting AND/OR/NOT/parentheses/wildcards/phrase matching, results table with Event ID/Timestamp/Computer/Channel/Provider columns, expandable row details showing full JSON event data, clickable field tags to build queries, pagination (50 results per page), collapsible query help with syntax examples, searches across all indexed files in active case, modern 3D UI matching application theme"
   }
 }

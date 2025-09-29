@@ -12,6 +12,8 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, curren
 from flask_sqlalchemy import SQLAlchemy
 import bcrypt
 from datetime import datetime
+from opensearchpy import OpenSearch
+import re
 
 # Version Management
 def get_version():
@@ -34,6 +36,15 @@ db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+# OpenSearch Client
+opensearch_client = OpenSearch(
+    hosts=[{'host': 'localhost', 'port': 9200}],
+    http_compress=True,
+    use_ssl=False,
+    verify_certs=False,
+    timeout=30
+)
 
 # Models
 class User(UserMixin, db.Model):
@@ -461,6 +472,113 @@ def rerun_rules(file_id):
         print(f"[Re-run Rules] Database error: {e}")
     
     return redirect(url_for('list_files'))
+
+
+@app.route('/search', methods=['GET', 'POST'])
+@login_required
+def search():
+    """Search indexed events in active case"""
+    # Check if user has active case
+    active_case_id = session.get('active_case_id')
+    if not active_case_id:
+        flash('Please select a case first.', 'warning')
+        return redirect(url_for('case_selection'))
+    
+    case = Case.query.get(active_case_id)
+    if not case:
+        flash('Case not found.', 'error')
+        session.pop('active_case_id', None)
+        return redirect(url_for('case_selection'))
+    
+    # Get all indexed files for this case to determine which indices to search
+    indexed_files = CaseFile.query.filter_by(case_id=case.id, is_indexed=True, is_deleted=False).all()
+    
+    if not indexed_files:
+        flash('No indexed files in this case. Upload and index files first.', 'warning')
+        return redirect(url_for('list_files'))
+    
+    # Build list of indices to search
+    indices = []
+    for file in indexed_files:
+        name = os.path.splitext(file.original_filename)[0]
+        name = name.replace('%', '_').replace(' ', '_').replace('-', '_').lower()[:100]
+        index_name = f"case{case.id}_{name}"
+        indices.append(index_name)
+    
+    results = []
+    total_hits = 0
+    query_str = ""
+    error_message = None
+    page = 1
+    per_page = 50
+    
+    if request.method == 'POST':
+        query_str = request.form.get('query', '').strip()
+        page = int(request.form.get('page', 1))
+        
+        if query_str:
+            try:
+                # Build OpenSearch query from user input
+                os_query = build_opensearch_query(query_str)
+                
+                # Search across all indices for this case
+                from_offset = (page - 1) * per_page
+                search_body = {
+                    "query": os_query,
+                    "from": from_offset,
+                    "size": per_page,
+                    "sort": [{"@timestamp": {"order": "desc"}}],
+                    "_source": True
+                }
+                
+                response = opensearch_client.search(
+                    index=','.join(indices),
+                    body=search_body
+                )
+                
+                total_hits = response['hits']['total']['value']
+                
+                for hit in response['hits']['hits']:
+                    source = hit['_source']
+                    results.append({
+                        'index': hit['_index'],
+                        'id': hit['_id'],
+                        'score': hit['_score'],
+                        'timestamp': source.get('@timestamp', 'N/A'),
+                        'event_id': source.get('System_EventID', source.get('EventID', 'N/A')),
+                        'source_file': source.get('source_filename', 'Unknown'),
+                        'computer': source.get('System_Computer', source.get('Computer', 'N/A')),
+                        'channel': source.get('System_Channel', 'N/A'),
+                        'provider': source.get('System_Provider_Name', 'N/A'),
+                        'full_data': source
+                    })
+                
+            except Exception as e:
+                error_message = f"Search error: {str(e)}"
+                print(f"[Search] Error: {e}")
+    
+    return render_search_page(case, query_str, results, total_hits, page, per_page, error_message, len(indexed_files))
+
+
+def build_opensearch_query(query_str):
+    """
+    Build OpenSearch query from user input
+    Supports: AND, OR, NOT, parentheses, phrase matching with quotes
+    Case-insensitive by default
+    """
+    query_str = query_str.strip()
+    
+    # Simple implementation for now - will enhance with proper parser later
+    # For phase 1, use query_string query which supports most operators
+    return {
+        "query_string": {
+            "query": query_str,
+            "default_operator": "AND",
+            "analyze_wildcard": True,
+            "fields": ["*"],
+            "lenient": True
+        }
+    }
 
 
 @app.route('/api/file/progress/<int:file_id>')
@@ -921,7 +1039,7 @@ def dashboard():
             <a href="/case/select" class="menu-item">📁 Case Selection</a>
             <a href="/upload" class="menu-item">📤 Upload Files</a>
             <a href="/files" class="menu-item">📄 List Files</a>
-            <a href="/search" class="menu-item placeholder">🔍 Search (Coming Soon)</a>
+            <a href="/search" class="menu-item">🔍 Search Events</a>
             
             <h3 class="menu-title">Management</h3>
             <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
@@ -1445,7 +1563,7 @@ def render_upload_form(case):
             <a href="/case/select" class="menu-item">📁 Case Selection</a>
             <a href="/upload" class="menu-item active">📤 Upload Files</a>
             <a href="/files" class="menu-item">📄 List Files</a>
-            <a href="/search" class="menu-item placeholder">🔍 Search (Coming Soon)</a>
+            <a href="/search" class="menu-item">🔍 Search Events</a>
             
             <h3 class="menu-title">Management</h3>
             <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
@@ -1956,7 +2074,7 @@ def render_file_list(case, files):
             <a href="/case/select" class="menu-item">📁 Case Selection</a>
             <a href="/upload" class="menu-item">📤 Upload Files</a>
             <a href="/files" class="menu-item active">📄 List Files</a>
-            <a href="/search" class="menu-item placeholder">🔍 Search (Coming Soon)</a>
+            <a href="/search" class="menu-item">🔍 Search Events</a>
             
             <h3 class="menu-title">Management</h3>
             <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
@@ -2131,6 +2249,581 @@ def render_file_list(case, files):
                         }})
                         .catch(err => console.error('Error fetching progress:', err));
                 }});
+            }}
+        </script>
+    </body>
+    </html>
+    '''
+
+def render_search_page(case, query_str, results, total_hits, page, per_page, error_message, indexed_file_count):
+    """Render search interface with results"""
+    from flask import get_flashed_messages
+    flash_messages_html = ""
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        icon = "⚠️" if category == "warning" else "❌" if category == "error" else "✅"
+        flash_messages_html += f'''
+        <div class="flash-message flash-{category}">
+            <span class="flash-icon">{icon}</span>
+            <span class="flash-text">{message}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        '''
+    
+    # Build result rows
+    result_rows = ""
+    if results:
+        for idx, result in enumerate(results):
+            result_id = f"result-{idx}"
+            # Escape single quotes in JSON for JavaScript
+            import json
+            full_data_json = json.dumps(result['full_data']).replace("'", "\\'")
+            
+            result_rows += f'''
+            <tr class="result-row" onclick="toggleDetails('{result_id}')">
+                <td>{result['event_id']}</td>
+                <td>{result['timestamp'][:19] if result['timestamp'] != 'N/A' else 'N/A'}</td>
+                <td><span class="field-tag" onclick="addToQuery(event, 'source_filename', '{result['source_file']}')">{result['source_file']}</span></td>
+                <td><span class="field-tag" onclick="addToQuery(event, 'System_Computer', '{result['computer']}')">{result['computer']}</span></td>
+                <td><span class="field-tag" onclick="addToQuery(event, 'System_Channel', '{result['channel']}')">{result['channel']}</span></td>
+                <td><span class="field-tag" onclick="addToQuery(event, 'System_Provider_Name', '{result['provider']}')">{result['provider']}</span></td>
+            </tr>
+            <tr id="{result_id}" class="details-row" style="display: none;">
+                <td colspan="6">
+                    <div class="event-details">
+                        <h4>Full Event Data</h4>
+                        <pre>{json.dumps(result['full_data'], indent=2)}</pre>
+                    </div>
+                </td>
+            </tr>
+            '''
+    elif query_str and not error_message:
+        result_rows = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #aaa;">No results found for your query.</td></tr>'
+    elif not query_str:
+        result_rows = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #aaa;">Enter a search query above to search indexed events.</td></tr>'
+    
+    if error_message:
+        result_rows = f'<tr><td colspan="6" style="text-align: center; padding: 40px; color: #f44336;"><strong>Error:</strong> {error_message}</td></tr>'
+    
+    # Pagination
+    total_pages = (total_hits + per_page - 1) // per_page if total_hits > 0 else 1
+    pagination_html = ""
+    if total_hits > per_page:
+        pagination_html = '<div class="pagination">'
+        if page > 1:
+            pagination_html += f'<button class="page-btn" onclick="searchPage({page - 1})">← Previous</button>'
+        pagination_html += f'<span class="page-info">Page {page} of {total_pages} ({total_hits:,} results)</span>'
+        if page < total_pages:
+            pagination_html += f'<button class="page-btn" onclick="searchPage({page + 1})">Next →</button>'
+        pagination_html += '</div>'
+    elif total_hits > 0:
+        pagination_html = f'<div class="pagination"><span class="page-info">{total_hits:,} result{"s" if total_hits != 1 else ""} found</span></div>'
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Search Events - {case.name} - caseScope 7.1</title>
+        <style>
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                display: flex; 
+                min-height: 100vh; 
+            }}
+            .sidebar {{ 
+                width: 280px; 
+                background: linear-gradient(145deg, #303f9f, #283593); 
+                padding: 20px; 
+                box-shadow: 
+                    5px 0 20px rgba(0,0,0,0.4),
+                    inset -1px 0 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+            }}
+            .main-content {{ flex: 1; }}
+            .header {{ 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 15px 30px; 
+                display: flex; 
+                justify-content: space-between; 
+                align-items: center;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                min-height: 60px;
+            }}
+            .case-title {{
+                font-size: 1.3em;
+                font-weight: 600;
+            }}
+            .user-info {{ 
+                display: flex; 
+                align-items: center; 
+                gap: 20px;
+                font-size: 1em;
+                line-height: 1.2;
+            }}
+            .sidebar-logo {{
+                text-align: center;
+                font-size: 2.2em;
+                font-weight: 300;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                margin-bottom: 15px;
+                padding: 5px 0 8px 0;
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+            }}
+            .sidebar-logo .case {{ color: #4caf50; }}
+            .sidebar-logo .scope {{ color: white; }}
+            .version-badge {{
+                font-size: 0.4em;
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 3px 6px;
+                border-radius: 6px;
+                margin-top: 5px;
+                display: inline-block;
+                box-shadow: 0 2px 4px rgba(76,175,80,0.3);
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .content {{ padding: 30px; }}
+            .menu-item {{ 
+                display: block; 
+                color: white; 
+                text-decoration: none; 
+                padding: 12px 16px; 
+                margin: 6px 0; 
+                border-radius: 12px; 
+                background: linear-gradient(145deg, #3949ab, #283593);
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+                font-size: 0.95em;
+            }}
+            .menu-item:hover {{ 
+                background: linear-gradient(145deg, #5c6bc0, #3949ab);
+                transform: translateX(5px);
+                box-shadow: 
+                    0 8px 15px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
+            }}
+            .menu-item.active {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+            }}
+            .menu-item.placeholder {{ 
+                background: linear-gradient(145deg, #424242, #2e2e2e); 
+                color: #aaa; 
+                cursor: not-allowed;
+                opacity: 0.7;
+            }}
+            .menu-title {{
+                font-size: 0.9em;
+                color: rgba(255,255,255,0.7);
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                margin: 20px 0 10px 0;
+                padding-left: 5px;
+            }}
+            .logout-btn {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                color: white;
+                padding: 8px 20px;
+                border-radius: 8px;
+                text-decoration: none;
+                box-shadow: 0 2px 8px rgba(244,67,54,0.3);
+                border: 1px solid rgba(255,255,255,0.1);
+                transition: all 0.3s ease;
+                display: inline-block;
+            }}
+            .logout-btn:hover {{
+                background: linear-gradient(145deg, #ef5350, #f44336);
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(244,67,54,0.4);
+            }}
+            .flash-message {{
+                padding: 15px 20px;
+                margin: 20px 0;
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                animation: slideIn 0.3s ease;
+            }}
+            .flash-success {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                border: 1px solid rgba(255,255,255,0.2);
+            }}
+            .flash-warning {{
+                background: linear-gradient(145deg, #ff9800, #f57c00);
+                border: 1px solid rgba(255,255,255,0.2);
+            }}
+            .flash-error {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                border: 1px solid rgba(255,255,255,0.2);
+            }}
+            .flash-icon {{
+                font-size: 1.5em;
+                flex-shrink: 0;
+            }}
+            .flash-text {{
+                flex: 1;
+                font-size: 1em;
+                line-height: 1.4;
+            }}
+            .flash-close {{
+                background: rgba(255,255,255,0.2);
+                border: none;
+                color: white;
+                font-size: 24px;
+                font-weight: bold;
+                cursor: pointer;
+                width: 32px;
+                height: 32px;
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s ease;
+                flex-shrink: 0;
+            }}
+            .flash-close:hover {{
+                background: rgba(255,255,255,0.3);
+                transform: scale(1.1);
+            }}
+            @keyframes slideIn {{
+                from {{
+                    transform: translateY(-20px);
+                    opacity: 0;
+                }}
+                to {{
+                    transform: translateY(0);
+                    opacity: 1;
+                }}
+            }}
+            .search-box {{
+                background: linear-gradient(145deg, #3f51b5, #283593);
+                padding: 25px;
+                border-radius: 16px;
+                margin-bottom: 30px;
+                box-shadow: 
+                    0 8px 24px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .search-input {{
+                width: 100%;
+                padding: 15px 20px;
+                font-size: 1.1em;
+                border: 2px solid rgba(255,255,255,0.2);
+                border-radius: 12px;
+                background: rgba(255,255,255,0.1);
+                color: white;
+                box-sizing: border-box;
+                margin-bottom: 15px;
+            }}
+            .search-input:focus {{
+                outline: none;
+                border-color: #4caf50;
+                background: rgba(255,255,255,0.15);
+            }}
+            .search-input::placeholder {{
+                color: rgba(255,255,255,0.5);
+            }}
+            .search-actions {{
+                display: flex;
+                gap: 15px;
+                align-items: center;
+            }}
+            .btn-search {{
+                padding: 12px 30px;
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                border: none;
+                border-radius: 10px;
+                font-size: 1em;
+                font-weight: 600;
+                cursor: pointer;
+                box-shadow: 0 4px 12px rgba(76,175,80,0.4);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .btn-search:hover {{
+                background: linear-gradient(145deg, #66bb6a, #4caf50);
+                transform: translateY(-2px);
+                box-shadow: 0 6px 16px rgba(76,175,80,0.5);
+            }}
+            .help-toggle {{
+                background: rgba(33,150,243,0.3);
+                color: white;
+                padding: 10px 20px;
+                border: 1px solid rgba(33,150,243,0.5);
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 0.95em;
+                transition: all 0.3s ease;
+            }}
+            .help-toggle:hover {{
+                background: rgba(33,150,243,0.5);
+            }}
+            .help-box {{
+                background: rgba(33,150,243,0.15);
+                border-left: 4px solid #2196f3;
+                padding: 20px;
+                margin-top: 15px;
+                border-radius: 8px;
+                display: none;
+            }}
+            .help-box h4 {{
+                margin: 0 0 15px 0;
+                color: #64b5f6;
+            }}
+            .help-box ul {{
+                margin: 10px 0;
+                padding-left: 20px;
+            }}
+            .help-box li {{
+                margin: 8px 0;
+                line-height: 1.6;
+            }}
+            .help-box code {{
+                background: rgba(0,0,0,0.3);
+                padding: 2px 8px;
+                border-radius: 4px;
+                font-family: 'Courier New', monospace;
+                color: #4caf50;
+            }}
+            .results-table {{
+                width: 100%;
+                border-collapse: collapse;
+                background: linear-gradient(145deg, #3f51b5, #283593);
+                border-radius: 16px;
+                overflow: hidden;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            }}
+            .results-table thead {{
+                background: #283593;
+            }}
+            .results-table th {{
+                padding: 15px;
+                text-align: left;
+                font-weight: 600;
+                border-bottom: 2px solid rgba(255,255,255,0.1);
+            }}
+            .result-row {{
+                cursor: pointer;
+                transition: all 0.2s ease;
+                border-bottom: 1px solid rgba(255,255,255,0.05);
+            }}
+            .result-row:hover {{
+                background: rgba(255,255,255,0.1);
+            }}
+            .result-row td {{
+                padding: 12px 15px;
+                vertical-align: middle;
+            }}
+            .details-row td {{
+                padding: 0;
+                background: rgba(0,0,0,0.3);
+            }}
+            .event-details {{
+                padding: 20px;
+                max-height: 500px;
+                overflow-y: auto;
+            }}
+            .event-details h4 {{
+                margin: 0 0 15px 0;
+                color: #4caf50;
+            }}
+            .event-details pre {{
+                background: rgba(0,0,0,0.5);
+                padding: 15px;
+                border-radius: 8px;
+                overflow-x: auto;
+                font-size: 0.9em;
+                line-height: 1.5;
+                color: #e0e0e0;
+            }}
+            .field-tag {{
+                background: rgba(76,175,80,0.3);
+                padding: 4px 10px;
+                border-radius: 6px;
+                font-size: 0.9em;
+                border: 1px solid rgba(76,175,80,0.5);
+                cursor: pointer;
+                transition: all 0.2s ease;
+                display: inline-block;
+            }}
+            .field-tag:hover {{
+                background: rgba(76,175,80,0.5);
+                transform: scale(1.05);
+            }}
+            .pagination {{
+                margin: 30px 0;
+                display: flex;
+                gap: 15px;
+                align-items: center;
+                justify-content: center;
+            }}
+            .page-btn {{
+                padding: 10px 20px;
+                background: linear-gradient(145deg, #3949ab, #283593);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                font-weight: 600;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                transition: all 0.3s ease;
+            }}
+            .page-btn:hover {{
+                background: linear-gradient(145deg, #5c6bc0, #3949ab);
+                transform: translateY(-2px);
+            }}
+            .page-info {{
+                color: rgba(255,255,255,0.8);
+                font-size: 0.95em;
+            }}
+            .stats-bar {{
+                background: rgba(33,150,243,0.2);
+                padding: 12px 20px;
+                border-radius: 10px;
+                margin-bottom: 20px;
+                border-left: 4px solid #2196f3;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
+            </div>
+            
+            <h3 class="menu-title">Navigation</h3>
+            <a href="/dashboard" class="menu-item">📊 System Dashboard</a>
+            <a href="/case/dashboard" class="menu-item">🎯 Case Dashboard</a>
+            <a href="/case/select" class="menu-item">📁 Case Selection</a>
+            <a href="/upload" class="menu-item">📤 Upload Files</a>
+            <a href="/files" class="menu-item">📄 List Files</a>
+            <a href="/search" class="menu-item active">🔍 Search Events</a>
+            
+            <h3 class="menu-title">Management</h3>
+            <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
+            <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
+            <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
+        </div>
+        <div class="main-content">
+            <div class="header">
+                <div class="case-title">🔍 Search Events - {case.name}</div>
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
+                    <a href="/logout" class="logout-btn">Logout</a>
+                </div>
+            </div>
+            <div class="content">
+                <h1>🔍 Search Events</h1>
+                
+                {flash_messages_html}
+                
+                <div class="stats-bar">
+                    <strong>📊 Searching across {indexed_file_count} indexed file{"s" if indexed_file_count != 1 else ""}</strong> in this case
+                </div>
+                
+                <div class="search-box">
+                    <form method="POST" id="searchForm">
+                        <input type="text" name="query" class="search-input" placeholder="Enter search query (e.g., EventID:4624 AND Computer:SERVER01)" value="{query_str}" autofocus>
+                        <input type="hidden" name="page" id="pageInput" value="{page}">
+                        <div class="search-actions">
+                            <button type="submit" class="btn-search">🔍 Search</button>
+                            <button type="button" class="help-toggle" onclick="toggleHelp()">❓ Query Help</button>
+                        </div>
+                    </form>
+                    
+                    <div id="helpBox" class="help-box">
+                        <h4>📖 Search Query Syntax</h4>
+                        <ul>
+                            <li><code>keyword</code> - Search for keyword in any field</li>
+                            <li><code>field:value</code> - Search specific field (e.g., <code>EventID:4624</code>)</li>
+                            <li><code>"exact phrase"</code> - Match exact phrase</li>
+                            <li><code>term1 AND term2</code> - Both terms must exist (default)</li>
+                            <li><code>term1 OR term2</code> - Either term can exist</li>
+                            <li><code>NOT term</code> - Exclude term</li>
+                            <li><code>(term1 OR term2) AND term3</code> - Use parentheses for grouping</li>
+                            <li><code>field:*wildcard*</code> - Wildcard search</li>
+                        </ul>
+                        <h4>🎯 Example Queries</h4>
+                        <ul>
+                            <li><code>EventID:4624</code> - Find all successful logon events</li>
+                            <li><code>EventID:4625 AND Computer:DC01</code> - Failed logons on specific computer</li>
+                            <li><code>"Administrator" OR "admin"</code> - Search for admin-related terms</li>
+                            <li><code>EventID:(4624 OR 4625)</code> - Logon success or failure</li>
+                            <li><code>* NOT EventID:4688</code> - Everything except process creation</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                {pagination_html}
+                
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>Event ID</th>
+                            <th>Timestamp</th>
+                            <th>Source File</th>
+                            <th>Computer</th>
+                            <th>Channel</th>
+                            <th>Provider</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {result_rows}
+                    </tbody>
+                </table>
+                
+                {pagination_html}
+            </div>
+        </div>
+        
+        <script>
+            function toggleDetails(rowId) {{
+                const detailsRow = document.getElementById(rowId);
+                if (detailsRow.style.display === 'none') {{
+                    detailsRow.style.display = 'table-row';
+                }} else {{
+                    detailsRow.style.display = 'none';
+                }}
+            }}
+            
+            function toggleHelp() {{
+                const helpBox = document.getElementById('helpBox');
+                if (helpBox.style.display === 'none' || helpBox.style.display === '') {{
+                    helpBox.style.display = 'block';
+                }} else {{
+                    helpBox.style.display = 'none';
+                }}
+            }}
+            
+            function addToQuery(event, field, value) {{
+                event.stopPropagation(); // Prevent row click
+                const queryInput = document.querySelector('.search-input');
+                const currentQuery = queryInput.value.trim();
+                const newTerm = field + ':"' + value + '"';
+                
+                if (currentQuery === '') {{
+                    queryInput.value = newTerm;
+                }} else {{
+                    queryInput.value = currentQuery + ' AND ' + newTerm;
+                }}
+                queryInput.focus();
+            }}
+            
+            function searchPage(pageNum) {{
+                document.getElementById('pageInput').value = pageNum;
+                document.getElementById('searchForm').submit();
             }}
         </script>
     </body>
@@ -2735,7 +3428,7 @@ def render_case_dashboard(case):
             <a href="/case/select" class="menu-item">📁 Case Selection</a>
             <a href="/upload" class="menu-item">📤 Upload Files</a>
             <a href="/files" class="menu-item">📄 List Files</a>
-            <a href="/search" class="menu-item placeholder">🔍 Search (Coming Soon)</a>
+            <a href="/search" class="menu-item">🔍 Search Events</a>
             
             <h3 class="menu-title">Management</h3>
             <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
