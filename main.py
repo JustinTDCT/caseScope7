@@ -458,6 +458,38 @@ def rerun_rules(file_id):
     
     return redirect(url_for('list_files'))
 
+
+@app.route('/api/file/progress/<int:file_id>')
+@login_required
+def file_progress(file_id):
+    """API endpoint to get real-time file processing progress"""
+    case_file = CaseFile.query.get_or_404(file_id)
+    
+    # Verify file belongs to active case
+    active_case_id = session.get('active_case_id')
+    if not active_case_id or case_file.case_id != active_case_id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    # Calculate progress percentage
+    progress = 0
+    if case_file.indexing_status == 'Indexing' and case_file.event_count > 0:
+        # Estimate based on file size (rough estimate: 100 events per MB for EVTX)
+        estimated_total = (case_file.file_size / 1048576) * 100  # MB to bytes, ~100 events/MB
+        if estimated_total > 0:
+            progress = min(int((case_file.event_count / estimated_total) * 100), 99)
+    elif case_file.indexing_status == 'Running Rules':
+        progress = 50  # Placeholder for rule processing
+    elif case_file.indexing_status == 'Completed':
+        progress = 100
+    
+    return jsonify({
+        'status': case_file.indexing_status,
+        'progress': progress,
+        'event_count': case_file.event_count or 0,
+        'violation_count': case_file.violation_count or 0,
+        'is_indexed': case_file.is_indexed
+    })
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -872,7 +904,8 @@ def dashboard():
             </div>
             
             <h3 class="menu-title">Navigation</h3>
-            <a href="/dashboard" class="menu-item">📊 Dashboard</a>
+            <a href="/dashboard" class="menu-item">📊 System Dashboard</a>
+            <a href="/case/dashboard" class="menu-item">🎯 Case Dashboard</a>
             <a href="/case/select" class="menu-item">📁 Case Selection</a>
             <a href="/upload" class="menu-item">📤 Upload Files</a>
             <a href="/files" class="menu-item">📄 List Files</a>
@@ -1407,28 +1440,33 @@ def render_file_list(case, files):
         file_size_mb = file.file_size / (1024 * 1024)
         status_class = file.indexing_status.lower().replace(' ', '-')
         
-        # Determine status display with progress
+        # Determine status display with progress - will be updated via JavaScript
         if file.indexing_status == 'Uploaded':
-            status_display = 'Uploaded/Pending'
+            status_display = '<span id="status-{0}">Uploaded/Pending</span>'.format(file.id)
             status_class = 'uploaded'
         elif file.indexing_status == 'Indexing':
-            # TODO: Get actual progress from indexing worker
-            progress = 0  # Placeholder
-            status_display = f'Indexing ({progress}%)'
+            progress_html = '''<div id="status-{0}" class="progress-container">
+                <div class="progress-text">Indexing...</div>
+                <div class="progress-bar-bg"><div class="progress-bar" id="progress-{0}" style="width: 0%"></div></div>
+                <div class="progress-events" id="events-{0}">0 events</div>
+            </div>'''.format(file.id)
+            status_display = progress_html
             status_class = 'indexing'
         elif file.indexing_status == 'Running Rules':
-            # TODO: Get actual progress from rules worker
-            progress = 0  # Placeholder
-            status_display = f'Running Rules ({progress}%)'
+            progress_html = '''<div id="status-{0}" class="progress-container">
+                <div class="progress-text">Running Rules...</div>
+                <div class="progress-bar-bg"><div class="progress-bar" id="progress-{0}" style="width: 50%"></div></div>
+            </div>'''.format(file.id)
+            status_display = progress_html
             status_class = 'running-rules'
         elif file.indexing_status == 'Completed':
-            status_display = 'Completed'
+            status_display = '<span id="status-{0}">✅ Completed</span>'.format(file.id)
             status_class = 'completed'
         elif file.indexing_status == 'Failed':
-            status_display = 'Failed'
+            status_display = '<span id="status-{0}">❌ Failed</span>'.format(file.id)
             status_class = 'failed'
         else:
-            status_display = file.indexing_status
+            status_display = '<span id="status-{0}">{1}</span>'.format(file.id, file.indexing_status)
         
         # Event count display
         if file.event_count > 0:
@@ -1623,6 +1661,33 @@ def render_file_list(case, files):
             .status-running-rules {{ color: #9c27b0; }}
             .status-completed {{ color: #4caf50; }}
             .status-failed {{ color: #f44336; }}
+            .progress-container {{
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+            }}
+            .progress-text {{
+                font-size: 0.9em;
+                font-weight: 600;
+            }}
+            .progress-bar-bg {{
+                width: 100%;
+                height: 20px;
+                background: rgba(0,0,0,0.3);
+                border-radius: 10px;
+                overflow: hidden;
+            }}
+            .progress-bar {{
+                height: 100%;
+                background: linear-gradient(90deg, #2196f3, #42a5f5);
+                border-radius: 10px;
+                transition: width 0.3s ease;
+                box-shadow: 0 0 10px rgba(33,150,243,0.5);
+            }}
+            .progress-events {{
+                font-size: 0.85em;
+                color: rgba(255,255,255,0.7);
+            }}
             .btn {{
                 background: linear-gradient(145deg, #4caf50, #388e3c);
                 color: white;
@@ -1770,6 +1835,60 @@ def render_file_list(case, files):
                         // TODO: POST to /files/delete/<fileId>
                     }}
                 }}
+            }}
+            
+            // Real-time progress tracking
+            const activeFiles = [];
+            
+            // Collect all file IDs that are being processed
+            document.addEventListener('DOMContentLoaded', function() {{
+                const statusElements = document.querySelectorAll('[id^="status-"]');
+                statusElements.forEach(function(elem) {{
+                    const fileId = elem.id.split('-')[1];
+                    const statusText = elem.textContent;
+                    if (statusText.includes('Uploaded/Pending') || statusText.includes('Indexing') || statusText.includes('Running Rules')) {{
+                        activeFiles.push(fileId);
+                    }}
+                }});
+                
+                // Start polling for active files
+                if (activeFiles.length > 0) {{
+                    updateFileProgress();
+                    setInterval(updateFileProgress, 3000); // Update every 3 seconds
+                }}
+            }});
+            
+            function updateFileProgress() {{
+                activeFiles.forEach(function(fileId) {{
+                    fetch('/api/file/progress/' + fileId)
+                        .then(response => response.json())
+                        .then(data => {{
+                            const progressBar = document.getElementById('progress-' + fileId);
+                            const eventsText = document.getElementById('events-' + fileId);
+                            const statusElem = document.getElementById('status-' + fileId);
+                            
+                            if (data.status === 'Indexing') {{
+                                if (progressBar) {{
+                                    progressBar.style.width = data.progress + '%';
+                                }}
+                                if (eventsText) {{
+                                    eventsText.textContent = data.event_count.toLocaleString() + ' events';
+                                }}
+                            }} else if (data.status === 'Running Rules') {{
+                                if (progressBar) {{
+                                    progressBar.style.width = '75%';
+                                    progressBar.style.background = 'linear-gradient(90deg, #9c27b0, #ab47bc)';
+                                }}
+                            }} else if (data.status === 'Completed') {{
+                                // Reload page to show final status
+                                window.location.reload();
+                            }} else if (data.status === 'Failed') {{
+                                // Reload page to show failure
+                                window.location.reload();
+                            }}
+                        }})
+                        .catch(err => console.error('Error fetching progress:', err));
+                }});
             }}
         </script>
     </body>
@@ -2369,7 +2488,8 @@ def render_case_dashboard(case):
             </div>
             
             <h3 class="menu-title">Navigation</h3>
-            <a href="/dashboard" class="menu-item">📊 Dashboard</a>
+            <a href="/dashboard" class="menu-item">📊 System Dashboard</a>
+            <a href="/case/dashboard" class="menu-item">🎯 Case Dashboard</a>
             <a href="/case/select" class="menu-item">📁 Case Selection</a>
             <a href="/upload" class="menu-item">📤 Upload Files</a>
             <a href="/files" class="menu-item">📄 List Files</a>

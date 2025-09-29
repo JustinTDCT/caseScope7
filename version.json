@@ -1,7 +1,7 @@
 {
-  "version": "7.1.42",
+  "version": "7.1.43",
   "release_date": "2025-09-29",
-  "description": "Bugfix - Fixed Celery worker service ExecStartPre commands to use full paths",
+  "description": "UI Enhancement - Added Case Dashboard menu item and real-time progress tracking with visual progress bars",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -45,6 +45,7 @@
     "7.1.39": "Bugfix - Fixed Celery worker systemd service: added PIDFile directive, fixed ExecStop to use PID file instead of $MAINPID variable, added graceful shutdown with fallback",
     "7.1.40": "Feature - Implemented Re-index and Re-run Rules functionality: /file/reindex/<id> route resets file status and re-queues indexing, /file/rerun-rules/<id> route re-processes SIGMA rules, updated UI with confirmation dialogs, Re-index available for all files, Re-run Rules only for indexed files",
     "7.1.41": "Debug - Enhanced Celery worker logging: changed service Type to simple (from forking), added DEBUG log level, comprehensive signal handlers (worker_ready, worker_shutdown, task_prerun, task_postrun, task_failure), added ExecStartPre for directory creation, improved journalctl output with SyslogIdentifier, removed PID file complexity, added verbose logging to celery_app.py and tasks.py",
-    "7.1.42": "Bugfix - Fixed Celery worker service ExecStartPre commands: use full paths (/bin/mkdir, /bin/chown, /bin/echo) instead of relying on shell PATH, added full PATH environment variable, changed ExecStop to use ExecStopPost for kill command"
+    "7.1.42": "Bugfix - Fixed Celery worker service ExecStartPre commands: use full paths (/bin/mkdir, /bin/chown, /bin/echo) instead of relying on shell PATH, added full PATH environment variable, changed ExecStop to use ExecStopPost for kill command",
+    "7.1.43": "UI Enhancement - Added Case Dashboard to left menu (below System Dashboard), implemented real-time progress tracking: /api/file/progress/<id> endpoint, visual progress bars for Indexing/Running Rules status, auto-updating event counts, 3-second polling for active files, progress bar styling with gradients and animations, auto-reload on completion/failure"
   }
 }
