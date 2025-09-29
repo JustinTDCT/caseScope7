@@ -319,25 +319,42 @@ def dashboard():
             .main-content {{ flex: 1; }}
             .header {{ 
                 background: linear-gradient(145deg, #283593, #1e88e5); 
-                padding: 25px 30px; 
+                padding: 30px 40px; 
                 display: flex; 
-                justify-content: space-between; 
+                justify-content: flex-end; 
                 align-items: center;
                 box-shadow: 0 4px 20px rgba(0,0,0,0.3);
                 border-bottom: 1px solid rgba(255,255,255,0.1);
+                min-height: 80px;
             }}
-            .logo {{ 
-                font-size: 1.8em; 
-                font-weight: 300;
-                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-            }}
-            .logo .case {{ color: #4caf50; }}
-            .logo .scope {{ color: white; }}
             .user-info {{ 
                 display: flex; 
                 align-items: center; 
                 gap: 25px;
-                font-size: 0.95em;
+                font-size: 1em;
+                padding: 10px 0;
+            }}
+            .sidebar-logo {{
+                text-align: center;
+                font-size: 2.2em;
+                font-weight: 300;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                margin-bottom: 30px;
+                padding: 20px 0;
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+            }}
+            .sidebar-logo .case {{ color: #4caf50; }}
+            .sidebar-logo .scope {{ color: white; }}
+            .version-badge {{
+                font-size: 0.4em;
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 4px 8px;
+                border-radius: 6px;
+                margin-top: 8px;
+                display: inline-block;
+                box-shadow: 0 2px 4px rgba(76,175,80,0.3);
+                border: 1px solid rgba(255,255,255,0.1);
             }}
             .content {{ padding: 40px; }}
             .tile {{ 
@@ -479,6 +496,11 @@ def dashboard():
     </head>
     <body>
         <div class="sidebar">
+            <div class="sidebar-logo">
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
+            </div>
+            
             <h3 class="menu-title">Navigation</h3>
             <a href="/dashboard" class="menu-item">📊 Dashboard</a>
             <a href="/case-selection" class="menu-item placeholder">📁 Case Selection (Coming Soon)</a>
@@ -494,7 +516,6 @@ def dashboard():
         </div>
         <div class="main-content">
             <div class="header">
-                <div class="logo"><span class="case">case</span><span class="scope">Scope</span> <span style="font-size: 0.7em;">{APP_VERSION}</span></div>
                 <div class="user-info">
                     <span>Welcome, {current_user.username} ({current_user.role})</span>
                     <a href="{url_for('logout')}" class="logout-btn">Logout</a>
