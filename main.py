@@ -180,7 +180,7 @@ def create_case():
                 
                 # Create case directory
                 import os
-                case_dir = f"/opt/casescope/upload/{new_case.id}"
+                case_dir = f"/opt/casescope/uploads/{new_case.id}"
                 os.makedirs(case_dir, exist_ok=True)
                 
                 # Set active case in session
@@ -327,7 +327,25 @@ def upload_files():
         if success_count > 0:
             try:
                 db.session.commit()
-                flash(f'Successfully uploaded {success_count} file(s).', 'success')
+                
+                # Trigger background indexing for each uploaded file
+                try:
+                    from tasks import start_file_indexing
+                    # Get the files we just uploaded
+                    recent_files = CaseFile.query.filter_by(
+                        case_id=case.id,
+                        indexing_status='Uploaded'
+                    ).order_by(CaseFile.uploaded_at.desc()).limit(success_count).all()
+                    
+                    for uploaded_file in recent_files:
+                        start_file_indexing.delay(uploaded_file.id)
+                        print(f"[Upload] Queued indexing for file ID {uploaded_file.id}: {uploaded_file.original_filename}")
+                    
+                    flash(f'Successfully uploaded {success_count} file(s). Indexing started.', 'success')
+                except Exception as e:
+                    print(f"[Upload] Warning: Failed to queue indexing tasks: {e}")
+                    flash(f'Successfully uploaded {success_count} file(s). Manual indexing may be required.', 'warning')
+                
             except Exception as e:
                 db.session.rollback()
                 flash(f'Database error: {str(e)}', 'error')

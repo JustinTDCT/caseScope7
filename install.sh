@@ -245,16 +245,19 @@ handle_existing_data() {
             
             # Stop and disable all services
             log "Stopping all caseScope services..."
+            systemctl stop casescope-worker 2>/dev/null || true
             systemctl stop casescope-web 2>/dev/null || true
             systemctl stop opensearch 2>/dev/null || true
             systemctl stop nginx 2>/dev/null || true
             systemctl stop redis-server 2>/dev/null || true
             
+            systemctl disable casescope-worker 2>/dev/null || true
             systemctl disable casescope-web 2>/dev/null || true
             systemctl disable opensearch 2>/dev/null || true
             
             # Remove service files
             log "Removing service files..."
+            rm -f /etc/systemd/system/casescope-worker.service 2>/dev/null || true
             rm -f /etc/systemd/system/casescope-web.service 2>/dev/null || true
             rm -f /etc/systemd/system/opensearch.service 2>/dev/null || true
             
@@ -299,6 +302,7 @@ handle_existing_data() {
             fi
             
             # Stop services for upgrade but keep data
+            systemctl stop casescope-worker 2>/dev/null || true
             systemctl stop casescope-web 2>/dev/null || true
             systemctl stop nginx 2>/dev/null || true
             
@@ -309,6 +313,7 @@ handle_existing_data() {
             log "Clear indexes installation - removing OpenSearch data only..."
             
             # Stop services
+            systemctl stop casescope-worker 2>/dev/null || true
             systemctl stop casescope-web 2>/dev/null || true
             systemctl stop opensearch 2>/dev/null || true
             
@@ -321,7 +326,7 @@ handle_existing_data() {
             
             # Clear upload files (since they'll need to be re-indexed anyway)
             log "Clearing uploaded files (will need re-upload for re-indexing)..."
-            rm -rf /opt/casescope/upload/* 2>/dev/null || true
+            rm -rf /opt/casescope/uploads/* 2>/dev/null || true
             
             log "Reindex: OpenSearch indexes and uploaded files cleared"
             log "Database and user accounts preserved"
@@ -706,6 +711,36 @@ setup_python() {
 configure_services() {
     log "Configuring system services..."
     
+    # Create Celery worker service
+    cat > /etc/systemd/system/casescope-worker.service << 'EOF'
+[Unit]
+Description=caseScope Celery Worker
+After=network.target redis.service opensearch.service
+
+[Service]
+Type=forking
+User=casescope
+Group=casescope
+WorkingDirectory=/opt/casescope/app
+Environment=PATH=/opt/casescope/venv/bin
+Environment=PYTHONPATH=/opt/casescope/app
+ExecStart=/opt/casescope/venv/bin/celery -A celery_app worker \
+    --loglevel=info \
+    --concurrency=2 \
+    --max-tasks-per-child=50 \
+    --pidfile=/opt/casescope/tmp/celery_worker.pid \
+    --logfile=/opt/casescope/logs/celery_worker.log \
+    --detach
+ExecStop=/bin/kill -TERM $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    
     # Create web service
     cat > /etc/systemd/system/casescope-web.service << 'EOF'
 [Unit]
@@ -758,6 +793,7 @@ EOF
     
     # Reload systemd and enable services
     systemctl daemon-reload
+    systemctl enable casescope-worker
     systemctl enable casescope-web
     systemctl enable nginx
     systemctl enable redis-server
@@ -775,6 +811,16 @@ start_services() {
     if ! systemctl is-active --quiet redis-server; then
         log_error "Redis failed to start"
         systemctl status redis-server
+    fi
+    
+    log "Starting Celery worker..."
+    systemctl start casescope-worker
+    sleep 2
+    if ! systemctl is-active --quiet casescope-worker; then
+        log_warning "Celery worker may not have started properly"
+        log "Check logs with: journalctl -u casescope-worker -n 50"
+    else
+        log "SUCCESS: Celery worker is running"
     fi
     
     log "Starting OpenSearch search engine..."
@@ -1191,7 +1237,7 @@ except Exception as e:
     echo
     echo -e "${BLUE}Service Status Check:${NC}"
     
-    services=("redis-server" "opensearch" "casescope-web" "nginx")
+    services=("redis-server" "opensearch" "casescope-worker" "casescope-web" "nginx")
     all_running=true
     
     for service in "${services[@]}"; do
