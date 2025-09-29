@@ -1,7 +1,7 @@
 {
-  "version": "7.1.25",
+  "version": "7.1.26",
   "release_date": "2025-09-29",
-  "description": "Enhanced installer with final database verification test and improved casescope-web service debugging with detailed logging",
+  "description": "UI Enhancement - Updated password change page to modern 3D styling and converted logout link to styled button for consistency",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -28,6 +28,7 @@
     "7.1.22": "UI Enhancement - Fixed login functionality with proper database initialization, enhanced UI with modern 3D styling, gradients, shadows, and better visual hierarchy",
     "7.1.23": "Database Enhancement - Comprehensive database initialization based on install type (clean/upgrade/reindex), improved backup system, automatic admin account recovery",
     "7.1.24": "Debug Enhancement - Added comprehensive login debugging, forced database verification, debug routes, and detailed troubleshooting guidance",
-    "7.1.25": "Service Enhancement - Added final database verification test to installer, enhanced casescope-web service with debug logging and detailed request tracking"
+    "7.1.25": "Service Enhancement - Added final database verification test to installer, enhanced casescope-web service with debug logging and detailed request tracking",
+    "7.1.26": "UI Enhancement - Updated password change page to modern 3D styling, converted logout to styled button, ensured consistent design across all pages"
   }
 }

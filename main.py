@@ -413,6 +413,28 @@ def dashboard():
             }}
             a {{ color: #4caf50; text-decoration: none; transition: color 0.3s ease; }}
             a:hover {{ color: #66bb6a; }}
+            .logout-btn {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                color: white !important;
+                padding: 8px 16px;
+                border-radius: 8px;
+                text-decoration: none;
+                font-size: 0.9em;
+                font-weight: 500;
+                box-shadow: 0 4px 8px rgba(244,67,54,0.3);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .logout-btn:hover {{
+                background: linear-gradient(145deg, #ef5350, #f44336);
+                box-shadow: 0 6px 12px rgba(244,67,54,0.4);
+                transform: translateY(-1px);
+                color: white !important;
+            }}
+            .logout-btn:active {{
+                transform: translateY(0);
+                box-shadow: 0 2px 4px rgba(244,67,54,0.3);
+            }}
             .footer {{ 
                 position: fixed; 
                 bottom: 15px; 
@@ -475,7 +497,7 @@ def dashboard():
                 <div class="logo"><span class="case">case</span><span class="scope">Scope</span> <span style="font-size: 0.7em;">{APP_VERSION}</span></div>
                 <div class="user-info">
                     <span>Welcome, {current_user.username} ({current_user.role})</span>
-                    <a href="{url_for('logout')}">Logout</a>
+                    <a href="{url_for('logout')}" class="logout-btn">Logout</a>
                 </div>
             </div>
             <div class="content">
@@ -547,20 +569,142 @@ def change_password():
             flash('Password changed successfully.', 'success')
             return redirect(url_for('dashboard'))
     
+    # Flash messages for display
+    flash_messages = ""
+    if hasattr(session, '_flashes') and session._flashes:
+        for category, message in session._flashes:
+            flash_messages += f'<div class="alert alert-{category}">{message}</div>'
+        session._flashes.clear()
+    
     return f'''
     <!DOCTYPE html>
     <html>
     <head>
         <title>Change Password - caseScope 7.1</title>
         <style>
-            body {{ font-family: Arial, sans-serif; background: #1a237e; color: white; margin: 0; padding: 50px; }}
-            .container {{ max-width: 500px; margin: 0 auto; background: #283593; padding: 30px; border-radius: 10px; }}
-            .logo {{ text-align: center; font-size: 2em; margin-bottom: 30px; }}
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                padding: 0; 
+                min-height: 100vh; 
+                display: flex; 
+                align-items: center; 
+                justify-content: center;
+            }}
+            .container {{ 
+                max-width: 500px; 
+                width: 90%; 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 40px; 
+                border-radius: 20px; 
+                box-shadow: 
+                    0 20px 40px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .logo {{ 
+                text-align: center; 
+                font-size: 3em; 
+                margin-bottom: 30px; 
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                font-weight: 300;
+            }}
             .logo .case {{ color: #4caf50; }}
             .logo .scope {{ color: white; }}
-            input {{ width: 100%; padding: 10px; margin: 10px 0; border: none; border-radius: 5px; }}
-            button {{ width: 100%; padding: 10px; background: #4caf50; color: white; border: none; border-radius: 5px; cursor: pointer; }}
-            .alert {{ padding: 10px; margin: 10px 0; border-radius: 5px; background: #f44336; }}
+            h2 {{
+                text-align: center;
+                margin-bottom: 10px;
+                font-weight: 300;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            }}
+            p {{
+                text-align: center;
+                margin-bottom: 30px;
+                color: rgba(255,255,255,0.8);
+                font-size: 0.95em;
+            }}
+            .form-group {{
+                margin-bottom: 20px;
+            }}
+            input {{ 
+                width: 100%; 
+                padding: 15px 20px; 
+                margin: 0; 
+                border: none; 
+                border-radius: 12px; 
+                background: rgba(255,255,255,0.1);
+                color: white;
+                font-size: 16px;
+                box-shadow: 
+                    inset 0 2px 5px rgba(0,0,0,0.2),
+                    0 1px 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(5px);
+                border: 1px solid rgba(255,255,255,0.1);
+                box-sizing: border-box;
+            }}
+            input::placeholder {{
+                color: rgba(255,255,255,0.7);
+            }}
+            input:focus {{
+                outline: none;
+                box-shadow: 
+                    inset 0 2px 5px rgba(0,0,0,0.2),
+                    0 0 0 3px rgba(76,175,80,0.3);
+                border-color: #4caf50;
+            }}
+            button {{ 
+                width: 100%; 
+                padding: 15px; 
+                background: linear-gradient(145deg, #4caf50, #388e3c); 
+                color: white; 
+                border: none; 
+                border-radius: 12px; 
+                cursor: pointer; 
+                font-size: 16px;
+                font-weight: 600;
+                box-shadow: 
+                    0 8px 15px rgba(76,175,80,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
+                transition: all 0.3s ease;
+                margin-top: 10px;
+            }}
+            button:hover {{
+                background: linear-gradient(145deg, #66bb6a, #4caf50);
+                box-shadow: 
+                    0 12px 20px rgba(76,175,80,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
+                transform: translateY(-2px);
+            }}
+            button:active {{
+                transform: translateY(0);
+                box-shadow: 
+                    0 4px 8px rgba(76,175,80,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
+            }}
+            .alert {{
+                padding: 12px 16px;
+                margin-bottom: 20px;
+                border-radius: 8px;
+                font-size: 14px;
+            }}
+            .alert-error {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                border: 1px solid rgba(255,255,255,0.1);
+                box-shadow: 0 4px 8px rgba(244,67,54,0.3);
+            }}
+            .alert-success {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                border: 1px solid rgba(255,255,255,0.1);
+                box-shadow: 0 4px 8px rgba(76,175,80,0.3);
+            }}
+            .alert-warning {{
+                background: linear-gradient(145deg, #ff9800, #f57c00);
+                border: 1px solid rgba(255,255,255,0.1);
+                box-shadow: 0 4px 8px rgba(255,152,0,0.3);
+            }}
         </style>
     </head>
     <body>
@@ -568,10 +712,17 @@ def change_password():
             <div class="logo"><span class="case">case</span><span class="scope">Scope</span></div>
             <h2>Change Password</h2>
             <p>You must change your password before continuing.</p>
+            {flash_messages}
             <form method="POST">
-                <input type="password" name="current_password" placeholder="Current Password" required>
-                <input type="password" name="new_password" placeholder="New Password (min 8 characters)" required>
-                <input type="password" name="confirm_password" placeholder="Confirm New Password" required>
+                <div class="form-group">
+                    <input type="password" name="current_password" placeholder="Current Password" required>
+                </div>
+                <div class="form-group">
+                    <input type="password" name="new_password" placeholder="New Password (min 8 characters)" required>
+                </div>
+                <div class="form-group">
+                    <input type="password" name="confirm_password" placeholder="Confirm New Password" required>
+                </div>
                 <button type="submit">Change Password</button>
             </form>
         </div>
