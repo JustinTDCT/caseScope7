@@ -1169,6 +1169,20 @@ def change_password():
 # UI Rendering Functions
 def render_upload_form(case):
     """Render file upload form"""
+    # Get flash messages
+    from flask import get_flashed_messages
+    flash_messages_html = ""
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        icon = "⚠️" if category == "warning" else "❌" if category == "error" else "✅"
+        flash_messages_html += f'''
+        <div class="flash-message flash-{category}">
+            <span class="flash-icon">{icon}</span>
+            <span class="flash-text">{message}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        '''
+    
     return f'''
     <!DOCTYPE html>
     <html>
@@ -1348,6 +1362,67 @@ def render_upload_form(case):
             .btn-secondary:hover {{
                 background: linear-gradient(145deg, #9e9e9e, #757575);
             }}
+            .flash-message {{
+                padding: 15px 20px;
+                margin: 20px 0;
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                animation: slideIn 0.3s ease;
+            }}
+            .flash-success {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                border: 1px solid rgba(255,255,255,0.2);
+            }}
+            .flash-warning {{
+                background: linear-gradient(145deg, #ff9800, #f57c00);
+                border: 1px solid rgba(255,255,255,0.2);
+            }}
+            .flash-error {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                border: 1px solid rgba(255,255,255,0.2);
+            }}
+            .flash-icon {{
+                font-size: 1.5em;
+                flex-shrink: 0;
+            }}
+            .flash-text {{
+                flex: 1;
+                font-size: 1em;
+                line-height: 1.4;
+            }}
+            .flash-close {{
+                background: rgba(255,255,255,0.2);
+                border: none;
+                color: white;
+                font-size: 24px;
+                font-weight: bold;
+                cursor: pointer;
+                width: 32px;
+                height: 32px;
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s ease;
+                flex-shrink: 0;
+            }}
+            .flash-close:hover {{
+                background: rgba(255,255,255,0.3);
+                transform: scale(1.1);
+            }}
+            @keyframes slideIn {{
+                from {{
+                    transform: translateY(-20px);
+                    opacity: 0;
+                }}
+                to {{
+                    transform: translateY(0);
+                    opacity: 1;
+                }}
+            }}
             .info-box {{
                 background: rgba(33,150,243,0.2);
                 border-left: 4px solid #2196f3;
@@ -1388,6 +1463,9 @@ def render_upload_form(case):
             </div>
             <div class="content">
                 <h1>📤 Upload Files</h1>
+                
+                {flash_messages_html}
+                
                 <div class="info-box">
                     <strong>Upload Limits:</strong><br>
                     • Maximum 5 files per upload<br>
