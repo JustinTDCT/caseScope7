@@ -488,7 +488,7 @@ Description=OpenSearch
 After=network.target
 
 [Service]
-Type=notify
+Type=simple
 RuntimeDirectory=opensearch
 PrivateTmp=true
 Environment=OS_HOME=/opt/opensearch
@@ -507,6 +507,7 @@ KillMode=process
 KillSignal=SIGTERM
 SendSIGKILL=no
 SuccessExitStatus=143
+Restart=no
 
 [Install]
 WantedBy=multi-user.target
@@ -784,25 +785,31 @@ start_services() {
     for attempt in {1..90}; do
         echo -n "Attempt ${attempt}/90 ($(($attempt * 2))s): "
         
-        # Check if the service is active
-        if systemctl is-active --quiet opensearch; then
-            echo -n "${GREEN}Service running${NC} - "
+        # Check if the OpenSearch process is actually running (more reliable than systemd status)
+        if pgrep -f "opensearch" >/dev/null 2>&1; then
+            echo -n "${GREEN}Process running${NC} - "
             
-            # Additional check: verify OpenSearch is responding on port 9200
-            if curl -s --connect-timeout 3 http://127.0.0.1:9200 >/dev/null 2>&1; then
+            # Check if API is responding
+            if curl -s --connect-timeout 3 --max-time 5 http://127.0.0.1:9200/_cluster/health >/dev/null 2>&1; then
                 echo -e "${GREEN}✓ API responding - READY!${NC}"
                 log "SUCCESS: OpenSearch is fully operational after ${attempt} attempts ($(($attempt * 2)) seconds)"
+                
+                # Check systemd status for informational purposes
+                local systemd_status=$(systemctl is-active opensearch 2>/dev/null || echo "unknown")
+                log "Process status: RUNNING, API status: READY, Systemd status: $systemd_status"
                 startup_success=true
                 break
             else
-                echo -e "${YELLOW}API not ready yet (still initializing)${NC}"
+                echo -e "${YELLOW}API initializing (listening on port, not ready yet)${NC}"
             fi
         else
-            # Check if service failed
+            # Process not running - check systemd status for more info
             if systemctl is-failed --quiet opensearch; then
                 echo -e "${RED}✗ Service failed${NC}"
                 log_error "OpenSearch service entered failed state on attempt ${attempt}"
                 break
+            elif systemctl is-active --quiet opensearch; then
+                echo -e "${YELLOW}Systemd active but process not detected...${NC}"
             else
                 echo -e "${YELLOW}Service starting...${NC}"
             fi
