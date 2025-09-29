@@ -102,7 +102,7 @@ class CaseFile(db.Model):
     is_indexed = db.Column(db.Boolean, default=False)
     is_deleted = db.Column(db.Boolean, default=False)
     event_count = db.Column(db.Integer, default=0)
-    indexing_status = db.Column(db.String(20), default='Uploaded')  # Uploaded, Processing, Indexed, Failed
+    indexing_status = db.Column(db.String(20), default='Uploaded')  # Uploaded, Indexing, Running Rules, Completed, Failed
     
     # Relationships
     case = db.relationship('Case', backref='files')
@@ -1156,7 +1156,7 @@ def render_upload_form(case):
                 padding: 30px;
                 border-radius: 15px;
                 box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-                max-width: 1000px;
+                max-width: 95%;
                 margin: 0 auto;
             }}
             .file-input {{
@@ -1170,6 +1170,7 @@ def render_upload_form(case):
                 text-align: center;
                 transition: all 0.3s ease;
                 margin: 20px 0;
+                box-sizing: border-box;
             }}
             .file-input:hover {{
                 border-color: #4caf50;
@@ -1302,20 +1303,43 @@ def render_file_list(case, files):
         file_size_mb = file.file_size / (1024 * 1024)
         status_class = file.indexing_status.lower().replace(' ', '-')
         
-        # Determine status display
+        # Determine status display with progress
         if file.indexing_status == 'Uploaded':
-            status_display = 'Uploaded / Pending Indexing'
-        elif file.indexing_status == 'Processing':
-            status_display = 'Processing'
-        elif file.indexing_status == 'Indexed':
-            status_display = 'Indexed'
+            status_display = 'Uploaded/Pending'
+            status_class = 'uploaded'
+        elif file.indexing_status == 'Indexing':
+            # TODO: Get actual progress from indexing worker
+            progress = 0  # Placeholder
+            status_display = f'Indexing ({progress}%)'
+            status_class = 'indexing'
+        elif file.indexing_status == 'Running Rules':
+            # TODO: Get actual progress from rules worker
+            progress = 0  # Placeholder
+            status_display = f'Running Rules ({progress}%)'
+            status_class = 'running-rules'
+        elif file.indexing_status == 'Completed':
+            status_display = 'Completed'
+            status_class = 'completed'
+        elif file.indexing_status == 'Failed':
+            status_display = 'Failed'
+            status_class = 'failed'
         else:
             status_display = file.indexing_status
+        
+        # Event count display
+        if file.event_count > 0:
+            events_display = f'{file.event_count:,}'
+        else:
+            events_display = '-'
+        
+        # Violations count (placeholder for now)
+        # TODO: Add violations_count field to CaseFile model
+        violations_display = '-'
         
         # Build action buttons based on user role
         actions = f'<button class="btn-action btn-info" onclick="showFileDetails({file.id})">📋 Details</button>'
         
-        if file.indexing_status == 'Indexed':
+        if file.indexing_status == 'Completed':
             actions += f' <button class="btn-action btn-reindex" onclick="confirmReindex({file.id})">🔄 Re-index</button>'
             actions += f' <button class="btn-action btn-rules" onclick="confirmRerunRules({file.id})">⚡ Re-run Rules</button>'
         
@@ -1329,12 +1353,14 @@ def render_file_list(case, files):
             <td>{file_size_mb:.2f} MB</td>
             <td>{file.uploader.username}</td>
             <td><span class="status-{status_class}">{status_display}</span></td>
+            <td>{events_display}</td>
+            <td>{violations_display}</td>
             <td>{actions}</td>
         </tr>
         '''
     
     if not file_rows:
-        file_rows = '<tr><td colspan="6" style="text-align: center; padding: 40px;">No files uploaded yet. Click "Upload Files" to add files to this case.</td></tr>'
+        file_rows = '<tr><td colspan="8" style="text-align: center; padding: 40px;">No files uploaded yet. Click "Upload Files" to add files to this case.</td></tr>'
     
     return f'''
     <!DOCTYPE html>
@@ -1486,8 +1512,9 @@ def render_file_list(case, files):
                 color: white;
             }}
             .status-uploaded {{ color: #ffb74d; }}
-            .status-processing {{ color: #2196f3; }}
-            .status-indexed {{ color: #4caf50; }}
+            .status-indexing {{ color: #2196f3; }}
+            .status-running-rules {{ color: #9c27b0; }}
+            .status-completed {{ color: #4caf50; }}
             .status-failed {{ color: #f44336; }}
             .btn {{
                 background: linear-gradient(145deg, #4caf50, #388e3c);
@@ -1591,6 +1618,8 @@ def render_file_list(case, files):
                             <th>Size</th>
                             <th>Uploaded By</th>
                             <th>Status</th>
+                            <th>Events</th>
+                            <th>Violations</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
