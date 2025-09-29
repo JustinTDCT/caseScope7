@@ -311,6 +311,25 @@ http.port: 9200
 discovery.type: single-node
 plugins.security.disabled: true
 bootstrap.memory_lock: false
+
+# Performance optimizations for faster startup
+action.auto_create_index: true
+cluster.routing.allocation.disk.threshold_enabled: false
+indices.fielddata.cache.size: 20%
+indices.memory.index_buffer_size: 10%
+
+# Disable unnecessary features for faster startup
+plugins.index_state_management.enabled: false
+plugins.alerting.enabled: false
+plugins.anomaly_detection.enabled: false
+plugins.asynchronous_search.enabled: false
+plugins.cross_cluster_replication.enabled: false
+plugins.index_management.enabled: false
+plugins.ml_commons.enabled: false
+plugins.notifications.enabled: false
+plugins.observability.enabled: false
+plugins.reports_scheduler.enabled: false
+plugins.sql.enabled: false
 EOF
     
     # Ensure security plugin is disabled and demo config is not installed
@@ -326,15 +345,33 @@ EOF
     # Set proper permissions for OpenSearch config
     chown -R casescope:casescope /opt/opensearch/config
     
-    # Set JVM options
-    cat > /opt/opensearch/config/jvm.options << 'EOF'
--Xms2g
--Xmx2g
+    # Set JVM options optimized for startup performance
+    TOTAL_MEM=$(free -m | awk 'NR==2{printf "%.0f", $2}')
+    if [ "$TOTAL_MEM" -lt 4096 ]; then
+        # Less than 4GB RAM - use 1GB heap
+        HEAP_SIZE="1g"
+    elif [ "$TOTAL_MEM" -lt 8192 ]; then
+        # 4-8GB RAM - use 2GB heap
+        HEAP_SIZE="2g"
+    else
+        # 8GB+ RAM - use 4GB heap
+        HEAP_SIZE="4g"
+    fi
+    
+    cat > /opt/opensearch/config/jvm.options << EOF
+-Xms${HEAP_SIZE}
+-Xmx${HEAP_SIZE}
 -XX:+UseG1GC
 -XX:G1HeapRegionSize=16m
 -XX:+DisableExplicitGC
+-XX:+UseStringDeduplication
+-XX:MaxGCPauseMillis=200
 -Djava.io.tmpdir=/opt/opensearch/tmp
+-Dlog4j2.formatMsgNoLookups=true
+-Djava.security.policy=file:///opt/opensearch/config/opensearch.policy
 EOF
+    
+    log "Configured JVM heap size: ${HEAP_SIZE} (Total RAM: ${TOTAL_MEM}MB)"
     
     # Create systemd service
     cat > /etc/systemd/system/opensearch.service << 'EOF'
@@ -356,7 +393,8 @@ ExecStart=/opt/opensearch/bin/opensearch
 LimitNOFILE=65535
 LimitNPROC=4096
 LimitAS=infinity
-TimeoutStopSec=0
+TimeoutStartSec=300
+TimeoutStopSec=60
 KillMode=process
 KillSignal=SIGTERM
 SendSIGKILL=no
@@ -511,12 +549,24 @@ start_services() {
     # Set environment variable to disable demo config before starting
     export DISABLE_INSTALL_DEMO_CONFIG=true
     systemctl start opensearch
-    sleep 15  # Wait for OpenSearch to start
-    if ! systemctl is-active --quiet opensearch; then
-        log_error "OpenSearch failed to start"
-        systemctl status opensearch
-        log_error "Check OpenSearch logs with: journalctl -u opensearch -n 50"
-    fi
+    
+    # Wait for OpenSearch to start with progress indication
+    log "Waiting for OpenSearch to initialize (this may take up to 5 minutes)..."
+    for i in {1..60}; do
+        if systemctl is-active --quiet opensearch; then
+            log "OpenSearch started successfully after ${i} attempts"
+            break
+        fi
+        if [ $i -eq 60 ]; then
+            log_error "OpenSearch failed to start within 5 minutes"
+            systemctl status opensearch
+            log_error "Check OpenSearch logs with: journalctl -u opensearch -n 50"
+            break
+        fi
+        sleep 5
+        echo -n "."
+    done
+    echo
     
     log "Starting caseScope web application..."
     systemctl start casescope-web
