@@ -1,7 +1,7 @@
 {
-  "version": "7.1.34",
+  "version": "7.1.35",
   "release_date": "2025-09-29",
-  "description": "File Management UI - Enhanced file list with action buttons, improved status labels, and role-based controls",
+  "description": "Bugfix - Fixed Python string escaping in delete button onclick handler",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -37,6 +37,7 @@
     "7.1.31": "Feature Complete - Case Management System with Case/CaseFile models, create/select/dashboard routes, case directories, and modern 3D UI",
     "7.1.32": "UI Polish - Simplified case table header styling, removed gradient for solid color background for cleaner appearance",
     "7.1.33": "File Upload System - Complete upload functionality with multi-file support (5 files, 3GB each), SHA256 hash verification, duplicate detection, MIME type detection, and file list management interface",
-    "7.1.34": "File Management UI - Fixed upload container width, changed status to 'Uploaded/Pending Indexing', reorganized file list columns (Name, Date, Size, Uploader, Status, Actions), added role-based action buttons (Details, Re-index, Re-run Rules, Delete)"
+    "7.1.34": "File Management UI - Fixed upload container width, changed status to 'Uploaded/Pending Indexing', reorganized file list columns (Name, Date, Size, Uploader, Status, Actions), added role-based action buttons (Details, Re-index, Re-run Rules, Delete)",
+    "7.1.35": "Bugfix - Fixed Python f-string escaping issue in delete button onclick handler causing database initialization failure"
   }
 }

@@ -1320,7 +1320,7 @@ def render_file_list(case, files):
             actions += f' <button class="btn-action btn-rules" onclick="confirmRerunRules({file.id})">⚡ Re-run Rules</button>'
         
         if current_user.role == 'administrator':
-            actions += f' <button class="btn-action btn-delete" onclick="confirmDelete({file.id}, \\'{file.original_filename}\\')">🗑️ Delete</button>'
+            actions += f' <button class="btn-action btn-delete" onclick="confirmDelete({file.id}, \'{file.original_filename}\')">🗑️ Delete</button>'
         
         file_rows += f'''
         <tr>
