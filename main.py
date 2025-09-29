@@ -528,7 +528,7 @@ def search():
                     "from": from_offset,
                     "size": per_page,
                     "sort": [
-                        {"System_TimeCreated_SystemTime": {"order": "desc", "unmapped_type": "date"}},
+                        {"System.TimeCreated.@SystemTime": {"order": "desc", "unmapped_type": "date"}},
                         {"_score": {"order": "desc"}}
                     ],
                     "_source": True
@@ -544,22 +544,51 @@ def search():
                 for hit in response['hits']['hits']:
                     source = hit['_source']
                     
-                    # Get timestamp from various possible fields
-                    timestamp = source.get('System_TimeCreated_SystemTime') or \
+                    # Get timestamp from various possible fields (XML attribute notation)
+                    timestamp = source.get('System.TimeCreated.@SystemTime') or \
+                               source.get('System.TimeCreated.SystemTime') or \
+                               source.get('System_TimeCreated_SystemTime') or \
                                source.get('@timestamp') or \
-                               source.get('TimeCreated') or \
                                'N/A'
+                    
+                    # Get Event ID (XML text node notation)
+                    event_id = source.get('System.EventID.#text') or \
+                              source.get('System.EventID') or \
+                              source.get('System_EventID') or \
+                              source.get('EventID') or \
+                              'N/A'
+                    
+                    # Get source filename from metadata
+                    metadata = source.get('_casescope_metadata', {})
+                    source_file = metadata.get('filename', 'Unknown')
+                    
+                    # Get computer name
+                    computer = source.get('System.Computer') or \
+                              source.get('System_Computer') or \
+                              source.get('Computer') or \
+                              'N/A'
+                    
+                    # Get channel
+                    channel = source.get('System.Channel') or \
+                             source.get('System_Channel') or \
+                             'N/A'
+                    
+                    # Get provider (XML attribute notation)
+                    provider = source.get('System.Provider.@Name') or \
+                              source.get('System.Provider.Name') or \
+                              source.get('System_Provider_Name') or \
+                              'N/A'
                     
                     results.append({
                         'index': hit['_index'],
                         'id': hit['_id'],
                         'score': hit['_score'],
                         'timestamp': timestamp,
-                        'event_id': source.get('System_EventID', source.get('EventID', 'N/A')),
-                        'source_file': source.get('source_filename', 'Unknown'),
-                        'computer': source.get('System_Computer', source.get('Computer', 'N/A')),
-                        'channel': source.get('System_Channel', 'N/A'),
-                        'provider': source.get('System_Provider_Name', 'N/A'),
+                        'event_id': event_id,
+                        'source_file': source_file,
+                        'computer': computer,
+                        'channel': channel,
+                        'provider': provider,
                         'full_data': source
                     })
                 
@@ -585,13 +614,15 @@ def build_opensearch_query(query_str):
     
     # Map common field names to actual indexed field names
     # This makes queries more user-friendly
+    # Note: XML attributes use @ and text nodes use #text
     field_mappings = {
-        'EventID': 'System.EventID',
+        'EventID': 'System.EventID.#text',
         'Computer': 'System.Computer',
         'Channel': 'System.Channel',
-        'Provider': 'System.Provider.Name',
+        'Provider': 'System.Provider.@Name',
         'Level': 'System.Level',
-        'Task': 'System.Task'
+        'Task': 'System.Task',
+        'TimeCreated': 'System.TimeCreated.@SystemTime'
     }
     
     # Replace field names in query (simple string replacement)
@@ -2783,7 +2814,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                         <h4>📖 Search Query Syntax</h4>
                         <ul>
                             <li><code>*</code> - Show ALL events (paginated)</li>
-                            <li><code>keyword</code> - Search for keyword in any field</li>
+                            <li><code>keyword</code> - Search for keyword anywhere in event data</li>
                             <li><code>field:value</code> - Search specific field (e.g., <code>EventID:5000</code>)</li>
                             <li><code>"exact phrase"</code> - Match exact phrase</li>
                             <li><code>term1 AND term2</code> - Both terms must exist (default)</li>
@@ -2792,22 +2823,30 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                             <li><code>(term1 OR term2) AND term3</code> - Use parentheses for grouping</li>
                             <li><code>field:*wildcard*</code> - Wildcard search</li>
                         </ul>
-                        <h4>🎯 Common Field Names</h4>
+                        <h4>💡 Pro Tips</h4>
+                        <ul>
+                            <li><strong>All event data is searchable!</strong> Every field is indexed as text</li>
+                            <li>Search for IPs, usernames, file paths, registry keys, etc.</li>
+                            <li>Click any green field tag in results to add it to your query</li>
+                            <li>Click a result row to expand and see ALL event details</li>
+                        </ul>
+                        <h4>🎯 Common Fields (Shortcuts)</h4>
                         <ul>
                             <li><code>EventID</code> - Event identifier (e.g., 4624, 4625, 5000)</li>
                             <li><code>Computer</code> - Computer/hostname</li>
                             <li><code>Channel</code> - Event log channel</li>
                             <li><code>Provider</code> - Event source/provider</li>
-                            <li><code>Level</code> - Event level (1=Critical, 2=Error, 3=Warning, 4=Info)</li>
+                            <li><code>Level</code> - Event level (2=Error, 3=Warning, 4=Info)</li>
                         </ul>
                         <h4>🎯 Example Queries</h4>
                         <ul>
-                            <li><code>*</code> - Show all events</li>
-                            <li><code>EventID:4624</code> - Find all successful logon events</li>
-                            <li><code>EventID:4625 AND Computer:DC01</code> - Failed logons on specific computer</li>
-                            <li><code>"Administrator" OR "admin"</code> - Search for admin-related terms</li>
-                            <li><code>EventID:(4624 OR 4625)</code> - Logon success or failure</li>
-                            <li><code>Level:2</code> - Show only error events</li>
+                            <li><code>*</code> - Browse all events</li>
+                            <li><code>192.168.1.100</code> - Find events containing this IP</li>
+                            <li><code>EventID:4624</code> - Successful logon events</li>
+                            <li><code>"C:\\Windows\\System32"</code> - Events with this path</li>
+                            <li><code>Administrator AND (EventID:4624 OR EventID:4625)</code> - Admin logons</li>
+                            <li><code>Level:2</code> - Only error events</li>
+                            <li><code>*.exe</code> - Events mentioning executable files</li>
                         </ul>
                     </div>
                 </div>
