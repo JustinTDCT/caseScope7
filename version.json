@@ -1,7 +1,7 @@
 {
-  "version": "7.1.30",
+  "version": "7.1.31",
   "release_date": "2025-09-29",
-  "description": "UI Polish - Reduced sidebar logo top padding by 50% for tighter header spacing and optimal visual balance",
+  "description": "Case Management System - Added complete case management with models, routes, and UI for creating, selecting, and managing forensic cases",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -33,6 +33,7 @@
     "7.1.27": "UI Layout Enhancement - Moved logo to top of navigation sidebar with styled version badge, improved header padding and alignment for better text spacing",
     "7.1.28": "UI Spacing Optimization - Reduced excessive vertical padding across all pages, tightened form spacing, and eliminated negative space for more compact layout",
     "7.1.29": "UI Ultra-Compact - Further tightened sidebar logo spacing, reduced menu item padding, and minimized all navigation margins for maximum content space",
-    "7.1.30": "UI Fine-Tuning - Reduced sidebar logo top padding from 10px to 5px (50% reduction) for optimal spacing and visual balance"
+    "7.1.30": "UI Fine-Tuning - Reduced sidebar logo top padding from 10px to 5px (50% reduction) for optimal spacing and visual balance",
+    "7.1.31": "Feature Complete - Case Management System with Case/CaseFile models, create/select/dashboard routes, case directories, and modern 3D UI"
   }
 }

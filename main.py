@@ -52,6 +52,65 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
 
+class Case(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True)
+    case_number = db.Column(db.String(50), unique=True, nullable=False)
+    priority = db.Column(db.String(20), default='Medium')  # Low, Medium, High, Critical
+    status = db.Column(db.String(20), default='Open')     # Open, In Progress, Closed, Archived
+    
+    # Relationships
+    creator = db.relationship('User', backref='created_cases')
+    
+    def __repr__(self):
+        return f'<Case {self.case_number}: {self.name}>'
+    
+    @property
+    def file_count(self):
+        """Get number of files in this case"""
+        return CaseFile.query.filter_by(case_id=self.id, is_deleted=False).count()
+    
+    @property
+    def total_events(self):
+        """Get total number of indexed events in this case"""
+        # This will be implemented when we add event indexing
+        return 0
+    
+    @property
+    def storage_size(self):
+        """Get total storage size for this case"""
+        files = CaseFile.query.filter_by(case_id=self.id, is_deleted=False).all()
+        return sum(f.file_size for f in files if f.file_size)
+
+class CaseFile(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    case_id = db.Column(db.Integer, db.ForeignKey('case.id'), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    original_filename = db.Column(db.String(255), nullable=False)
+    file_path = db.Column(db.String(500), nullable=False)
+    file_size = db.Column(db.BigInteger)
+    file_hash = db.Column(db.String(64))  # SHA256
+    mime_type = db.Column(db.String(100))
+    uploaded_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    indexed_at = db.Column(db.DateTime)
+    is_indexed = db.Column(db.Boolean, default=False)
+    is_deleted = db.Column(db.Boolean, default=False)
+    event_count = db.Column(db.Integer, default=0)
+    indexing_status = db.Column(db.String(20), default='Pending')  # Pending, Processing, Complete, Failed
+    
+    # Relationships
+    case = db.relationship('Case', backref='files')
+    uploader = db.relationship('User', backref='uploaded_files')
+    
+    def __repr__(self):
+        return f'<CaseFile {self.original_filename} in Case {self.case_id}>'
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -68,12 +127,16 @@ def debug_database():
     """Debug route to check database status"""
     try:
         user_count = User.query.count()
+        case_count = Case.query.count()
+        file_count = CaseFile.query.count()
         all_users = User.query.all()
         user_list = [{"id": u.id, "username": u.username, "email": u.email, "role": u.role, "active": u.is_active} for u in all_users]
         
         return f'''
         <h2>Database Debug Information</h2>
         <p><strong>Total Users:</strong> {user_count}</p>
+        <p><strong>Total Cases:</strong> {case_count}</p>
+        <p><strong>Total Files:</strong> {file_count}</p>
         <p><strong>Database File:</strong> {app.config['SQLALCHEMY_DATABASE_URI']}</p>
         <h3>All Users:</h3>
         <pre>{user_list}</pre>
@@ -87,6 +150,80 @@ def debug_database():
         <pre>{traceback.format_exc()}</pre>
         <p><a href="/login">Back to Login</a></p>
         '''
+
+@app.route('/case/create', methods=['GET', 'POST'])
+@login_required
+def create_case():
+    """Create a new case"""
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        description = request.form.get('description', '').strip()
+        priority = request.form.get('priority', 'Medium')
+        
+        if not name:
+            flash('Case name is required.', 'error')
+        else:
+            # Generate unique case number
+            import time
+            case_number = f"CASE-{int(time.time())}"
+            
+            try:
+                new_case = Case(
+                    name=name,
+                    description=description,
+                    case_number=case_number,
+                    priority=priority,
+                    created_by=current_user.id
+                )
+                db.session.add(new_case)
+                db.session.commit()
+                
+                # Create case directory
+                import os
+                case_dir = f"/opt/casescope/upload/{new_case.id}"
+                os.makedirs(case_dir, exist_ok=True)
+                
+                # Set active case in session
+                session['active_case_id'] = new_case.id
+                
+                flash(f'Case "{name}" created successfully!', 'success')
+                return redirect(url_for('case_dashboard'))
+                
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error creating case: {str(e)}', 'error')
+    
+    return render_case_form()
+
+@app.route('/case/select')
+@login_required
+def case_selection():
+    """Case selection page"""
+    cases = Case.query.filter_by(is_active=True).order_by(Case.updated_at.desc()).all()
+    active_case_id = session.get('active_case_id')
+    
+    return render_case_selection(cases, active_case_id)
+
+@app.route('/case/set/<int:case_id>')
+@login_required
+def set_active_case(case_id):
+    """Set the active case"""
+    case = Case.query.get_or_404(case_id)
+    session['active_case_id'] = case_id
+    flash(f'Active case set to: {case.name}', 'success')
+    return redirect(url_for('case_dashboard'))
+
+@app.route('/case/dashboard')
+@login_required
+def case_dashboard():
+    """Case-specific dashboard"""
+    active_case_id = session.get('active_case_id')
+    if not active_case_id:
+        flash('Please select a case first.', 'warning')
+        return redirect(url_for('case_selection'))
+    
+    case = Case.query.get_or_404(active_case_id)
+    return render_case_dashboard(case)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -503,7 +640,7 @@ def dashboard():
             
             <h3 class="menu-title">Navigation</h3>
             <a href="/dashboard" class="menu-item">📊 Dashboard</a>
-            <a href="/case-selection" class="menu-item placeholder">📁 Case Selection (Coming Soon)</a>
+            <a href="/case/select" class="menu-item">📁 Case Selection</a>
             <a href="/upload" class="menu-item placeholder">📤 Upload Files (Coming Soon)</a>
             <a href="/files" class="menu-item placeholder">📄 List Files (Coming Soon)</a>
             <a href="/search" class="menu-item placeholder">🔍 Search (Coming Soon)</a>
@@ -746,6 +883,263 @@ def change_password():
                 </div>
                 <button type="submit">Change Password</button>
             </form>
+        </div>
+    </body>
+    </html>
+    '''
+
+# UI Rendering Functions
+def render_case_form():
+    """Render case creation form"""
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Create New Case - caseScope 7.1</title>
+        <style>
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                padding: 0; 
+                min-height: 100vh; 
+                display: flex; 
+                align-items: center; 
+                justify-content: center;
+            }}
+            .form-container {{ 
+                max-width: 600px; 
+                width: 90%; 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 30px; 
+                border-radius: 20px; 
+                box-shadow: 
+                    0 20px 40px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .form-group {{ margin-bottom: 18px; }}
+            label {{ display: block; margin-bottom: 5px; color: rgba(255,255,255,0.9); font-weight: 500; }}
+            input, textarea, select {{ 
+                width: 100%; 
+                padding: 12px 16px; 
+                border: none; 
+                border-radius: 8px; 
+                background: rgba(255,255,255,0.1);
+                color: white;
+                font-size: 14px;
+                box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
+                border: 1px solid rgba(255,255,255,0.1);
+                box-sizing: border-box;
+            }}
+            textarea {{ resize: vertical; min-height: 80px; }}
+            button {{ 
+                background: linear-gradient(145deg, #4caf50, #388e3c); 
+                color: white; 
+                padding: 12px 24px; 
+                border: none; 
+                border-radius: 8px; 
+                cursor: pointer; 
+                font-size: 16px;
+                font-weight: 600;
+                box-shadow: 0 4px 8px rgba(76,175,80,0.3);
+                transition: all 0.3s ease;
+                margin-right: 10px;
+            }}
+            button:hover {{ 
+                background: linear-gradient(145deg, #66bb6a, #4caf50);
+                transform: translateY(-1px);
+            }}
+            .cancel-btn {{
+                background: linear-gradient(145deg, #757575, #616161);
+            }}
+            .cancel-btn:hover {{
+                background: linear-gradient(145deg, #9e9e9e, #757575);
+            }}
+            h2 {{ text-align: center; margin-bottom: 25px; font-weight: 300; }}
+        </style>
+    </head>
+    <body>
+        <div class="form-container">
+            <h2>Create New Case</h2>
+            <form method="POST">
+                <div class="form-group">
+                    <label for="name">Case Name *</label>
+                    <input type="text" id="name" name="name" required placeholder="Enter case name">
+                </div>
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <textarea id="description" name="description" placeholder="Enter case description (optional)"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="priority">Priority</label>
+                    <select id="priority" name="priority">
+                        <option value="Low">Low</option>
+                        <option value="Medium" selected>Medium</option>
+                        <option value="High">High</option>
+                        <option value="Critical">Critical</option>
+                    </select>
+                </div>
+                <div style="text-align: center; margin-top: 25px;">
+                    <button type="submit">Create Case</button>
+                    <button type="button" class="cancel-btn" onclick="window.location.href='/dashboard'">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </body>
+    </html>
+    '''
+
+def render_case_selection(cases, active_case_id):
+    """Render case selection page"""
+    case_options = ""
+    for case in cases:
+        selected = "selected" if case.id == active_case_id else ""
+        case_options += f'<option value="{case.id}" {selected}>{case.case_number} - {case.name}</option>'
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Case Selection - caseScope 7.1</title>
+        <style>
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                padding: 20px;
+                min-height: 100vh;
+            }}
+            .container {{ max-width: 800px; margin: 0 auto; }}
+            .header {{ text-align: center; margin-bottom: 30px; }}
+            .case-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }}
+            .case-card {{ 
+                background: linear-gradient(145deg, #3f51b5, #283593); 
+                padding: 20px; 
+                border-radius: 15px; 
+                box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+                cursor: pointer;
+                transition: all 0.3s ease;
+            }}
+            .case-card:hover {{ transform: translateY(-3px); box-shadow: 0 12px 24px rgba(0,0,0,0.4); }}
+            .case-card.active {{ border: 2px solid #4caf50; }}
+            .create-new {{ 
+                background: linear-gradient(145deg, #4caf50, #388e3c); 
+                text-align: center;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.2em;
+                font-weight: 600;
+            }}
+            .create-new:hover {{ background: linear-gradient(145deg, #66bb6a, #4caf50); }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Select Active Case</h1>
+                <p>Choose a case to work with or create a new one</p>
+            </div>
+            <div class="case-grid">
+                <div class="case-card create-new" onclick="window.location.href='/case/create'">
+                    <div>➕ Create New Case</div>
+                </div>
+                {"".join([f'''
+                <div class="case-card {'active' if case.id == active_case_id else ''}" onclick="window.location.href='/case/set/{case.id}'">
+                    <h3>{case.case_number}</h3>
+                    <h4>{case.name}</h4>
+                    <p>Priority: {case.priority} | Status: {case.status}</p>
+                    <p>Files: {case.file_count} | Created: {case.created_at.strftime('%Y-%m-%d')}</p>
+                    <p>By: {case.creator.username}</p>
+                </div>
+                ''' for case in cases])}
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
+
+def render_case_dashboard(case):
+    """Render case-specific dashboard"""
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Case Dashboard - {case.name}</title>
+        <style>
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                padding: 20px;
+                min-height: 100vh;
+            }}
+            .container {{ max-width: 1200px; margin: 0 auto; }}
+            .header {{ background: linear-gradient(145deg, #283593, #1e88e5); padding: 20px; border-radius: 15px; margin-bottom: 20px; }}
+            .tiles {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }}
+            .tile {{ 
+                background: linear-gradient(145deg, #3f51b5, #283593); 
+                padding: 20px; 
+                border-radius: 15px; 
+                box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+            }}
+            .actions {{ margin-top: 20px; text-align: center; }}
+            .btn {{ 
+                background: linear-gradient(145deg, #4caf50, #388e3c); 
+                color: white; 
+                padding: 10px 20px; 
+                text-decoration: none; 
+                border-radius: 8px; 
+                margin: 0 10px;
+                display: inline-block;
+                transition: all 0.3s ease;
+            }}
+            .btn:hover {{ background: linear-gradient(145deg, #66bb6a, #4caf50); transform: translateY(-1px); }}
+            .btn-secondary {{ background: linear-gradient(145deg, #2196f3, #1976d2); }}
+            .btn-secondary:hover {{ background: linear-gradient(145deg, #42a5f5, #2196f3); }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>📁 {case.name}</h1>
+                <p><strong>Case Number:</strong> {case.case_number}</p>
+                <p><strong>Description:</strong> {case.description or 'No description provided'}</p>
+                <p><strong>Priority:</strong> {case.priority} | <strong>Status:</strong> {case.status}</p>
+                <p><strong>Created:</strong> {case.created_at.strftime('%Y-%m-%d %H:%M')} by {case.creator.username}</p>
+            </div>
+            
+            <div class="tiles">
+                <div class="tile">
+                    <h3>📄 Files</h3>
+                    <p><strong>Total Files:</strong> {case.file_count}</p>
+                    <p><strong>Storage Used:</strong> {case.storage_size / (1024*1024):.1f} MB</p>
+                    <a href="/files" class="btn btn-secondary">View Files</a>
+                </div>
+                <div class="tile">
+                    <h3>📊 Events</h3>
+                    <p><strong>Total Events:</strong> {case.total_events:,}</p>
+                    <p><strong>Indexed:</strong> Coming Soon</p>
+                    <a href="/search" class="btn btn-secondary">Search Events</a>
+                </div>
+                <div class="tile">
+                    <h3>🛡️ Violations</h3>
+                    <p><strong>SIGMA Hits:</strong> Coming Soon</p>
+                    <p><strong>Last Scan:</strong> Not Yet Run</p>
+                    <a href="#" class="btn btn-secondary">View Violations</a>
+                </div>
+            </div>
+            
+            <div class="actions">
+                <a href="/upload" class="btn">📤 Upload Files</a>
+                <a href="/case/select" class="btn btn-secondary">🔄 Switch Case</a>
+                <a href="/dashboard" class="btn btn-secondary">🏠 Main Dashboard</a>
+            </div>
         </div>
     </body>
     </html>
