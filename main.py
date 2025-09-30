@@ -785,7 +785,7 @@ def download_sigma_rules():
             # Clone SigmaHQ repository (shallow clone for speed)
             flash('📥 Downloading SIGMA rules from GitHub...', 'info')
             result = subprocess.run(
-                ['git', 'clone', '--depth', '1', 'https://github.com/SigmaHQ/sigma.git', repo_path],
+                ['/usr/bin/git', 'clone', '--depth', '1', 'https://github.com/SigmaHQ/sigma.git', repo_path],
                 capture_output=True,
                 text=True,
                 timeout=300

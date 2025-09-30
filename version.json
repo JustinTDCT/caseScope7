@@ -1,7 +1,7 @@
 {
-  "version": "7.1.73",
+  "version": "7.1.74",
   "release_date": "2025-09-30",
-  "description": "Bugfix - Fixed sigma_rules route using incorrect render_template call instead of inline render_sigma_rules_page function causing server error with missing template",
+  "description": "Bugfix - Fixed SIGMA rules download using full path /usr/bin/git to avoid PATH issues in web service subprocess calls",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -76,6 +76,7 @@
     "7.1.70": "Bugfix - Fixed SIGMA navigation menu styling: added missing .menu-item and .menu-title CSS styles to SIGMA Rules and Violations pages' embedded stylesheets; menu links now render as styled buttons instead of plain text links; matches styling of other pages",
     "7.1.71": "Bugfix - Fixed Re-run Rules progress tracking: added 'Running Rules' status to JavaScript activeFiles detection so progress bars and auto-refresh work when manually re-running SIGMA rules; previously only detected Uploaded/Pending/Counting/Preparing statuses",
     "7.1.72": "Enhancement - Improved Re-run Rules functionality: added deletion of existing violations before re-running rules to prevent duplicates, enhanced task queuing with task ID logging and full traceback on errors in main.py, added verbose logging to process_sigma_rules Celery task (task ID, file details, case info, rule processing steps) for easier debugging via journalctl -u casescope-worker -f",
-    "7.1.73": "Bugfix - Fixed sigma_rules route using incorrect render_template('sigma_rules.html') call instead of inline render_sigma_rules_page() function; was causing werkzeug.routing.exceptions.BuildError server error due to missing template file and base.html reference to non-existent system_dashboard endpoint"
+    "7.1.73": "Bugfix - Fixed sigma_rules route using incorrect render_template('sigma_rules.html') call instead of inline render_sigma_rules_page() function; was causing werkzeug.routing.exceptions.BuildError server error due to missing template file and base.html reference to non-existent system_dashboard endpoint",
+    "7.1.74": "Bugfix - Fixed SIGMA rules download failing with 'No such file or directory: git' error by using full path /usr/bin/git in subprocess.run call instead of relying on PATH environment variable in web service"
   }
 }
