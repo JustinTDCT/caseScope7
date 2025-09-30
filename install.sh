@@ -334,6 +334,54 @@ handle_existing_data() {
     esac
 }
 
+# Update OpenSearch configuration for existing installations
+update_opensearch_config() {
+    log "Updating OpenSearch configuration..."
+    
+    # Check if OpenSearch config exists
+    if [ ! -f "/opt/opensearch/config/jvm.options" ]; then
+        log_warning "OpenSearch config not found - will be created during install"
+        return 0
+    fi
+    
+    # Check if already updated
+    if grep -q "max_clause_count" /opt/opensearch/config/jvm.options; then
+        CURRENT_VALUE=$(grep "max_clause_count" /opt/opensearch/config/jvm.options | cut -d'=' -f2)
+        
+        if [ "$CURRENT_VALUE" = "8192" ]; then
+            log "OpenSearch config already up to date (max_clause_count=8192)"
+            return 0
+        fi
+        
+        # Update existing value
+        log "Updating max_clause_count from $CURRENT_VALUE to 8192..."
+        sed -i 's/-Dindices.query.bool.max_clause_count=.*/-Dindices.query.bool.max_clause_count=8192/' /opt/opensearch/config/jvm.options
+        log "✓ Updated max_clause_count to 8192"
+    else
+        # Add the setting before the "Disable unnecessary features" comment
+        log "Adding max_clause_count=8192 to OpenSearch config..."
+        sed -i '/# Disable unnecessary features for faster startup/i # SIGMA rule support - increase max boolean clauses for complex queries\n-Dindices.query.bool.max_clause_count=8192\n' /opt/opensearch/config/jvm.options
+        log "✓ Added max_clause_count=8192 to OpenSearch config"
+    fi
+    
+    # Restart OpenSearch if it's running
+    if systemctl is-active --quiet opensearch; then
+        log "Restarting OpenSearch to apply configuration changes..."
+        systemctl restart opensearch
+        
+        # Wait for OpenSearch to come back up
+        log "Waiting for OpenSearch to start..."
+        for i in {1..30}; do
+            sleep 2
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:9200 2>/dev/null | grep -q 200; then
+                log "✓ OpenSearch restarted successfully"
+                return 0
+            fi
+        done
+        log_warning "OpenSearch is taking longer than expected to start"
+    fi
+}
+
 # Install OpenSearch
 install_opensearch() {
     log "Installing OpenSearch..."
@@ -498,6 +546,9 @@ EOF
 # Network optimizations
 -Dopensearch.networkaddress.cache.ttl=60
 -Dopensearch.networkaddress.cache.negative.ttl=10
+
+# SIGMA rule support - increase max boolean clauses for complex queries
+-Dindices.query.bool.max_clause_count=8192
 
 # Disable unnecessary features for faster startup
 -Dopensearch.scripting.update.ctx_in_params=false
@@ -1190,7 +1241,18 @@ main() {
     create_user
     handle_existing_data
     create_directories
-    install_opensearch
+    
+    # Install or update OpenSearch based on install type
+    if [ "$INSTALL_TYPE" = "clean" ]; then
+        install_opensearch
+    else
+        # For upgrade/reindex, update config first if OpenSearch exists
+        if [ -d "/opt/opensearch" ]; then
+            update_opensearch_config
+        fi
+        install_opensearch  # Will skip if already installed
+    fi
+    
     copy_application
     setup_python
     configure_services
