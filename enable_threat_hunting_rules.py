@@ -15,24 +15,13 @@ print()
 
 with app.app_context():
     # Find all rules from threat-hunting/windows directory
-    threat_hunting_rules = SigmaRule.query.filter(
-        SigmaRule.category.like('%threat-hunting%')
-    ).all()
-    
-    # Also try file_path if that's where it's stored
-    if not threat_hunting_rules:
-        threat_hunting_rules = SigmaRule.query.filter(
-            SigmaRule.file_path.like('%threat-hunting/windows%')
-        ).all()
-    
-    # Also try checking the rule content/metadata
-    if not threat_hunting_rules:
-        all_rules = SigmaRule.query.all()
-        threat_hunting_rules = [
-            rule for rule in all_rules 
-            if 'threat-hunting/windows' in (rule.file_path or '').lower()
-            or 'threat_hunting' in (rule.category or '').lower()
-        ]
+    # Check the rule_yaml content since that's where the file path is stored
+    all_rules = SigmaRule.query.all()
+    threat_hunting_rules = [
+        rule for rule in all_rules 
+        if 'threat-hunting/windows' in (rule.rule_yaml or '').lower()
+        or 'threat_hunting/windows' in (rule.category or '').lower()
+    ]
     
     if not threat_hunting_rules:
         print("No threat-hunting rules found!")
