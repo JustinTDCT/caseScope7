@@ -1,7 +1,7 @@
 {
-  "version": "7.2.10",
+  "version": "7.2.11",
   "release_date": "2025-09-30",
-  "description": "Bugfix - Added flash message display to case_selection and case_dashboard pages; messages now appear immediately when generated instead of accumulating until upload page visited",
+  "description": "Critical Bugfix - Fixed install order; clean install cleanup now runs FIRST before any installation preventing conflicts; create_user moved before install_chainsaw so casescope user exists when testing sudo -u casescope execution",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -112,6 +112,7 @@
     "7.2.7": "Critical Bugfix - Replaced 4 remaining Case.query.get_or_404() calls with db.session.get() + error handling; deprecated SQLAlchemy 1.x method was causing 404 errors on fresh installs; affected routes: case_dashboard (line 307), set_active_case (line 293), upload_files (line 334), list_files (line 478); now all routes use SQLAlchemy 2.0 syntax matching v7.1.96 fixes",
     "7.2.8": "Critical Bugfix - Chainsaw installation failure now FATAL; v7.2.0-7.2.7 allowed installer to continue even when install_chainsaw() failed (returned error code 1); this caused /opt/casescope/bin directory to never be created and Chainsaw binary missing; installer now checks install_chainsaw return code and exits with prominent error message if download/extraction/verification fails; prevents silent failures where SIGMA processing breaks due to missing binary",
     "7.2.9": "Critical Bugfix - Fixed Chainsaw permissions for casescope user; install_chainsaw() was setting ownership AFTER final verification (which ran as root), causing binary to be executable by root but not casescope user (worker); moved chown before final verification and added explicit sudo -u casescope test; case creation form now includes full sidebar layout matching dashboard/upload/search pages; fixes FileNotFoundError when worker tries to execute /opt/casescope/bin/chainsaw",
-    "7.2.10": "Bugfix - Flash message display on all pages; added get_flashed_messages() and flash CSS to render_case_selection() and render_case_dashboard() functions; messages (success/warning/error) now display immediately on the page where they're generated; fixes user complaint 'notifications not appearing when generated, all show up at once on upload files page'; flash messages include dismiss button and slide-in animation"
+    "7.2.10": "Bugfix - Flash message display on all pages; added get_flashed_messages() and flash CSS to render_case_selection() and render_case_dashboard() functions; messages (success/warning/error) now display immediately on the page where they're generated; fixes user complaint 'notifications not appearing when generated, all show up at once on upload files page'; flash messages include dismiss button and slide-in animation",
+    "7.2.11": "Critical Bugfix - Corrected installation order in main() function; Option 1 (clean install) now calls handle_existing_data() FIRST (before check_requirements/install_dependencies) to remove old services/data preventing conflicts; moved create_user() before install_chainsaw() so casescope user exists when installer runs 'sudo -u casescope /opt/casescope/bin/chainsaw --version' verification; upgrade/reindex still run handle_existing_data() after user creation for proper backup; fixes installer showing cleanup AFTER installation started and user test failing because user doesn't exist yet"
   }
 }

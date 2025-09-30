@@ -1413,9 +1413,15 @@ main() {
     # Get installation choice
     get_choice
     
+    # CRITICAL: For clean install, cleanup MUST happen FIRST before any installation
+    if [ "$INSTALL_TYPE" = "clean" ]; then
+        handle_existing_data  # This does the cleanup for clean installs
+    fi
+    
     # Run installation steps
     check_requirements
     install_dependencies
+    create_user  # MUST create user before testing Chainsaw permissions
     
     # Chainsaw installation is CRITICAL - fail if it doesn't work
     if ! install_chainsaw; then
@@ -1429,8 +1435,11 @@ main() {
         exit 1
     fi
     
-    create_user
-    handle_existing_data
+    # Handle data for upgrade/reindex (backup, not cleanup)
+    if [ "$INSTALL_TYPE" != "clean" ]; then
+        handle_existing_data
+    fi
+    
     create_directories
     
     # Install or update OpenSearch based on install type
