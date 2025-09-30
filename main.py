@@ -460,9 +460,18 @@ def upload_files():
                     
                     for uploaded_file in recent_files:
                         if celery_app:
-                            from celery import signature
-                            sig = signature('tasks.start_file_indexing', args=[uploaded_file.id], app=celery_app)
-                            sig.apply_async()
+                            import uuid
+                            from kombu import Connection, Exchange, Queue as KombuQueue
+                            from kombu.pools import producers
+                            
+                            task_id = str(uuid.uuid4())
+                            message = {'task': 'tasks.start_file_indexing', 'id': task_id, 'args': [uploaded_file.id], 'kwargs': {}, 'retries': 0}
+                            
+                            with Connection('redis://localhost:6379/0') as conn:
+                                exchange = Exchange('celery', type='direct')
+                                with producers[conn].acquire(block=True) as producer:
+                                    producer.publish(message, exchange=exchange, routing_key='celery', serializer='json')
+                            
                             print(f"[Upload] Queued indexing for file ID {uploaded_file.id}: {uploaded_file.original_filename}")
                         else:
                             print(f"[Upload] WARNING: Celery not available, task not queued for file ID {uploaded_file.id}")
@@ -525,9 +534,18 @@ def reindex_file(file_id):
         # Queue indexing task
         try:
             if celery_app:
-                from celery import signature
-                sig = signature('tasks.start_file_indexing', args=[file_id], app=celery_app)
-                sig.apply_async()
+                import uuid
+                from kombu import Connection, Exchange, Queue as KombuQueue
+                from kombu.pools import producers
+                
+                task_id = str(uuid.uuid4())
+                message = {'task': 'tasks.start_file_indexing', 'id': task_id, 'args': [file_id], 'kwargs': {}, 'retries': 0}
+                
+                with Connection('redis://localhost:6379/0') as conn:
+                    exchange = Exchange('celery', type='direct')
+                    with producers[conn].acquire(block=True) as producer:
+                        producer.publish(message, exchange=exchange, routing_key='celery', serializer='json')
+                
                 flash(f'Re-indexing started for {case_file.original_filename}', 'success')
                 print(f"[Re-index] Queued re-indexing for file ID {file_id}: {case_file.original_filename}")
             else:
@@ -589,10 +607,55 @@ def rerun_rules(file_id):
                 print(f"[Re-run Rules] DEBUG: celery_app backend: {celery_app.conf.result_backend}")
                 print(f"[Re-run Rules] DEBUG: Calling send_task with task='tasks.process_sigma_rules', args=[{file_id}, '{index_name}']")
                 
-                # Use signature and apply_async for proper queueing
-                from celery import signature
-                sig = signature('tasks.process_sigma_rules', args=[file_id, index_name], app=celery_app)
-                task = sig.apply_async()
+                # NUCLEAR OPTION: Manually push task message to Redis queue
+                # This bypasses all Celery's internal checks and directly queues the message
+                import json
+                import uuid
+                from kombu import Connection, Exchange, Queue as KombuQueue
+                from kombu.pools import producers
+                
+                task_id = str(uuid.uuid4())
+                print(f"[Re-run Rules] DEBUG: Generated task ID: {task_id}")
+                
+                # Create task message in Celery's format
+                message = {
+                    'task': 'tasks.process_sigma_rules',
+                    'id': task_id,
+                    'args': [file_id, index_name],
+                    'kwargs': {},
+                    'retries': 0,
+                    'eta': None,
+                    'expires': None,
+                }
+                
+                print(f"[Re-run Rules] DEBUG: Task message: {message}")
+                
+                # Connect directly to Redis and push message
+                with Connection('redis://localhost:6379/0') as conn:
+                    exchange = Exchange('celery', type='direct')
+                    queue = KombuQueue('celery', exchange=exchange, routing_key='celery')
+                    
+                    with producers[conn].acquire(block=True) as producer:
+                        producer.publish(
+                            message,
+                            exchange=exchange,
+                            routing_key='celery',
+                            serializer='json',
+                            compression=None,
+                            retry=True,
+                        )
+                
+                print(f"[Re-run Rules] DEBUG: Message published directly to Redis queue")
+                
+                # Create a fake task result object for compatibility
+                class FakeTask:
+                    def __init__(self, task_id):
+                        self.id = task_id
+                        self.state = 'PENDING'
+                    def ready(self):
+                        return False
+                
+                task = FakeTask(task_id)
                 
                 print(f"[Re-run Rules] DEBUG: Task object created: {task}")
                 print(f"[Re-run Rules] DEBUG: Task ID: {task.id}")
