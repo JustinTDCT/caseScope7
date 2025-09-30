@@ -1,7 +1,7 @@
 {
-  "version": "7.1.84",
+  "version": "7.1.85",
   "release_date": "2025-09-30",
-  "description": "Critical Fix - Registered task stubs in web app Celery instance to enable proper message serialization; Celery requires tasks to be registered (even as empty lambdas) for signature().apply_async() to create full task messages in Redis queue",
+  "description": "Bugfix - Fixed SyntaxError from lambda task stubs; replaced lambda functions with proper named stub functions that Celery can introspect without causing syntax errors in generated code",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -87,6 +87,7 @@
     "7.1.81": "Critical Fix - Fixed tasks not being queued to Redis: Celery send_task() was creating task metadata but not queuing actual messages because configuration didn't specify default queue/exchange/routing_key; added task_default_queue='celery', task_default_exchange='celery', task_default_routing_key='celery' to main.py Celery config; diagnostic revealed queue length stayed at 0 after send_task() calls",
     "7.1.82": "Critical Fix - Added task_default_exchange_type='direct' to both web (main.py) and worker (celery_app.py) Celery configurations; Celery requires explicit exchange_type when using custom routing to ensure web service and worker agree on message routing protocol; direct exchange type routes messages based on exact routing key match",
     "7.1.83": "Critical Fix - Replaced send_task() with signature().apply_async() throughout main.py (upload, re-index, re-run rules); send_task() with unregistered task name only creates result metadata in Redis but doesn't queue actual task message; signature() creates proper Celery task message and queues to Redis celery list for worker consumption; this is the root cause of queue length staying at 0",
-    "7.1.84": "Critical Fix - Registered task name stubs in web app's Celery instance using celery_app.task(name='tasks.X') with empty lambda implementations; Celery requires task to be registered locally (even if implementation is placeholder) for signature().apply_async() to properly serialize message body and queue to Redis; without registration, signature() behaves like send_task() creating only metadata; added task_create_missing_queues=True and task_default_delivery_mode=2 for persistence"
+    "7.1.84": "Critical Fix - Registered task name stubs in web app's Celery instance using celery_app.task(name='tasks.X') with empty lambda implementations; Celery requires task to be registered locally (even if implementation is placeholder) for signature().apply_async() to properly serialize message body and queue to Redis; without registration, signature() behaves like send_task() creating only metadata; added task_create_missing_queues=True and task_default_delivery_mode=2 for persistence",
+    "7.1.85": "Bugfix - Fixed worker SyntaxError 'def <lambda>(self, *args, **kwargs): invalid syntax' caused by lambda task stubs; Celery's head_from_fun() introspection generates code from function signature and cannot handle lambda syntax; replaced with proper named stub functions (_stub_start_file_indexing, _stub_process_sigma_rules) that Celery can properly introspect and serialize"
   }
 }

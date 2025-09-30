@@ -41,8 +41,15 @@ try:
     
     # Register task signatures (not implementations) so Celery knows they exist
     # This allows proper message serialization without importing actual task code
-    celery_app.task(name='tasks.start_file_indexing', bind=True)(lambda self, *args, **kwargs: None)
-    celery_app.task(name='tasks.process_sigma_rules', bind=True)(lambda self, *args, **kwargs: None)
+    @celery_app.task(name='tasks.start_file_indexing', bind=True)
+    def _stub_start_file_indexing(self, *args, **kwargs):
+        """Stub - actual implementation is in tasks.py"""
+        pass
+    
+    @celery_app.task(name='tasks.process_sigma_rules', bind=True)
+    def _stub_process_sigma_rules(self, *args, **kwargs):
+        """Stub - actual implementation is in tasks.py"""
+        pass
     
 except ImportError:
     celery_app = None  # Celery not available (development mode)
