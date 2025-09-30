@@ -126,7 +126,6 @@ def on_task_received(request=None, **kwargs):
     logger.info(f"[TASK RECEIVED] Args: {request.argsrepr}")
     logger.info(f"[TASK RECEIVED] Kwargs: {request.kwargsrepr}")
     logger.info(f"[TASK RECEIVED] ETA: {request.eta}")
-    logger.info(f"[TASK RECEIVED] Retries: {request.retries}")
     logger.info("="*80)
 
 @before_task_publish.connect
