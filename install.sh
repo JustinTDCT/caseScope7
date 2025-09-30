@@ -216,20 +216,31 @@ install_chainsaw() {
     
     log "Download successful ($(du -h chainsaw_x86_64-unknown-linux-gnu.tar.gz | cut -f1)), extracting..."
     
-    # Extract the binary directly from tarball
+    # Extract the tarball (creates chainsaw/ directory)
     tar -xzf chainsaw_x86_64-unknown-linux-gnu.tar.gz
     
-    if [ ! -f "chainsaw" ]; then
-        log_error "Extraction failed - chainsaw binary not found"
+    if [ ! -d "chainsaw" ]; then
+        log_error "Extraction failed - chainsaw directory not found"
         ls -la /tmp/chainsaw* || true
         return 1
     fi
     
-    log "✓ Extracted Chainsaw binary"
-    ls -lh chainsaw
+    log "✓ Extracted Chainsaw"
+    ls -lh chainsaw/
+    
+    # Find the binary inside the extracted directory
+    if [ -f "chainsaw/chainsaw" ]; then
+        CHAINSAW_BIN="chainsaw/chainsaw"
+    else
+        log_error "Chainsaw binary not found in extracted directory"
+        ls -la chainsaw/
+        return 1
+    fi
+    
+    log "Found binary: $CHAINSAW_BIN"
     
     # Move binary to casescope bin
-    cp chainsaw /opt/casescope/bin/chainsaw
+    cp "$CHAINSAW_BIN" /opt/casescope/bin/chainsaw
     chmod +x /opt/casescope/bin/chainsaw
     
     # Verify it's actually there and executable
@@ -244,23 +255,48 @@ install_chainsaw() {
         return 1
     fi
     
-    # Download Chainsaw mappings separately (for sigma-event-logs-all.yml)
-    log "Downloading Chainsaw SIGMA mappings..."
-    mkdir -p /opt/casescope/chainsaw/mappings
-    cd /opt/casescope/chainsaw/mappings
-    
-    # Download the sigma-event-logs-all.yml mapping file from GitHub repo
-    wget -q https://raw.githubusercontent.com/WithSecureLabs/chainsaw/master/mappings/sigma/sigma-event-logs-all.yml -O sigma-event-logs-all.yml
-    
-    if [ -f sigma-event-logs-all.yml ]; then
-        log "✓ Downloaded sigma-event-logs-all.yml mapping"
+    # Check if the tarball includes mappings and sigma rules
+    if [ -d "chainsaw/mappings" ]; then
+        log "Found Chainsaw mappings in tarball, installing..."
+        mkdir -p /opt/casescope/chainsaw
+        cp -r chainsaw/mappings /opt/casescope/chainsaw/
+        log "✓ Installed Chainsaw mappings from tarball"
+        
+        # Verify the sigma-event-logs-all.yml file exists
+        if [ -f /opt/casescope/chainsaw/mappings/sigma/sigma-event-logs-all.yml ]; then
+            log "✓ Found sigma-event-logs-all.yml at mappings/sigma/sigma-event-logs-all.yml"
+        elif [ -f /opt/casescope/chainsaw/mappings/sigma-event-logs-all.yml ]; then
+            log "✓ Found sigma-event-logs-all.yml at mappings/sigma-event-logs-all.yml"
+        else
+            log_warning "sigma-event-logs-all.yml not found in tarball mappings, downloading..."
+            mkdir -p /opt/casescope/chainsaw/mappings
+            wget -q https://raw.githubusercontent.com/WithSecureLabs/chainsaw/master/mappings/sigma/sigma-event-logs-all.yml -O /opt/casescope/chainsaw/mappings/sigma-event-logs-all.yml
+        fi
     else
-        log_warning "Could not download mappings, will use default Chainsaw behavior"
+        # Download mappings separately if not in tarball
+        log "Downloading Chainsaw SIGMA mappings from GitHub..."
+        mkdir -p /opt/casescope/chainsaw/mappings
+        wget -q https://raw.githubusercontent.com/WithSecureLabs/chainsaw/master/mappings/sigma/sigma-event-logs-all.yml -O /opt/casescope/chainsaw/mappings/sigma-event-logs-all.yml
+        
+        if [ -f /opt/casescope/chainsaw/mappings/sigma-event-logs-all.yml ]; then
+            log "✓ Downloaded sigma-event-logs-all.yml mapping"
+        else
+            log_warning "Could not download mappings, Chainsaw will use default behavior"
+        fi
+    fi
+    
+    # Check if tarball includes SIGMA rules
+    if [ -d "chainsaw/sigma" ]; then
+        log "Found SIGMA rules in tarball, installing..."
+        cp -r chainsaw/sigma /opt/casescope/chainsaw/rules
+        log "✓ Installed SIGMA rules from tarball"
+    else
+        log "No SIGMA rules in tarball (we use our own from database)"
     fi
     
     # Clean up
     cd /tmp
-    rm -f chainsaw chainsaw_x86_64-unknown-linux-gnu.tar.gz
+    rm -rf chainsaw chainsaw_x86_64-unknown-linux-gnu.tar.gz
     
     # Set ownership
     chown -R casescope:casescope /opt/casescope/bin
