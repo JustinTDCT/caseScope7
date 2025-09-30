@@ -911,7 +911,8 @@ def download_sigma_rules():
                                 category = logsource.get('category', logsource.get('product', 'unknown'))
                                 
                                 # Auto-enable threat-hunting rules from rules-threat-hunting/windows directory
-                                is_threat_hunting = 'rules-threat-hunting' in file_path and '/windows/' in file_path
+                                # Path format: .../sigma/rules/rules-threat-hunting/windows/...
+                                is_threat_hunting = 'threat-hunting' in file_path and 'windows' in file_path.lower()
                                 
                                 # Create rule
                                 rule = SigmaRule(
@@ -944,7 +945,10 @@ def download_sigma_rules():
                 # Final commit
                 db.session.commit()
             
-            flash(f'✓ Import complete: {imported_count} new rules added, {skipped_count} duplicates skipped, {error_count} errors', 'success')
+            # Count auto-enabled rules
+            enabled_count = SigmaRule.query.filter_by(is_enabled=True).count()
+            
+            flash(f'✓ Import complete: {imported_count} new rules added ({enabled_count} enabled), {skipped_count} duplicates skipped, {error_count} errors', 'success')
             return redirect(url_for('sigma_rules'))
     
     except subprocess.TimeoutExpired:
