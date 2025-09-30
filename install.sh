@@ -336,46 +336,27 @@ handle_existing_data() {
 
 # Update OpenSearch configuration for existing installations
 update_opensearch_config() {
-    log "Updating OpenSearch configuration..."
+    log "Updating OpenSearch configuration for SIGMA rule support..."
     
     # Check if OpenSearch config exists
-    if [ ! -f "/opt/opensearch/config/jvm.options" ]; then
+    if [ ! -f "/opt/opensearch/config/opensearch.yml" ]; then
         log_warning "OpenSearch config not found - will be created during install"
         return 0
     fi
     
-    local CONFIG_CHANGED=false
+    # Remove any existing max_clause_count setting (for idempotency)
+    sed -i '/^indices\.query\.bool\.max_clause_count:/d' /opt/opensearch/config/opensearch.yml
     
-    # Check if already updated
-    if grep -q "max_clause_count" /opt/opensearch/config/jvm.options; then
-        CURRENT_VALUE=$(grep "max_clause_count" /opt/opensearch/config/jvm.options | cut -d'=' -f2)
-        
-        if [ "$CURRENT_VALUE" = "8192" ]; then
-            log "OpenSearch config already has max_clause_count=8192"
-            # Still need to verify the RUNNING process has this value
-            # Config file may be correct but process may have old value
-            CONFIG_CHANGED=false
-        else
-            # Update existing value
-            log "Updating max_clause_count from $CURRENT_VALUE to 8192..."
-            sed -i 's/-Dindices.query.bool.max_clause_count=.*/-Dindices.query.bool.max_clause_count=8192/' /opt/opensearch/config/jvm.options
-            log "✓ Updated max_clause_count to 8192 in config file"
-            CONFIG_CHANGED=true
-        fi
-    else
-        # Add the setting to the end of the file
-        log "Adding max_clause_count=8192 to OpenSearch config..."
-        echo "" >> /opt/opensearch/config/jvm.options
-        echo "# SIGMA rule support - increase max boolean clauses for complex queries" >> /opt/opensearch/config/jvm.options
-        echo "-Dindices.query.bool.max_clause_count=8192" >> /opt/opensearch/config/jvm.options
-        log "✓ Added max_clause_count=8192 to OpenSearch config"
-        CONFIG_CHANGED=true
-    fi
+    # Add the setting to opensearch.yml (cluster config, not JVM option)
+    log "Setting indices.query.bool.max_clause_count=8192 in opensearch.yml..."
+    echo "" >> /opt/opensearch/config/opensearch.yml
+    echo "# SIGMA rule support - increase max boolean clauses for complex queries" >> /opt/opensearch/config/opensearch.yml
+    echo "indices.query.bool.max_clause_count: 8192" >> /opt/opensearch/config/opensearch.yml
+    log "✓ Added max_clause_count=8192 to OpenSearch cluster config"
     
-    # ALWAYS restart OpenSearch to ensure JVM picks up the config
-    # Even if config file already has 8192, the running process might not
+    # Restart OpenSearch to apply changes
     if systemctl is-active --quiet opensearch; then
-        log "Restarting OpenSearch to ensure JVM option is applied..."
+        log "Restarting OpenSearch to apply configuration changes..."
         systemctl restart opensearch
     else
         log "Starting OpenSearch with new configuration..."
@@ -384,10 +365,18 @@ update_opensearch_config() {
     
     # Wait for OpenSearch to come back up
     log "Waiting for OpenSearch to start..."
-    for i in {1..30}; do
-        sleep 2
-        if curl -s -o /dev/null -w "%{http_code}" http://localhost:9200 2>/dev/null | grep -q 200; then
-            log "✓ OpenSearch started successfully with max_clause_count=8192"
+    for i in {1..60}; do
+        sleep 1
+        if curl -fsS http://127.0.0.1:9200 >/dev/null 2>&1; then
+            log "✓ OpenSearch started successfully"
+            
+            # Verify the setting was applied
+            ACTUAL_VALUE=$(curl -s 'http://127.0.0.1:9200/_nodes?filter_path=nodes.*.settings.indices.query.bool.max_clause_count' 2>/dev/null | grep -o '"max_clause_count":"[0-9]*"' | cut -d'"' -f4 | head -1)
+            if [ "$ACTUAL_VALUE" = "8192" ]; then
+                log "✓ Verified: max_clause_count is set to 8192 in running cluster"
+            else
+                log_warning "Warning: max_clause_count is $ACTUAL_VALUE (expected 8192)"
+            fi
             return 0
         fi
     done
@@ -486,6 +475,9 @@ plugins.index_state_management.enabled: false
 logger.level: WARN
 logger.org.opensearch.discovery: ERROR
 logger.org.opensearch.cluster.service: ERROR
+
+# SIGMA rule support - increase max boolean clauses for complex queries
+indices.query.bool.max_clause_count: 8192
 EOF
     
     # Ensure security plugin is disabled and demo config is not installed
@@ -558,9 +550,6 @@ EOF
 # Network optimizations
 -Dopensearch.networkaddress.cache.ttl=60
 -Dopensearch.networkaddress.cache.negative.ttl=10
-
-# SIGMA rule support - increase max boolean clauses for complex queries
--Dindices.query.bool.max_clause_count=8192
 
 # Disable unnecessary features for faster startup
 -Dopensearch.scripting.update.ctx_in_params=false
