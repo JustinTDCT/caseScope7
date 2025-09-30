@@ -1,7 +1,7 @@
 {
-  "version": "7.1.71",
+  "version": "7.1.72",
   "release_date": "2025-09-30",
-  "description": "Bugfix - Fixed Re-run Rules progress tracking by adding 'Running Rules' status to activeFiles detection in JavaScript auto-refresh logic",
+  "description": "Enhancement - Improved Re-run Rules functionality with comprehensive logging and violation cleanup: added deletion of existing violations before re-running rules, enhanced task queuing with task ID logging and full traceback on errors, added verbose logging to process_sigma_rules task showing task ID, file details, case info, and processing steps for better debugging via journalctl",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -74,6 +74,7 @@
     "7.1.68": "Bugfix - Fixed pyparsing dependency version conflict: pinned pyparsing==3.0.9 in requirements.txt to resolve ImportError (cannot import 'List' from pyparsing) that was preventing Celery worker from starting; newer pyparsing versions (3.1.0+) removed the List class that pySigma 0.10.9 depends on",
     "7.1.69": "Bugfix - Fixed pySigma backend class name: changed OpensearchBackend to OpensearchLuceneBackend in tasks.py for compatibility with pysigma-backend-opensearch 1.0.1; the backend module reorganized class names and OpensearchLuceneBackend is the correct import for Lucene query syntax generation",
     "7.1.70": "Bugfix - Fixed SIGMA navigation menu styling: added missing .menu-item and .menu-title CSS styles to SIGMA Rules and Violations pages' embedded stylesheets; menu links now render as styled buttons instead of plain text links; matches styling of other pages",
-    "7.1.71": "Bugfix - Fixed Re-run Rules progress tracking: added 'Running Rules' status to JavaScript activeFiles detection so progress bars and auto-refresh work when manually re-running SIGMA rules; previously only detected Uploaded/Pending/Counting/Preparing statuses"
+    "7.1.71": "Bugfix - Fixed Re-run Rules progress tracking: added 'Running Rules' status to JavaScript activeFiles detection so progress bars and auto-refresh work when manually re-running SIGMA rules; previously only detected Uploaded/Pending/Counting/Preparing statuses",
+    "7.1.72": "Enhancement - Improved Re-run Rules functionality: added deletion of existing violations before re-running rules to prevent duplicates, enhanced task queuing with task ID logging and full traceback on errors in main.py, added verbose logging to process_sigma_rules Celery task (task ID, file details, case info, rule processing steps) for easier debugging via journalctl -u casescope-worker -f"
   }
 }

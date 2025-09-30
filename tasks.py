@@ -284,21 +284,32 @@ def process_sigma_rules(self, file_id, index_name):
         index_name: OpenSearch index to scan
     """
     logger.info("="*80)
-    logger.info(f"STARTING SIGMA RULE PROCESSING - File ID: {file_id}, Index: {index_name}")
+    logger.info(f"SIGMA RULE PROCESSING TASK RECEIVED")
+    logger.info(f"Task ID: {self.request.id}")
+    logger.info(f"File ID: {file_id}")
+    logger.info(f"Index Name: {index_name}")
     logger.info("="*80)
     
     with app.app_context():
         try:
+            logger.info(f"Querying database for CaseFile ID {file_id}...")
             case_file = CaseFile.query.get(file_id)
             if not case_file:
                 logger.error(f"File ID {file_id} not found in database")
                 return {'status': 'error', 'message': f'File ID {file_id} not found'}
             
+            logger.info(f"Found file: {case_file.original_filename}, Case ID: {case_file.case_id}")
+            logger.info(f"Current status: {case_file.indexing_status}, Indexed: {case_file.is_indexed}")
+            
             case = Case.query.get(case_file.case_id)
             if not case:
+                logger.error(f"Case ID {case_file.case_id} not found in database")
                 return {'status': 'error', 'message': f'Case ID {case_file.case_id} not found'}
             
+            logger.info(f"Processing rules for case: {case.name}")
+            
             # Get all enabled SIGMA rules
+            logger.info("Querying for enabled SIGMA rules...")
             enabled_rules = SigmaRule.query.filter_by(is_enabled=True).all()
             logger.info(f"Found {len(enabled_rules)} enabled SIGMA rules to process")
             

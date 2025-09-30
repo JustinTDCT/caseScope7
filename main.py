@@ -515,10 +515,18 @@ def rerun_rules(file_id):
         return redirect(url_for('list_files'))
     
     try:
+        # Delete existing violations for this file
+        existing_violations = SigmaViolation.query.filter_by(file_id=file_id).all()
+        if existing_violations:
+            print(f"[Re-run Rules] Deleting {len(existing_violations)} existing violations for file ID {file_id}")
+            for violation in existing_violations:
+                db.session.delete(violation)
+        
         # Reset violation status
         case_file.indexing_status = 'Running Rules'
         case_file.violation_count = 0
         db.session.commit()
+        print(f"[Re-run Rules] Reset status to 'Running Rules' for file ID {file_id}")
         
         # Queue SIGMA rule processing
         try:
@@ -529,11 +537,13 @@ def rerun_rules(file_id):
             name = name.replace('%', '_').replace(' ', '_').replace('-', '_').lower()[:100]
             index_name = f"case{case_file.case_id}_{name}"
             
-            process_sigma_rules.delay(file_id, index_name)
+            task = process_sigma_rules.delay(file_id, index_name)
             flash(f'Re-running SIGMA rules for {case_file.original_filename}', 'success')
-            print(f"[Re-run Rules] Queued rule processing for file ID {file_id}: {case_file.original_filename}")
+            print(f"[Re-run Rules] Queued rule processing task {task.id} for file ID {file_id}: {case_file.original_filename}, index: {index_name}")
         except Exception as e:
             print(f"[Re-run Rules] Error queuing task: {e}")
+            import traceback
+            traceback.print_exc()
             flash(f'Rule processing queued but worker may not be running. Check logs.', 'warning')
         
     except Exception as e:
