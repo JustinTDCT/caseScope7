@@ -1,7 +1,7 @@
 {
-  "version": "7.1.89",
+  "version": "7.1.90",
   "release_date": "2025-09-30",
-  "description": "Critical Fix - Increased OpenSearch max_clause_count from 1024 to 8192 to support complex SIGMA rules; many SigmaHQ rules generate queries with >1024 boolean clauses causing TooManyNestedClauses errors; tasks now reach worker and process successfully but were failing at OpenSearch query execution; added -Dindices.query.bool.max_clause_count=8192 to JVM options; installer options 2/3 automatically update existing OpenSearch config without full reinstall",
+  "description": "Critical Fix - Fixed OpenSearch config update for existing installations; update_opensearch_config() now uses echo append instead of sed insert (which failed on old configs), and always starts/restarts OpenSearch after config changes (previously only restarted if already running, leaving new JVM option unapplied); ensures max_clause_count=8192 is properly applied for options 2/3",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",

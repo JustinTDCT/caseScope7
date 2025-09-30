@@ -344,19 +344,24 @@ update_opensearch_config() {
         return 0
     fi
     
+    local CONFIG_CHANGED=false
+    
     # Check if already updated
     if grep -q "max_clause_count" /opt/opensearch/config/jvm.options; then
         CURRENT_VALUE=$(grep "max_clause_count" /opt/opensearch/config/jvm.options | cut -d'=' -f2)
         
         if [ "$CURRENT_VALUE" = "8192" ]; then
-            log "OpenSearch config already up to date (max_clause_count=8192)"
-            return 0
+            log "OpenSearch config already has max_clause_count=8192"
+            # Still need to verify the RUNNING process has this value
+            # Config file may be correct but process may have old value
+            CONFIG_CHANGED=false
+        else
+            # Update existing value
+            log "Updating max_clause_count from $CURRENT_VALUE to 8192..."
+            sed -i 's/-Dindices.query.bool.max_clause_count=.*/-Dindices.query.bool.max_clause_count=8192/' /opt/opensearch/config/jvm.options
+            log "✓ Updated max_clause_count to 8192 in config file"
+            CONFIG_CHANGED=true
         fi
-        
-        # Update existing value
-        log "Updating max_clause_count from $CURRENT_VALUE to 8192..."
-        sed -i 's/-Dindices.query.bool.max_clause_count=.*/-Dindices.query.bool.max_clause_count=8192/' /opt/opensearch/config/jvm.options
-        log "✓ Updated max_clause_count to 8192"
     else
         # Add the setting to the end of the file
         log "Adding max_clause_count=8192 to OpenSearch config..."
@@ -364,24 +369,29 @@ update_opensearch_config() {
         echo "# SIGMA rule support - increase max boolean clauses for complex queries" >> /opt/opensearch/config/jvm.options
         echo "-Dindices.query.bool.max_clause_count=8192" >> /opt/opensearch/config/jvm.options
         log "✓ Added max_clause_count=8192 to OpenSearch config"
+        CONFIG_CHANGED=true
     fi
     
-    # Restart OpenSearch if it's running
+    # ALWAYS restart OpenSearch to ensure JVM picks up the config
+    # Even if config file already has 8192, the running process might not
     if systemctl is-active --quiet opensearch; then
-        log "Restarting OpenSearch to apply configuration changes..."
+        log "Restarting OpenSearch to ensure JVM option is applied..."
         systemctl restart opensearch
-        
-        # Wait for OpenSearch to come back up
-        log "Waiting for OpenSearch to start..."
-        for i in {1..30}; do
-            sleep 2
-            if curl -s -o /dev/null -w "%{http_code}" http://localhost:9200 2>/dev/null | grep -q 200; then
-                log "✓ OpenSearch restarted successfully"
-                return 0
-            fi
-        done
-        log_warning "OpenSearch is taking longer than expected to start"
+    else
+        log "Starting OpenSearch with new configuration..."
+        systemctl start opensearch
     fi
+    
+    # Wait for OpenSearch to come back up
+    log "Waiting for OpenSearch to start..."
+    for i in {1..30}; do
+        sleep 2
+        if curl -s -o /dev/null -w "%{http_code}" http://localhost:9200 2>/dev/null | grep -q 200; then
+            log "✓ OpenSearch started successfully with max_clause_count=8192"
+            return 0
+        fi
+    done
+    log_warning "OpenSearch is taking longer than expected to start"
 }
 
 # Install OpenSearch
