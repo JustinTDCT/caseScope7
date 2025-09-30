@@ -4314,7 +4314,9 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
     '''
 
 def render_case_form():
-    """Render case creation form"""
+    """Render case creation form with sidebar layout"""
+    sidebar_menu = render_sidebar_menu('case_select')
+    
     return f'''
     <!DOCTYPE html>
     <html>
@@ -4326,11 +4328,68 @@ def render_case_form():
                 background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
                 color: white; 
                 margin: 0; 
-                padding: 0; 
+                display: flex;
                 min-height: 100vh; 
-                display: flex; 
-                align-items: center; 
-                justify-content: center;
+            }}
+            .sidebar {{ 
+                width: 280px; 
+                background: linear-gradient(145deg, #303f9f, #283593); 
+                padding: 20px; 
+                box-shadow: 
+                    5px 0 20px rgba(0,0,0,0.4),
+                    inset -1px 0 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+            }}
+            .main-content {{ flex: 1; display: flex; align-items: center; justify-content: center; }}
+            .sidebar-logo {{
+                text-align: center;
+                font-size: 2.2em;
+                font-weight: bold;
+                margin-bottom: 5px;
+                padding: 5px;
+            }}
+            .version-badge {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 4px 12px;
+                border-radius: 12px;
+                font-size: 0.75em;
+                display: inline-block;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                margin-top: 5px;
+            }}
+            .menu-title {{
+                color: rgba(255,255,255,0.6);
+                font-size: 0.85em;
+                font-weight: 600;
+                text-transform: uppercase;
+                margin: 15px 0 8px 0;
+                letter-spacing: 1px;
+            }}
+            .menu-item {{
+                display: block;
+                padding: 10px 15px;
+                margin: 4px 0;
+                background: rgba(255,255,255,0.05);
+                border-radius: 8px;
+                color: white;
+                text-decoration: none;
+                transition: all 0.3s;
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .menu-item:hover {{
+                background: rgba(255,255,255,0.15);
+                transform: translateX(5px);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            }}
+            .menu-item.active {{
+                background: linear-gradient(145deg, #1e88e5, #1976d2);
+                border-color: rgba(255,255,255,0.2);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            }}
+            .menu-item.placeholder {{
+                opacity: 0.5;
+                cursor: not-allowed;
             }}
             .form-container {{ 
                 max-width: 600px; 
@@ -4386,9 +4445,17 @@ def render_case_form():
         </style>
     </head>
     <body>
-        <div class="form-container">
-            <h2>Create New Case</h2>
-            <form method="POST">
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                📁 caseScope
+                <div class="version-badge">v{APP_VERSION}</div>
+            </div>
+            {sidebar_menu}
+        </div>
+        <div class="main-content">
+            <div class="form-container">
+                <h2>Create New Case</h2>
+                <form method="POST">
                 <div class="form-group">
                     <label for="name">Case Name *</label>
                     <input type="text" id="name" name="name" required placeholder="Enter case name">
@@ -4411,6 +4478,7 @@ def render_case_form():
                     <button type="button" class="cancel-btn" onclick="window.location.href='/dashboard'">Cancel</button>
                 </div>
             </form>
+            </div>
         </div>
     </body>
     </html>
@@ -4418,6 +4486,20 @@ def render_case_form():
 
 def render_case_selection(cases, active_case_id):
     """Render case selection page with integrated layout"""
+    # Get flash messages
+    from flask import get_flashed_messages
+    flash_messages_html = ""
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        icon = "⚠️" if category == "warning" else "❌" if category == "error" else "✅"
+        flash_messages_html += f'''
+        <div class="flash-message flash-{category}">
+            <span class="flash-icon">{icon}</span>
+            <span class="flash-text">{message}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        '''
+    
     case_rows = ""
     for case in cases:
         active_class = "active-case" if case.id == active_case_id else ""
@@ -4632,6 +4714,54 @@ def render_case_selection(cases, active_case_id):
             .status-in-progress {{ color: #2196f3; }}
             .status-closed {{ color: #9e9e9e; }}
             .status-archived {{ color: #757575; }}
+            .flash-message {{
+                padding: 15px 20px;
+                margin: 20px 0;
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                animation: slideIn 0.3s ease;
+            }}
+            .flash-success {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                border: 1px solid rgba(255,255,255,0.2);
+            }}
+            .flash-warning {{
+                background: linear-gradient(145deg, #ff9800, #f57c00);
+                border: 1px solid rgba(255,255,255,0.2);
+            }}
+            .flash-error {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                border: 1px solid rgba(255,255,255,0.2);
+            }}
+            .flash-icon {{ font-size: 1.5em; flex-shrink: 0; }}
+            .flash-text {{ flex: 1; font-size: 1em; line-height: 1.4; }}
+            .flash-close {{
+                background: rgba(255,255,255,0.2);
+                border: none;
+                color: white;
+                font-size: 24px;
+                font-weight: bold;
+                cursor: pointer;
+                width: 32px;
+                height: 32px;
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s ease;
+                flex-shrink: 0;
+            }}
+            .flash-close:hover {{
+                background: rgba(255,255,255,0.3);
+                transform: scale(1.1);
+            }}
+            @keyframes slideIn {{
+                from {{ opacity: 0; transform: translateY(-10px); }}
+                to {{ opacity: 1; transform: translateY(0); }}
+            }}
         </style>
     </head>
     <body>
@@ -4651,6 +4781,7 @@ def render_case_selection(cases, active_case_id):
                 </div>
             </div>
             <div class="content">
+                {flash_messages_html}
                 <h1>📁 Case Selection</h1>
                 <p>Select a case to work with or create a new one</p>
                 
@@ -4706,6 +4837,20 @@ def render_case_selection(cases, active_case_id):
 
 def render_case_dashboard(case, total_files, indexed_files, processing_files, total_events, total_violations, total_storage):
     """Render case-specific dashboard with integrated layout"""
+    # Get flash messages
+    from flask import get_flashed_messages
+    flash_messages_html = ""
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        icon = "⚠️" if category == "warning" else "❌" if category == "error" else "✅"
+        flash_messages_html += f'''
+        <div class="flash-message flash-{category}">
+            <span class="flash-icon">{icon}</span>
+            <span class="flash-text">{message}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        '''
+    
     return f'''
     <!DOCTYPE html>
     <html>
@@ -4834,6 +4979,24 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                 transform: translateY(-1px);
                 color: white !important;
             }}
+            .flash-message {{
+                padding: 15px 20px;
+                margin: 20px 0;
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                animation: slideIn 0.3s ease;
+            }}
+            .flash-success {{ background: linear-gradient(145deg, #4caf50, #388e3c); border: 1px solid rgba(255,255,255,0.2); }}
+            .flash-warning {{ background: linear-gradient(145deg, #ff9800, #f57c00); border: 1px solid rgba(255,255,255,0.2); }}
+            .flash-error {{ background: linear-gradient(145deg, #f44336, #d32f2f); border: 1px solid rgba(255,255,255,0.2); }}
+            .flash-icon {{ font-size: 1.5em; flex-shrink: 0; }}
+            .flash-text {{ flex: 1; font-size: 1em; line-height: 1.4; }}
+            .flash-close {{ background: rgba(255,255,255,0.2); border: none; color: white; font-size: 24px; font-weight: bold; cursor: pointer; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; flex-shrink: 0; }}
+            .flash-close:hover {{ background: rgba(255,255,255,0.3); transform: scale(1.1); }}
+            @keyframes slideIn {{ from {{ opacity: 0; transform: translateY(-10px); }} to {{ opacity: 1; transform: translateY(0); }} }}
             .case-info {{
                 background: linear-gradient(145deg, #283593, #1e88e5);
                 padding: 20px;
@@ -4905,6 +5068,7 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                 </div>
             </div>
             <div class="content">
+                {flash_messages_html}
                 <div class="case-info">
                     <h2>Case Details</h2>
                     <p><strong>Case Number:</strong> {case.case_number}</p>

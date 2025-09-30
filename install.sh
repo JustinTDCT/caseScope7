@@ -298,21 +298,31 @@ install_chainsaw() {
     cd /tmp
     rm -rf chainsaw chainsaw_x86_64-unknown-linux-gnu.tar.gz
     
-    # Set ownership
-    chown -R casescope:casescope /opt/casescope/bin
-    chown -R casescope:casescope /opt/casescope/chainsaw
-    
-    # Verify installation
+    # Verify installation works before changing ownership
     log "Verifying Chainsaw installation..."
-    if /opt/casescope/bin/chainsaw --version 2>&1; then
-        log "✓ Chainsaw installed successfully"
-        log "✓ Chainsaw binary location: /opt/casescope/bin/chainsaw"
-        log "✓ Chainsaw mappings location: /opt/casescope/chainsaw/mappings/"
-    else
+    if ! /opt/casescope/bin/chainsaw --version 2>&1; then
         log_error "Chainsaw installation verification failed"
         log_error "Binary exists: $([ -f /opt/casescope/bin/chainsaw ] && echo 'YES' || echo 'NO')"
         log_error "Binary executable: $([ -x /opt/casescope/bin/chainsaw ] && echo 'YES' || echo 'NO')"
         ls -la /opt/casescope/bin/ 2>&1 || true
+        return 1
+    fi
+    
+    log "✓ Chainsaw installed successfully"
+    log "✓ Chainsaw binary location: /opt/casescope/bin/chainsaw"
+    log "✓ Chainsaw mappings location: /opt/casescope/chainsaw/mappings/"
+    
+    # Set ownership so casescope user can execute it
+    chown -R casescope:casescope /opt/casescope/bin
+    chown -R casescope:casescope /opt/casescope/chainsaw
+    
+    # Verify casescope user can execute it
+    log "Verifying casescope user can execute Chainsaw..."
+    if sudo -u casescope /opt/casescope/bin/chainsaw --version >/dev/null 2>&1; then
+        log "✓ Chainsaw executable by casescope user"
+    else
+        log_error "casescope user cannot execute Chainsaw"
+        ls -la /opt/casescope/bin/chainsaw
         return 1
     fi
 }
