@@ -29,9 +29,10 @@ try:
         task_always_eager=False,
         task_ignore_result=False,
         task_track_started=True,
-        # Critical: Use the default queue name
+        # Critical: Use the default queue name and exchange type
         task_default_queue='celery',
         task_default_exchange='celery',
+        task_default_exchange_type='direct',
         task_default_routing_key='celery',
     )
 except ImportError:

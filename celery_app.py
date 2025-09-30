@@ -43,6 +43,11 @@ celery_app.conf.update(
     task_soft_time_limit=3300,  # 55 minute soft limit
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=50,
+    # Explicit queue configuration to match web service
+    task_default_queue='celery',
+    task_default_exchange='celery',
+    task_default_exchange_type='direct',
+    task_default_routing_key='celery',
 )
 
 # Signal handlers for verbose logging
