@@ -204,7 +204,7 @@ install_chainsaw() {
     
     # Remove old downloads if exist
     rm -f chainsaw_x86_64-unknown-linux-gnu.tar.gz
-    rm -f chainsaw
+    rm -rf chainsaw
     
     wget --show-progress https://github.com/WithSecureLabs/chainsaw/releases/download/${CHAINSAW_VERSION}/chainsaw_x86_64-unknown-linux-gnu.tar.gz
     
