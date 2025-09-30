@@ -674,13 +674,14 @@ def process_sigma_rules(self, file_id, index_name):
             # This is maintained by the Chainsaw team and covers all Windows EVTX fields
             chainsaw_mapping = '/opt/casescope/chainsaw/mappings/sigma-event-logs-all.yml'
             
-            # Chainsaw v2.12 syntax: chainsaw hunt <events> <rules_dir> --mapping <mapping> --json --output <output>
-            # Rules directory is a positional argument, not --rules
+            # Chainsaw v2.12 syntax: chainsaw hunt <evtx_path> --sigma <rules_dir> --mapping <mapping> --json --output <output>
+            # The first positional argument is the EVTX/log path to hunt through
+            # Rules are specified with --sigma flag
             chainsaw_cmd = [
                 '/opt/casescope/bin/chainsaw',
                 'hunt',
-                events_json_path,
-                rules_dir,  # Positional argument for rules directory
+                events_json_path,  # Path to search (accepts JSON, EVTX, or directory)
+                '--sigma', rules_dir,  # SIGMA rules directory
                 '--mapping', chainsaw_mapping,
                 '--json',
                 '--output', chainsaw_output_path

@@ -1,7 +1,7 @@
 {
-  "version": "7.2.12",
+  "version": "7.2.13",
   "release_date": "2025-09-30",
-  "description": "Critical Bugfix - Fixed Chainsaw CLI syntax; v2.12.2 uses positional argument for rules directory not --rules flag; changed from '--rules rules_dir' to 'rules_dir' as second positional argument after events file",
+  "description": "Critical Bugfix - Fixed Chainsaw hunt syntax; uses --sigma flag for rules directory not positional argument; error was 'Loading detection rules from events.json' showing wrong file as rules; correct syntax: hunt <events> --sigma <rules_dir>",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -114,6 +114,7 @@
     "7.2.9": "Critical Bugfix - Fixed Chainsaw permissions for casescope user; install_chainsaw() was setting ownership AFTER final verification (which ran as root), causing binary to be executable by root but not casescope user (worker); moved chown before final verification and added explicit sudo -u casescope test; case creation form now includes full sidebar layout matching dashboard/upload/search pages; fixes FileNotFoundError when worker tries to execute /opt/casescope/bin/chainsaw",
     "7.2.10": "Bugfix - Flash message display on all pages; added get_flashed_messages() and flash CSS to render_case_selection() and render_case_dashboard() functions; messages (success/warning/error) now display immediately on the page where they're generated; fixes user complaint 'notifications not appearing when generated, all show up at once on upload files page'; flash messages include dismiss button and slide-in animation",
     "7.2.11": "Critical Bugfix - Corrected installation order in main() function; Option 1 (clean install) now calls handle_existing_data() FIRST (before check_requirements/install_dependencies) to remove old services/data preventing conflicts; moved create_user() before install_chainsaw() so casescope user exists when installer runs 'sudo -u casescope /opt/casescope/bin/chainsaw --version' verification; upgrade/reindex still run handle_existing_data() after user creation for proper backup; fixes installer showing cleanup AFTER installation started and user test failing because user doesn't exist yet",
-    "7.2.12": "Critical Bugfix - Fixed Chainsaw hunt command syntax for v2.12.2; CLI expects rules directory as positional argument not --rules flag; changed command from 'chainsaw hunt <events> --rules <dir> --mapping <map>' to 'chainsaw hunt <events> <rules_dir> --mapping <map>'; error was 'unexpected argument --rules found, tip: a similar argument exists: --rule'; user provided working v7.0.x example showing correct positional syntax; fixes SIGMA rule processing completely failing with argument error"
+    "7.2.12": "Critical Bugfix - Fixed Chainsaw hunt command syntax for v2.12.2; CLI expects rules directory as positional argument not --rules flag; changed command from 'chainsaw hunt <events> --rules <dir> --mapping <map>' to 'chainsaw hunt <events> <rules_dir> --mapping <map>'; error was 'unexpected argument --rules found, tip: a similar argument exists: --rule'; user provided working v7.0.x example showing correct positional syntax; fixes SIGMA rule processing completely failing with argument error",
+    "7.2.13": "Critical Bugfix - Corrected Chainsaw hunt syntax AGAIN; v7.2.12 incorrectly used positional argument for rules causing 'Loading detection rules from: events.json' error (Chainsaw thought events file was rules directory); correct v2.12.2 syntax uses --sigma flag: 'chainsaw hunt <events_path> --sigma <rules_dir> --mapping <mapping> --json --output <output>'; matches user's working v7.0.x command structure; Chainsaw can hunt JSON/EVTX files directly"
   }
 }
