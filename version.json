@@ -1,7 +1,7 @@
 {
-  "version": "7.1.80",
+  "version": "7.1.81",
   "release_date": "2025-09-30",
-  "description": "Debug Enhancement - Added comprehensive debug logging to Re-run Rules route and worker startup to diagnose task routing; includes Redis queue inspection, broker URL verification, task state tracking, and registered task listing",
+  "description": "Critical Fix - Fixed tasks not being queued to Redis: added Celery configuration to match worker settings including task_default_queue, task_default_exchange, and task_default_routing_key; diagnostic showed send_task created metadata but never queued actual task message",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -83,6 +83,7 @@
     "7.1.77": "Enhancement - Added search functionality to SIGMA Rules page: search box filters rules by title, level, or category with case-insensitive partial matching; includes clear button to reset search; built-in threat hunting rules auto-enabled on first load for immediate use",
     "7.1.78": "Enhancement - Replaced slow server-side search with instant client-side JavaScript filtering on SIGMA Rules page (no page reload); auto-enable Windows threat-hunting rules from rules-threat-hunting/windows directory when downloading from SigmaHQ; WARNING: v7.1.76 changes require web service restart (sudo systemctl restart casescope-web) for celery_app import to load and fix Re-run Rules functionality",
     "7.1.79": "Critical Fix - Fixed tasks not reaching worker: web service was importing celery_app.py which created duplicate Celery app instance with signal handlers causing broker routing conflict; now creates minimal Celery connection in main.py without importing celery_app module; worker and web now properly share same Redis broker queue",
-    "7.1.80": "Debug Enhancement - Added comprehensive debug logging: Re-run Rules now logs celery_app broker/backend URLs, task state, Redis queue length before/after send_task; worker startup now logs all registered tasks, Redis connection status, all Redis keys, and queue length; added diagnose_celery.sh script for manual Redis/Celery diagnostics"
+    "7.1.80": "Debug Enhancement - Added comprehensive debug logging: Re-run Rules now logs celery_app broker/backend URLs, task state, Redis queue length before/after send_task; worker startup now logs all registered tasks, Redis connection status, all Redis keys, and queue length; added diagnose_celery.sh script for manual Redis/Celery diagnostics",
+    "7.1.81": "Critical Fix - Fixed tasks not being queued to Redis: Celery send_task() was creating task metadata but not queuing actual messages because configuration didn't specify default queue/exchange/routing_key; added task_default_queue='celery', task_default_exchange='celery', task_default_routing_key='celery' to main.py Celery config; diagnostic revealed queue length stayed at 0 after send_task() calls"
   }
 }
