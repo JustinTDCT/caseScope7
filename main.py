@@ -15,11 +15,12 @@ from datetime import datetime
 from opensearchpy import OpenSearch
 import re
 
-# Import Celery app for task queueing
+# Create minimal Celery connection for task queueing (don't import celery_app to avoid signal handlers)
 try:
-    from celery_app import celery_app
+    from celery import Celery
+    celery_app = Celery('casescope', broker='redis://localhost:6379/0', backend='redis://localhost:6379/0')
 except ImportError:
-    celery_app = None  # Worker not available (development mode)
+    celery_app = None  # Celery not available (development mode)
 
 # Version Management
 def get_version():

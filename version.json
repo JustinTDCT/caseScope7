@@ -1,7 +1,7 @@
 {
-  "version": "7.1.78",
+  "version": "7.1.79",
   "release_date": "2025-09-30",
-  "description": "Enhancement - Fast client-side search on SIGMA Rules page, auto-enable threat-hunting rules from SigmaHQ repository; REQUIRES WEB SERVICE RESTART: sudo systemctl restart casescope-web for v7.1.76 celery_app import to take effect",
+  "description": "Critical Fix - Fixed web service creating duplicate Celery app instance; now creates minimal broker connection without signal handlers to properly queue tasks to worker",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -81,6 +81,7 @@
     "7.1.75": "Bugfix - Fixed Celery worker ExecStop error 'Referenced but unset environment variable MAINPID' by replacing ExecStopPost with proper ExecStop using celery control shutdown command; Type=simple doesn't support MAINPID variable",
     "7.1.76": "Critical Fix - Fixed Celery tasks never reaching worker: main.py was importing tasks directly creating separate disconnected Celery app instances; now imports celery_app and uses send_task() method to queue tasks to the same Redis broker that worker monitors; this fixes file upload indexing, re-index, and re-run rules functionality",
     "7.1.77": "Enhancement - Added search functionality to SIGMA Rules page: search box filters rules by title, level, or category with case-insensitive partial matching; includes clear button to reset search; built-in threat hunting rules auto-enabled on first load for immediate use",
-    "7.1.78": "Enhancement - Replaced slow server-side search with instant client-side JavaScript filtering on SIGMA Rules page (no page reload); auto-enable Windows threat-hunting rules from rules-threat-hunting/windows directory when downloading from SigmaHQ; WARNING: v7.1.76 changes require web service restart (sudo systemctl restart casescope-web) for celery_app import to load and fix Re-run Rules functionality"
+    "7.1.78": "Enhancement - Replaced slow server-side search with instant client-side JavaScript filtering on SIGMA Rules page (no page reload); auto-enable Windows threat-hunting rules from rules-threat-hunting/windows directory when downloading from SigmaHQ; WARNING: v7.1.76 changes require web service restart (sudo systemctl restart casescope-web) for celery_app import to load and fix Re-run Rules functionality",
+    "7.1.79": "Critical Fix - Fixed tasks not reaching worker: web service was importing celery_app.py which created duplicate Celery app instance with signal handlers causing broker routing conflict; now creates minimal Celery connection in main.py without importing celery_app module; worker and web now properly share same Redis broker queue"
   }
 }
