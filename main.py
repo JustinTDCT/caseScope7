@@ -547,10 +547,30 @@ def rerun_rules(file_id):
             name = name.replace('%', '_').replace(' ', '_').replace('-', '_').lower()[:100]
             index_name = f"case{case_file.case_id}_{name}"
             
+            print(f"[Re-run Rules] DEBUG: celery_app exists: {celery_app is not None}")
             if celery_app:
+                print(f"[Re-run Rules] DEBUG: celery_app broker: {celery_app.conf.broker_url}")
+                print(f"[Re-run Rules] DEBUG: celery_app backend: {celery_app.conf.result_backend}")
+                print(f"[Re-run Rules] DEBUG: Calling send_task with task='tasks.process_sigma_rules', args=[{file_id}, '{index_name}']")
+                
                 task = celery_app.send_task('tasks.process_sigma_rules', args=[file_id, index_name])
+                
+                print(f"[Re-run Rules] DEBUG: Task object created: {task}")
+                print(f"[Re-run Rules] DEBUG: Task ID: {task.id}")
+                print(f"[Re-run Rules] DEBUG: Task state: {task.state}")
+                print(f"[Re-run Rules] DEBUG: Task ready: {task.ready()}")
+                
                 flash(f'Re-running SIGMA rules for {case_file.original_filename}', 'success')
                 print(f"[Re-run Rules] Queued rule processing task {task.id} for file ID {file_id}: {case_file.original_filename}, index: {index_name}")
+                
+                # Check Redis queue
+                try:
+                    import redis
+                    r = redis.Redis(host='localhost', port=6379, db=0)
+                    queue_length = r.llen('celery')
+                    print(f"[Re-run Rules] DEBUG: Redis queue 'celery' length: {queue_length}")
+                except Exception as redis_err:
+                    print(f"[Re-run Rules] DEBUG: Could not check Redis: {redis_err}")
             else:
                 flash(f'Celery worker not available', 'error')
                 print(f"[Re-run Rules] ERROR: Celery not available for file ID {file_id}")

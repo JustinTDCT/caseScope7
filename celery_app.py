@@ -50,6 +50,26 @@ celery_app.conf.update(
 def on_worker_ready(sender, **kwargs):
     logger.info("="*80)
     logger.info("CELERY WORKER READY - Waiting for tasks...")
+    logger.info(f"Worker instance: {sender}")
+    logger.info(f"Broker URL: {celery_app.conf.broker_url}")
+    logger.info(f"Result backend: {celery_app.conf.result_backend}")
+    logger.info(f"Registered tasks: {list(celery_app.tasks.keys())}")
+    
+    # Check Redis connection
+    try:
+        import redis
+        r = redis.Redis(host='localhost', port=6379, db=0)
+        r.ping()
+        queue_length = r.llen('celery')
+        logger.info(f"Redis connection: OK")
+        logger.info(f"Redis queue 'celery' length: {queue_length}")
+        
+        # List all keys in Redis
+        keys = r.keys('*')
+        logger.info(f"All Redis keys: {keys}")
+    except Exception as e:
+        logger.error(f"Redis connection error: {e}")
+    
     logger.info("="*80)
 
 @worker_shutdown.connect
