@@ -125,6 +125,40 @@ CASESCOPE_FIELD_MAPPING = {
     'SubStatus': 'EventData.SubStatus',
 }
 
+def sanitize_filename(filename):
+    """
+    Sanitize filename for use in OpenSearch index names
+    Shared function to ensure consistent index naming across all code paths
+    
+    Args:
+        filename: Original filename (may include extension)
+    
+    Returns:
+        Sanitized lowercase string suitable for index names
+    """
+    import os
+    # Remove extension
+    name = os.path.splitext(filename)[0]
+    # Replace problematic characters
+    name = name.replace('%', '_').replace(' ', '_').replace('-', '_').lower()
+    # Limit length to prevent overly long index names
+    return name[:100]
+
+def make_index_name(case_id, original_filename):
+    """
+    Generate OpenSearch index name from case ID and filename
+    SINGLE SOURCE OF TRUTH for index naming - used by all routes and tasks
+    
+    Args:
+        case_id: Database ID of the case
+        original_filename: Original filename of the EVTX file
+    
+    Returns:
+        Index name in format: case{ID}_{sanitized_filename}
+    """
+    sanitized = sanitize_filename(original_filename)
+    return f"case{case_id}_{sanitized}"
+
 def create_casescope_pipeline():
     """
     Create pySigma processing pipeline for caseScope EVTX structure
@@ -146,6 +180,144 @@ def create_casescope_pipeline():
     
     return pipeline
 
+def flatten_event(event_data, prefix='', max_depth=10, current_depth=0):
+    """
+    Flatten nested event structure for OpenSearch indexing with safety guards
+    
+    Args:
+        event_data: Event dictionary from xmltodict
+        prefix: Current key prefix for nested fields
+        max_depth: Maximum recursion depth to prevent stack overflow
+        current_depth: Current recursion level
+    
+    Returns:
+        Flattened dictionary with dot-notation keys
+    """
+    flat = {}
+    
+    # Safety guard: prevent infinite recursion
+    if current_depth >= max_depth:
+        logger.warning(f"Max recursion depth ({max_depth}) reached while flattening event")
+        return flat
+    
+    if not isinstance(event_data, dict):
+        return {prefix: event_data} if prefix else {}
+    
+    for key, value in event_data.items():
+        # Preserve XML special keys to match CASESCOPE_FIELD_MAPPING
+        # Keep @ and # prefixes so fields like 'System.EventID.#text' match the mapping
+        new_key = key
+        
+        full_key = f"{prefix}.{new_key}" if prefix else new_key
+        
+        # Safety guard: limit key length to prevent memory issues
+        if len(full_key) > 256:
+            logger.warning(f"Skipping oversized key: {full_key[:100]}...")
+            continue
+        
+        if isinstance(value, dict):
+            # Recursively flatten nested dicts
+            nested = flatten_event(value, full_key, max_depth, current_depth + 1)
+            flat.update(nested)
+        elif isinstance(value, list):
+            # Safety guard: limit list size
+            if len(value) > 1000:
+                logger.warning(f"Truncating large list at {full_key}: {len(value)} items -> 1000")
+                value = value[:1000]
+            
+            # Handle lists by indexing or joining
+            if all(isinstance(item, str) for item in value):
+                # Join string lists
+                flat[full_key] = ', '.join(value[:100])  # Limit joined strings
+            else:
+                # Index non-string lists
+                for idx, item in enumerate(value):
+                    if isinstance(item, dict):
+                        nested = flatten_event(item, f"{full_key}_{idx}", max_depth, current_depth + 1)
+                        flat.update(nested)
+                    else:
+                        flat[f"{full_key}_{idx}"] = str(item)[:1000]  # Limit string size
+        else:
+            # Safety guard: limit value size to prevent log/memory explosion
+            str_value = str(value)
+            if len(str_value) > 10000:
+                logger.debug(f"Truncating large value at {full_key}: {len(str_value)} chars -> 10000")
+                str_value = str_value[:10000] + "...[truncated]"
+            flat[full_key] = str_value
+    
+    return flat
+
+def bulk_index_events(index_name, events):
+    """
+    Bulk index events to OpenSearch with retry logic and idempotency
+    
+    Args:
+        index_name: OpenSearch index name
+        events: List of event dictionaries to index
+    """
+    import hashlib
+    
+    if not events:
+        return
+    
+    # Prepare bulk actions with idempotent doc IDs
+    actions = []
+    for event in events:
+        # Create idempotent document ID from record_number + file_id
+        metadata = event.get('_casescope_metadata', {})
+        record_num = metadata.get('record_number', 0)
+        file_id = metadata.get('file_id', 0)
+        
+        # Hash-based ID to prevent duplicates on retries
+        doc_id = hashlib.sha256(f"{file_id}_{record_num}".encode()).hexdigest()[:16]
+        
+        action = {
+            '_index': index_name,
+            '_id': doc_id,  # Idempotent ID
+            '_source': event
+        }
+        actions.append(action)
+    
+    # Retry logic with exponential backoff for 429/5xx errors
+    max_retries = 3
+    retry_delay = 1  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            # Use helpers.bulk with bounded chunks and extended timeout
+            success, failed = helpers.bulk(
+                opensearch_client,
+                actions,
+                chunk_size=1000,  # Keep memory bounded
+                max_retries=3,
+                request_timeout=120,  # Extended timeout for large batches
+                raise_on_error=False,  # Don't raise, we'll check failed
+                raise_on_exception=False
+            )
+            
+            if failed:
+                logger.warning(f"Bulk index: {len(failed)} events failed out of {len(actions)}")
+                for failure in failed[:5]:  # Log first 5 failures
+                    logger.warning(f"Failed event: {failure}")
+            
+            logger.debug(f"Successfully indexed {success} events to {index_name}")
+            return success
+            
+        except Exception as e:
+            error_str = str(e).lower()
+            
+            # Retry on 429 (too many requests) or 5xx server errors
+            if any(code in error_str for code in ['429', '502', '503', '504']):
+                if attempt < max_retries - 1:
+                    logger.warning(f"Bulk index failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                    continue
+            
+            # Non-retryable error or max retries exceeded
+            logger.error(f"Bulk index failed permanently: {e}")
+            raise
+
 @celery_app.task(bind=True, name='tasks.index_evtx_file')
 def index_evtx_file(self, file_id):
     """
@@ -154,20 +326,26 @@ def index_evtx_file(self, file_id):
     Args:
         file_id: Database ID of the CaseFile to process
     """
+    import time
+    task_start_time = time.time()
+    
     logger.info("="*80)
-    logger.info(f"STARTING EVTX INDEXING - File ID: {file_id}")
+    logger.info(f"EVTX INDEXING TASK RECEIVED")
+    logger.info(f"Task ID: {self.request.id}")
+    logger.info(f"File ID: {file_id}")
+    logger.info(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info("="*80)
     
     with app.app_context():
         try:
             # Get file record
             logger.info(f"Querying database for file ID {file_id}...")
-            case_file = CaseFile.query.get(file_id)
+            case_file = db.session.get(CaseFile, file_id)
             if not case_file:
                 logger.error(f"File ID {file_id} not found in database")
                 return {'status': 'error', 'message': f'File ID {file_id} not found'}
             
-            case = Case.query.get(case_file.case_id)
+            case = db.session.get(Case, case_file.case_id)
             if not case:
                 return {'status': 'error', 'message': f'Case ID {case_file.case_id} not found'}
             
@@ -175,8 +353,10 @@ def index_evtx_file(self, file_id):
             case_file.indexing_status = 'Indexing'
             db.session.commit()
             
-            # Generate index name: case{ID}_{filename_sanitized}
-            index_name = f"case{case.id}_{sanitize_filename(case_file.original_filename)}"
+            # Generate index name using shared helper
+            index_name = make_index_name(case.id, case_file.original_filename)
+            
+            logger.info(f"TASK SUMMARY: TaskID={self.request.id}, FileID={file_id}, Filename={case_file.original_filename}, Index={index_name}")
             
             # Check if file exists
             if not os.path.exists(case_file.file_path):
@@ -194,8 +374,14 @@ def index_evtx_file(self, file_id):
             with evtx.Evtx(case_file.file_path) as log:
                 for record in log.records():
                     try:
-                        # Parse XML to dict
+                        # Parse XML to dict with size safety check
                         xml_string = record.xml()
+                        
+                        # Safety guard: skip oversized XML records
+                        if len(xml_string) > 1048576:  # 1MB limit
+                            logger.warning(f"Skipping oversized XML record {record.record_num()}: {len(xml_string)} bytes")
+                            continue
+                        
                         event_dict = xmltodict.parse(xml_string)
                         
                         # Extract Event data
@@ -257,6 +443,15 @@ def index_evtx_file(self, file_id):
             # Queue SIGMA rule processing
             process_sigma_rules.delay(file_id, index_name)
             
+            # Calculate task duration
+            task_duration = time.time() - task_start_time
+            
+            logger.info("="*80)
+            logger.info(f"EVTX INDEXING COMPLETED: {event_count:,} events indexed")
+            logger.info(f"Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info(f"Duration: {task_duration:.2f} seconds ({task_duration/60:.2f} minutes)")
+            logger.info("="*80)
+            
             return {
                 'status': 'success',
                 'message': f'Indexed {event_count:,} events',
@@ -272,7 +467,7 @@ def index_evtx_file(self, file_id):
             logger.error(traceback.format_exc())
             
             # Update status to Failed
-            case_file = CaseFile.query.get(file_id)
+            case_file = db.session.get(CaseFile, file_id)
             if case_file:
                 case_file.indexing_status = 'Failed'
                 db.session.commit()
@@ -289,17 +484,21 @@ def process_sigma_rules(self, file_id, index_name):
         file_id: Database ID of the CaseFile
         index_name: OpenSearch index to scan
     """
+    import time
+    task_start_time = time.time()
+    
     logger.info("="*80)
     logger.info(f"SIGMA RULE PROCESSING TASK RECEIVED")
     logger.info(f"Task ID: {self.request.id}")
     logger.info(f"File ID: {file_id}")
     logger.info(f"Index Name: {index_name}")
+    logger.info(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info("="*80)
     
     with app.app_context():
         try:
             logger.info(f"Querying database for CaseFile ID {file_id}...")
-            case_file = CaseFile.query.get(file_id)
+            case_file = db.session.get(CaseFile, file_id)
             if not case_file:
                 logger.error(f"File ID {file_id} not found in database")
                 return {'status': 'error', 'message': f'File ID {file_id} not found'}
@@ -307,7 +506,7 @@ def process_sigma_rules(self, file_id, index_name):
             logger.info(f"Found file: {case_file.original_filename}, Case ID: {case_file.case_id}")
             logger.info(f"Current status: {case_file.indexing_status}, Indexed: {case_file.is_indexed}")
             
-            case = Case.query.get(case_file.case_id)
+            case = db.session.get(Case, case_file.case_id)
             if not case:
                 logger.error(f"Case ID {case_file.case_id} not found in database")
                 return {'status': 'error', 'message': f'Case ID {case_file.case_id} not found'}
@@ -316,11 +515,14 @@ def process_sigma_rules(self, file_id, index_name):
             
             # Get all enabled SIGMA rules
             logger.info("Querying for enabled SIGMA rules...")
+            logger.info(f"Database URI: {app.config.get('SQLALCHEMY_DATABASE_URI', 'NOT SET')}")
             enabled_rules = SigmaRule.query.filter_by(is_enabled=True).all()
-            logger.info(f"Found {len(enabled_rules)} enabled SIGMA rules to process")
+            total_rules = SigmaRule.query.count()
+            logger.info(f"Found {len(enabled_rules)} enabled SIGMA rules to process (out of {total_rules} total rules)")
+            logger.info(f"TASK SUMMARY: TaskID={self.request.id}, FileID={file_id}, Index={index_name}, Rules={len(enabled_rules)}/{total_rules}")
             
             if not enabled_rules:
-                logger.info("No enabled rules found, marking as completed")
+                logger.warning(f"No enabled rules found! Total rules in DB: {total_rules}. Marking as completed.")
                 case_file.indexing_status = 'Completed'
                 db.session.commit()
                 return {'status': 'success', 'message': 'No enabled rules', 'violations': 0}
@@ -452,9 +654,14 @@ def process_sigma_rules(self, file_id, index_name):
             case_file.indexing_status = 'Completed'
             db.session.commit()
             
+            # Calculate task duration
+            task_duration = time.time() - task_start_time
+            
             logger.info("="*80)
             logger.info(f"SIGMA PROCESSING COMPLETED: {total_violations} violations found")
             logger.info(f"Rules processed: {rules_processed}, Failed: {rules_failed}")
+            logger.info(f"Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info(f"Duration: {task_duration:.2f} seconds ({task_duration/60:.2f} minutes)")
             logger.info("="*80)
             
             return {
@@ -472,7 +679,7 @@ def process_sigma_rules(self, file_id, index_name):
             import traceback
             logger.error(traceback.format_exc())
             
-            case_file = CaseFile.query.get(file_id)
+            case_file = db.session.get(CaseFile, file_id)
             if case_file:
                 case_file.indexing_status = 'Failed'
                 db.session.commit()
@@ -664,7 +871,7 @@ def count_evtx_events(self, file_id):
     
     with app.app_context():
         try:
-            case_file = CaseFile.query.get(file_id)
+            case_file = db.session.get(CaseFile, file_id)
             if not case_file:
                 logger.error(f"File ID {file_id} not found in database")
                 return {'status': 'error', 'message': f'File ID {file_id} not found'}
@@ -712,7 +919,7 @@ def count_evtx_events(self, file_id):
             logger.error(traceback.format_exc())
             
             # Fall back to estimation and start indexing anyway
-            case_file = CaseFile.query.get(file_id)
+            case_file = db.session.get(CaseFile, file_id)
             if case_file:
                 case_file.estimated_event_count = int((case_file.file_size / 1048576) * 1000)
                 db.session.commit()

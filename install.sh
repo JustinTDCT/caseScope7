@@ -355,6 +355,11 @@ update_opensearch_config() {
     echo "indices.query.bool.max_clause_count: 16384" >> /opt/opensearch/config/opensearch.yml
     log "✓ Added max_clause_count=16384 to OpenSearch cluster config"
     
+    # Ensure proper ownership and permissions on config files
+    log "Setting OpenSearch config ownership..."
+    chown -R casescope:casescope /opt/opensearch/config
+    log "✓ Config permissions set"
+    
     # Restart OpenSearch to apply changes
     if systemctl is-active --quiet opensearch; then
         log "Restarting OpenSearch to apply configuration changes..."
@@ -794,6 +799,7 @@ ExecStart=/opt/casescope/venv/bin/celery -A celery_app worker \
     -Q celery \
     -l DEBUG \
     -E \
+    --pool=prefork \
     --concurrency=2 \
     --max-tasks-per-child=50 \
     --logfile=/opt/casescope/logs/celery_worker.log \
@@ -874,27 +880,11 @@ EOF
 
 # Start services
 start_services() {
-    log "Starting services..."
+    log "Starting services in dependency order: OpenSearch → Redis → Web → Worker → Nginx"
+    log "This ensures each service has its dependencies available before starting"
     
-    # Start services in order with status checks
-    log "Starting Redis..."
-    systemctl start redis-server
-    if ! systemctl is-active --quiet redis-server; then
-        log_error "Redis failed to start"
-        systemctl status redis-server
-    fi
-    
-    log "Starting Celery worker..."
-    systemctl start casescope-worker
-    sleep 2
-    if ! systemctl is-active --quiet casescope-worker; then
-        log_warning "Celery worker may not have started properly"
-        log "Check logs with: journalctl -u casescope-worker -n 50"
-    else
-        log "SUCCESS: Celery worker is running"
-    fi
-    
-    log "Starting OpenSearch search engine..."
+    # STEP 1: Start OpenSearch FIRST (foundation for indexing/search)
+    log "STEP 1/5: Starting OpenSearch search engine..."
     log "Note: OpenSearch is a Java application and may take 1-2 minutes to fully initialize"
     
     # Set environment variable to disable demo config before starting
@@ -994,8 +984,20 @@ start_services() {
         return 1
     fi
     
-    log "Starting caseScope web application..."
-    log "This service runs the main web interface that you'll access through your browser"
+    # STEP 2: Start Redis (message broker for Celery)
+    log "STEP 2/5: Starting Redis message broker..."
+    systemctl start redis-server
+    sleep 1
+    if ! systemctl is-active --quiet redis-server; then
+        log_error "Redis failed to start"
+        systemctl status redis-server --no-pager
+        return 1
+    fi
+    log "SUCCESS: Redis is running"
+    
+    # STEP 3: Start Web App (initializes DB, provides UI)
+    log "STEP 3/5: Starting caseScope web application..."
+    log "This service runs the main web interface and initializes the database"
     
     systemctl start casescope-web
     
@@ -1040,7 +1042,20 @@ start_services() {
         return 1
     fi
     
-    log "Starting Nginx web server..."
+    # STEP 4: Start Celery Worker (requires OpenSearch + Redis + DB ready)
+    log "STEP 4/5: Starting Celery worker..."
+    log "Worker depends on OpenSearch, Redis, and database being ready"
+    systemctl start casescope-worker
+    sleep 2
+    if ! systemctl is-active --quiet casescope-worker; then
+        log_warning "Celery worker may not have started properly"
+        log "Check logs with: journalctl -u casescope-worker -n 50"
+    else
+        log "SUCCESS: Celery worker is running"
+    fi
+    
+    # STEP 5: Start Nginx (final layer, reverse proxy)
+    log "STEP 5/5: Starting Nginx web server..."
     log "Nginx will serve as the front-end proxy to route web traffic to caseScope"
     
     # Test configuration first

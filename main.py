@@ -554,10 +554,11 @@ def rerun_rules(file_id):
         
         # Queue SIGMA rule processing
         try:
-            # Generate index name (same logic as in tasks.py)
-            name = os.path.splitext(case_file.original_filename)[0]
-            name = name.replace('%', '_').replace(' ', '_').replace('-', '_').lower()[:100]
-            index_name = f"case{case_file.case_id}_{name}"
+            # Import shared index name helper
+            from tasks import make_index_name
+            
+            # Generate index name using shared helper (single source of truth)
+            index_name = make_index_name(case_file.case_id, case_file.original_filename)
             
             print(f"[Re-run Rules] DEBUG: celery_app exists: {celery_app is not None}")
             if celery_app:
@@ -573,10 +574,9 @@ def rerun_rules(file_id):
                     priority=0,  # Force single list key
                 )
                 
-                print(f"[Re-run Rules] DEBUG: Task object created: {task}")
-                print(f"[Re-run Rules] DEBUG: Task ID: {task.id}")
-                print(f"[Re-run Rules] DEBUG: Task state: {task.state}")
-                print(f"[Re-run Rules] DEBUG: Task ready: {task.ready()}")
+                # Don't check task.state/task.ready() immediately - creates misleading result metadata
+                # Worker will process the task and update DB directly
+                print(f"[Re-run Rules] Queued task ID: {task.id}")
                 
                 flash(f'Re-running SIGMA rules for {case_file.original_filename}', 'success')
                 print(f"[Re-run Rules] Queued rule processing task {task.id} for file ID {file_id}: {case_file.original_filename}, index: {index_name}")
@@ -5166,6 +5166,110 @@ def init_db():
         
         # Load default SIGMA rules
         load_default_sigma_rules()
+
+# Health check endpoint for diagnostics and monitoring
+@app.route('/healthz')
+def healthz():
+    """
+    Health check endpoint - verifies DB and OpenSearch connectivity
+    Returns JSON with component status for troubleshooting
+    """
+    health_status = {
+        'status': 'healthy',
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'version': APP_VERSION,
+        'components': {}
+    }
+    
+    # Check database connectivity
+    try:
+        db.session.execute(db.text('SELECT 1'))
+        health_status['components']['database'] = {
+            'status': 'up',
+            'type': 'SQLite',
+            'uri': app.config['SQLALCHEMY_DATABASE_URI']
+        }
+    except Exception as e:
+        health_status['status'] = 'degraded'
+        health_status['components']['database'] = {
+            'status': 'down',
+            'error': str(e)
+        }
+    
+    # Check OpenSearch connectivity
+    try:
+        opensearch_client = OpenSearch(
+            hosts=[{'host': 'localhost', 'port': 9200}],
+            http_compress=True,
+            use_ssl=False,
+            verify_certs=False,
+            timeout=5
+        )
+        cluster_health = opensearch_client.cluster.health()
+        health_status['components']['opensearch'] = {
+            'status': 'up',
+            'cluster_status': cluster_health.get('status', 'unknown'),
+            'number_of_nodes': cluster_health.get('number_of_nodes', 0),
+            'active_shards': cluster_health.get('active_shards', 0)
+        }
+    except Exception as e:
+        health_status['status'] = 'degraded'
+        health_status['components']['opensearch'] = {
+            'status': 'down',
+            'error': str(e)
+        }
+    
+    # Check Redis connectivity (Celery broker)
+    try:
+        import redis
+        r = redis.Redis(host='localhost', port=6379, db=0, socket_timeout=2)
+        r.ping()
+        queue_length = r.llen('celery')
+        health_status['components']['redis'] = {
+            'status': 'up',
+            'queue_length': queue_length
+        }
+    except Exception as e:
+        health_status['status'] = 'degraded'
+        health_status['components']['redis'] = {
+            'status': 'down',
+            'error': str(e)
+        }
+    
+    # Check Celery worker connectivity
+    try:
+        if celery_app:
+            # Try to get active workers
+            inspect = celery_app.control.inspect(timeout=2)
+            active_workers = inspect.active()
+            if active_workers:
+                health_status['components']['celery_worker'] = {
+                    'status': 'up',
+                    'workers': list(active_workers.keys()),
+                    'active_tasks': sum(len(tasks) for tasks in active_workers.values())
+                }
+            else:
+                health_status['status'] = 'degraded'
+                health_status['components']['celery_worker'] = {
+                    'status': 'down',
+                    'error': 'No workers responding'
+                }
+        else:
+            health_status['components']['celery_worker'] = {
+                'status': 'unknown',
+                'error': 'Celery not initialized'
+            }
+    except Exception as e:
+        health_status['status'] = 'degraded'
+        health_status['components']['celery_worker'] = {
+            'status': 'down',
+            'error': str(e)
+        }
+    
+    # Return appropriate HTTP status code
+    status_code = 200 if health_status['status'] == 'healthy' else 503
+    
+    return jsonify(health_status), status_code
 
 if __name__ == '__main__':
     print("Starting caseScope 7.1 application...")
