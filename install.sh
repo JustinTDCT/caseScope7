@@ -358,9 +358,11 @@ update_opensearch_config() {
         sed -i 's/-Dindices.query.bool.max_clause_count=.*/-Dindices.query.bool.max_clause_count=8192/' /opt/opensearch/config/jvm.options
         log "✓ Updated max_clause_count to 8192"
     else
-        # Add the setting before the "Disable unnecessary features" comment
+        # Add the setting to the end of the file
         log "Adding max_clause_count=8192 to OpenSearch config..."
-        sed -i '/# Disable unnecessary features for faster startup/i # SIGMA rule support - increase max boolean clauses for complex queries\n-Dindices.query.bool.max_clause_count=8192\n' /opt/opensearch/config/jvm.options
+        echo "" >> /opt/opensearch/config/jvm.options
+        echo "# SIGMA rule support - increase max boolean clauses for complex queries" >> /opt/opensearch/config/jvm.options
+        echo "-Dindices.query.bool.max_clause_count=8192" >> /opt/opensearch/config/jvm.options
         log "✓ Added max_clause_count=8192 to OpenSearch config"
     fi
     
