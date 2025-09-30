@@ -34,7 +34,16 @@ try:
         task_default_exchange='celery',
         task_default_exchange_type='direct',
         task_default_routing_key='celery',
+        # CRITICAL: Enable sending tasks without having them registered locally
+        task_create_missing_queues=True,
+        task_default_delivery_mode=2,  # persistent
     )
+    
+    # Register task signatures (not implementations) so Celery knows they exist
+    # This allows proper message serialization without importing actual task code
+    celery_app.task(name='tasks.start_file_indexing', bind=True)(lambda self, *args, **kwargs: None)
+    celery_app.task(name='tasks.process_sigma_rules', bind=True)(lambda self, *args, **kwargs: None)
+    
 except ImportError:
     celery_app = None  # Celery not available (development mode)
 
