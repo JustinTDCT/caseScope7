@@ -15,6 +15,12 @@ from datetime import datetime
 from opensearchpy import OpenSearch
 import re
 
+# Import Celery app for task queueing
+try:
+    from celery_app import celery_app
+except ImportError:
+    celery_app = None  # Worker not available (development mode)
+
 # Version Management
 def get_version():
     try:
@@ -413,7 +419,6 @@ def upload_files():
                 
                 # Trigger background indexing for each uploaded file
                 try:
-                    from tasks import start_file_indexing
                     # Get the files we just uploaded
                     recent_files = CaseFile.query.filter_by(
                         case_id=case.id,
@@ -421,8 +426,11 @@ def upload_files():
                     ).order_by(CaseFile.uploaded_at.desc()).limit(success_count).all()
                     
                     for uploaded_file in recent_files:
-                        start_file_indexing.delay(uploaded_file.id)
-                        print(f"[Upload] Queued indexing for file ID {uploaded_file.id}: {uploaded_file.original_filename}")
+                        if celery_app:
+                            celery_app.send_task('tasks.start_file_indexing', args=[uploaded_file.id])
+                            print(f"[Upload] Queued indexing for file ID {uploaded_file.id}: {uploaded_file.original_filename}")
+                        else:
+                            print(f"[Upload] WARNING: Celery not available, task not queued for file ID {uploaded_file.id}")
                     
                     flash(f'Successfully uploaded {success_count} file(s). Indexing started.', 'success')
                 except Exception as e:
@@ -481,10 +489,13 @@ def reindex_file(file_id):
         
         # Queue indexing task
         try:
-            from tasks import start_file_indexing
-            start_file_indexing.delay(file_id)
-            flash(f'Re-indexing started for {case_file.original_filename}', 'success')
-            print(f"[Re-index] Queued re-indexing for file ID {file_id}: {case_file.original_filename}")
+            if celery_app:
+                celery_app.send_task('tasks.start_file_indexing', args=[file_id])
+                flash(f'Re-indexing started for {case_file.original_filename}', 'success')
+                print(f"[Re-index] Queued re-indexing for file ID {file_id}: {case_file.original_filename}")
+            else:
+                flash(f'Celery worker not available', 'error')
+                print(f"[Re-index] ERROR: Celery not available for file ID {file_id}")
         except Exception as e:
             print(f"[Re-index] Error queuing task: {e}")
             flash(f'Re-index queued but worker may not be running. Check logs.', 'warning')
@@ -530,16 +541,18 @@ def rerun_rules(file_id):
         
         # Queue SIGMA rule processing
         try:
-            from tasks import process_sigma_rules
             # Generate index name (same logic as in tasks.py)
-            import os
             name = os.path.splitext(case_file.original_filename)[0]
             name = name.replace('%', '_').replace(' ', '_').replace('-', '_').lower()[:100]
             index_name = f"case{case_file.case_id}_{name}"
             
-            task = process_sigma_rules.delay(file_id, index_name)
-            flash(f'Re-running SIGMA rules for {case_file.original_filename}', 'success')
-            print(f"[Re-run Rules] Queued rule processing task {task.id} for file ID {file_id}: {case_file.original_filename}, index: {index_name}")
+            if celery_app:
+                task = celery_app.send_task('tasks.process_sigma_rules', args=[file_id, index_name])
+                flash(f'Re-running SIGMA rules for {case_file.original_filename}', 'success')
+                print(f"[Re-run Rules] Queued rule processing task {task.id} for file ID {file_id}: {case_file.original_filename}, index: {index_name}")
+            else:
+                flash(f'Celery worker not available', 'error')
+                print(f"[Re-run Rules] ERROR: Celery not available for file ID {file_id}")
         except Exception as e:
             print(f"[Re-run Rules] Error queuing task: {e}")
             import traceback

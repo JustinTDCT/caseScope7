@@ -1,7 +1,7 @@
 {
-  "version": "7.1.75",
+  "version": "7.1.76",
   "release_date": "2025-09-30",
-  "description": "Bugfix - Fixed Celery worker ExecStop error using undefined MAINPID variable by replacing with proper celery control shutdown command",
+  "description": "Critical Fix - Fixed Celery task queueing by importing celery_app in main.py and using send_task instead of direct task imports creating separate disconnected Celery instances",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -78,6 +78,7 @@
     "7.1.72": "Enhancement - Improved Re-run Rules functionality: added deletion of existing violations before re-running rules to prevent duplicates, enhanced task queuing with task ID logging and full traceback on errors in main.py, added verbose logging to process_sigma_rules Celery task (task ID, file details, case info, rule processing steps) for easier debugging via journalctl -u casescope-worker -f",
     "7.1.73": "Bugfix - Fixed sigma_rules route using incorrect render_template('sigma_rules.html') call instead of inline render_sigma_rules_page() function; was causing werkzeug.routing.exceptions.BuildError server error due to missing template file and base.html reference to non-existent system_dashboard endpoint",
     "7.1.74": "Bugfix - Fixed SIGMA rules download failing with 'No such file or directory: git' error by using full path /usr/bin/git in subprocess.run call instead of relying on PATH environment variable in web service",
-    "7.1.75": "Bugfix - Fixed Celery worker ExecStop error 'Referenced but unset environment variable MAINPID' by replacing ExecStopPost with proper ExecStop using celery control shutdown command; Type=simple doesn't support MAINPID variable"
+    "7.1.75": "Bugfix - Fixed Celery worker ExecStop error 'Referenced but unset environment variable MAINPID' by replacing ExecStopPost with proper ExecStop using celery control shutdown command; Type=simple doesn't support MAINPID variable",
+    "7.1.76": "Critical Fix - Fixed Celery tasks never reaching worker: main.py was importing tasks directly creating separate disconnected Celery app instances; now imports celery_app and uses send_task() method to queue tasks to the same Redis broker that worker monitors; this fixes file upload indexing, re-index, and re-run rules functionality"
   }
 }
