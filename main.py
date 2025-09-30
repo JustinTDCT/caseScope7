@@ -1304,46 +1304,6 @@ def build_opensearch_query(user_query):
         }
     }
 
-
-@app.route('/api/file/progress/<int:file_id>')
-@login_required
-def file_progress(file_id):
-    """API endpoint to get real-time file processing progress"""
-    case_file = CaseFile.query.get_or_404(file_id)
-    
-    # Verify file belongs to active case
-    active_case_id = session.get('active_case_id')
-    if not active_case_id or case_file.case_id != active_case_id:
-        return jsonify({'error': 'Access denied'}), 403
-    
-    # If estimated_event_count is not set and we're indexing, use fallback estimation
-    # (This shouldn't happen normally since counting happens first, but just in case)
-    if case_file.indexing_status == 'Indexing':
-        if not case_file.estimated_event_count or case_file.estimated_event_count == 0:
-            case_file.estimated_event_count = int((case_file.file_size / 1048576) * 1000)
-            db.session.commit()
-    
-    # Calculate progress percentage
-    progress = 0
-    if case_file.indexing_status == 'Indexing':
-        if case_file.estimated_event_count > 0 and case_file.event_count > 0:
-            progress = min(int((case_file.event_count / case_file.estimated_event_count) * 100), 99)
-        else:
-            progress = 5  # Show small progress when starting
-    elif case_file.indexing_status == 'Running Rules':
-        progress = 100  # Rules processing is after indexing
-    elif case_file.indexing_status == 'Completed':
-        progress = 100
-    
-    return jsonify({
-        'status': case_file.indexing_status,
-        'progress': progress,
-        'event_count': case_file.event_count or 0,
-        'estimated_event_count': case_file.estimated_event_count or 0,
-        'violation_count': case_file.violation_count or 0,
-        'is_indexed': case_file.is_indexed
-    })
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
