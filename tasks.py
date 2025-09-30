@@ -742,22 +742,19 @@ def process_sigma_rules(self, file_id, index_name):
                             continue
                         
                         # Extract event identifiers from the matched event document
-                        # The document contains the raw EVTX event fields
-                        event_record_id = doc.get('Event', {}).get('System', {}).get('EventRecordID')
-                        if not event_record_id:
-                            # Try alternative field names
-                            event_record_id = doc.get('System', {}).get('EventRecordID')
+                        # Chainsaw document structure: {kind, path, data: {Event: {System, EventData}}}
+                        data = doc.get('data', {})
+                        event = data.get('Event', {})
+                        system = event.get('System', {})
                         
-                        if not event_record_id:
-                            # Try more variations
-                            event_record_id = doc.get('EventRecordID')
-                            if not event_record_id:
-                                event_record_id = doc.get('System.EventRecordID')
+                        # EventRecordID is in System - can be a string or int
+                        event_record_id = system.get('EventRecordID')
                         
                         if not event_record_id:
                             # Debug: Show document structure to find correct path
                             logger.warning(f"Could not extract EventRecordID from detection for rule {rule_name}")
-                            logger.info(f"DEBUG: Document keys: {list(doc.keys())[:10]}")
+                            logger.info(f"DEBUG: Document keys: {list(doc.keys())}")
+                            logger.info(f"DEBUG: System keys: {list(system.keys())[:10] if system else 'No System'}")
                             logger.info(f"DEBUG: Document sample: {json.dumps(doc, indent=2)[:500]}")
                             continue
                         
@@ -791,7 +788,7 @@ def process_sigma_rules(self, file_id, index_name):
                                 file_id=file_id,
                                 rule_id=matching_rule.id,
                                 event_id=event_id,
-                                event_data=json.dumps(doc),
+                                event_data=json.dumps(data),  # Store the actual event data, not the wrapper
                                 matched_fields=json.dumps({
                                     'rule_name': rule_name,
                                     'rule_id': rule_id_from_yaml,
