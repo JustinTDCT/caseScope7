@@ -749,7 +749,16 @@ def process_sigma_rules(self, file_id, index_name):
                             event_record_id = doc.get('System', {}).get('EventRecordID')
                         
                         if not event_record_id:
+                            # Try more variations
+                            event_record_id = doc.get('EventRecordID')
+                            if not event_record_id:
+                                event_record_id = doc.get('System.EventRecordID')
+                        
+                        if not event_record_id:
+                            # Debug: Show document structure to find correct path
                             logger.warning(f"Could not extract EventRecordID from detection for rule {rule_name}")
+                            logger.info(f"DEBUG: Document keys: {list(doc.keys())[:10]}")
+                            logger.info(f"DEBUG: Document sample: {json.dumps(doc, indent=2)[:500]}")
                             continue
                         
                         # Create a unique event ID (same format as indexing uses)
