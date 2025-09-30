@@ -348,11 +348,12 @@ update_opensearch_config() {
     sed -i '/^indices\.query\.bool\.max_clause_count:/d' /opt/opensearch/config/opensearch.yml
     
     # Add the setting to opensearch.yml (cluster config, not JVM option)
-    log "Setting indices.query.bool.max_clause_count=8192 in opensearch.yml..."
+    log "Setting indices.query.bool.max_clause_count=16384 in opensearch.yml..."
     echo "" >> /opt/opensearch/config/opensearch.yml
     echo "# SIGMA rule support - increase max boolean clauses for complex queries" >> /opt/opensearch/config/opensearch.yml
-    echo "indices.query.bool.max_clause_count: 8192" >> /opt/opensearch/config/opensearch.yml
-    log "✓ Added max_clause_count=8192 to OpenSearch cluster config"
+    echo "# Some SIGMA rules generate 10,000+ clauses, set to 16,384 for headroom" >> /opt/opensearch/config/opensearch.yml
+    echo "indices.query.bool.max_clause_count: 16384" >> /opt/opensearch/config/opensearch.yml
+    log "✓ Added max_clause_count=16384 to OpenSearch cluster config"
     
     # Restart OpenSearch to apply changes
     if systemctl is-active --quiet opensearch; then
@@ -372,10 +373,10 @@ update_opensearch_config() {
             
             # Verify the setting was applied
             ACTUAL_VALUE=$(curl -s 'http://127.0.0.1:9200/_nodes?filter_path=nodes.*.settings.indices.query.bool.max_clause_count' 2>/dev/null | grep -o '"max_clause_count":"[0-9]*"' | cut -d'"' -f4 | head -1)
-            if [ "$ACTUAL_VALUE" = "8192" ]; then
-                log "✓ Verified: max_clause_count is set to 8192 in running cluster"
+            if [ "$ACTUAL_VALUE" = "16384" ]; then
+                log "✓ Verified: max_clause_count is set to 16384 in running cluster"
             else
-                log_warning "Warning: max_clause_count is $ACTUAL_VALUE (expected 8192)"
+                log_warning "Warning: max_clause_count is $ACTUAL_VALUE (expected 16384)"
             fi
             
             # Configure cluster to keep queries alive even if client disconnects (prevents timeout cancellations)
@@ -485,7 +486,8 @@ logger.org.opensearch.discovery: ERROR
 logger.org.opensearch.cluster.service: ERROR
 
 # SIGMA rule support - increase max boolean clauses for complex queries
-indices.query.bool.max_clause_count: 8192
+# Some SIGMA rules generate 10,000+ clauses, set to 16,384 for headroom
+indices.query.bool.max_clause_count: 16384
 EOF
     
     # Ensure security plugin is disabled and demo config is not installed
