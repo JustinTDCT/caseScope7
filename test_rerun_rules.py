@@ -126,22 +126,70 @@ try:
     print(f"  Arguments: [{FILE_ID}, '{index_name}']")
     print()
     
-    # Create signature and apply async (EXACTLY as main.py does)
-    from celery import signature
-    print("  Creating signature...")
-    sig = signature('tasks.process_sigma_rules', args=[FILE_ID, index_name], app=celery_app)
-    print(f"  ✓ Signature created: {sig}")
-    print(f"    Signature type: {type(sig)}")
-    print(f"    Signature name: {sig.name}")
-    print(f"    Signature args: {sig.args}")
+    # NUCLEAR OPTION: Manually push task to Redis using kombu (EXACTLY as main.py v7.1.86 does)
+    import json
+    import uuid
+    from kombu import Connection, Exchange, Queue as KombuQueue
+    from kombu.pools import producers
+    
+    task_id = str(uuid.uuid4())
+    print(f"  ✓ Generated task ID: {task_id}")
+    
+    # Create task message in Celery's protocol format
+    message = {
+        'task': 'tasks.process_sigma_rules',
+        'id': task_id,
+        'args': [FILE_ID, index_name],
+        'kwargs': {},
+        'retries': 0,
+        'eta': None,
+        'expires': None,
+    }
+    
+    print(f"  ✓ Task message created:")
+    print(f"    Task name: {message['task']}")
+    print(f"    Task ID: {message['id']}")
+    print(f"    Args: {message['args']}")
     print()
     
-    print("  Calling apply_async()...")
-    task = sig.apply_async()
-    print(f"  ✓ Task object created: {task}")
+    print("  Publishing message directly to Redis queue using kombu...")
+    # Connect directly to Redis and push message
+    with Connection('redis://localhost:6379/0') as conn:
+        print(f"    ✓ Connected to Redis: {conn}")
+        
+        exchange = Exchange('celery', type='direct')
+        queue = KombuQueue('celery', exchange=exchange, routing_key='celery')
+        print(f"    ✓ Exchange created: {exchange.name} (type: {exchange.type})")
+        print(f"    ✓ Queue created: {queue.name} (routing_key: {queue.routing_key})")
+        
+        with producers[conn].acquire(block=True) as producer:
+            print(f"    ✓ Producer acquired")
+            
+            producer.publish(
+                message,
+                exchange=exchange,
+                routing_key='celery',
+                serializer='json',
+                compression=None,
+                retry=True,
+            )
+            
+            print(f"    ✓✓✓ MESSAGE PUBLISHED TO REDIS! ✓✓✓")
+    
+    print()
+    
+    # Create a fake task result object for compatibility
+    class FakeTask:
+        def __init__(self, task_id):
+            self.id = task_id
+            self.state = 'PENDING'
+        def ready(self):
+            return False
+    
+    task = FakeTask(task_id)
+    print(f"  ✓ Task object created (for compatibility): {task}")
     print(f"    Task ID: {task.id}")
     print(f"    Task state: {task.state}")
-    print(f"    Task ready: {task.ready()}")
     print()
     
 except Exception as e:
