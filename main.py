@@ -615,12 +615,12 @@ def violations():
     case_id = session.get('active_case_id')
     if not case_id:
         flash('Please select a case first', 'warning')
-        return redirect(url_for('select_case'))
+        return redirect(url_for('case_selection'))
     
     case = db.session.get(Case, case_id)
     if not case:
         flash('Case not found', 'error')
-        return redirect(url_for('select_case'))
+        return redirect(url_for('case_selection'))
     
     # Get filter parameters
     severity_filter = request.args.get('severity', 'all')
