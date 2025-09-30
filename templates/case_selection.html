@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Select Case - caseScope{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-folder-open"></i> Select Case</h1>
+</div>
+
+<div class="card">
+    <div class="cases-grid">
+        {% if cases %}
+            {% for case in cases %}
+            <a href="{{ url_for('select_case', case_id=case.id) }}" class="case-card {% if case.id == active_case_id %}active{% endif %}">
+                <div class="case-icon">
+                    <i class="fas fa-folder{% if case.id == active_case_id %}-open{% endif %}"></i>
+                </div>
+                <div class="case-details">
+                    <h3>{{ case.name }}</h3>
+                    <p>{{ case.description or 'No description' }}</p>
+                    <div class="case-meta">
+                        <span><i class="fas fa-calendar"></i> {{ case.created_at.strftime('%Y-%m-%d') }}</span>
+                        <span><i class="fas fa-user"></i> {{ case.lead_investigator or 'Unassigned' }}</span>
+                    </div>
+                </div>
+                {% if case.id == active_case_id %}
+                <span class="badge badge-success">Active</span>
+                {% endif %}
+            </a>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <i class="fas fa-folder-open fa-3x"></i>
+                <h3>No Cases Available</h3>
+                <p>Create a new case to get started</p>
+                <a href="{{ url_for('create_case') }}" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Create Case
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
