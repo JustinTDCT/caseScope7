@@ -723,6 +723,10 @@ def process_sigma_rules(self, file_id, index_name):
                 
                 logger.info(f"Chainsaw returned {len(chainsaw_results)} detection(s)")
                 
+                # Debug: Log first detection to understand structure
+                if chainsaw_results and len(chainsaw_results) > 0:
+                    logger.info(f"DEBUG: First detection structure: {json.dumps(chainsaw_results[0], indent=2)[:500]}")
+                
                 # Chainsaw output format: list of detection objects
                 for detection in chainsaw_results:
                     try:
@@ -730,7 +734,10 @@ def process_sigma_rules(self, file_id, index_name):
                         doc = detection.get('document', {})
                         detections_list = detection.get('detections', [])
                         
+                        logger.debug(f"DEBUG: Detection has document={bool(doc)}, detections={len(detections_list) if detections_list else 0}")
+                        
                         if not detections_list:
+                            logger.warning(f"Detection has no detections list: {list(detection.keys())}")
                             continue
                         
                         # Get event identifiers

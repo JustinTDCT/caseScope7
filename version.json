@@ -1,7 +1,7 @@
 {
-  "version": "7.2.18",
+  "version": "7.2.19",
   "release_date": "2025-09-30",
-  "description": "Performance - Reduced bulk index batch size from 1000 to 100 events; UI now updates 10x more frequently showing near real-time progress; logging reduced to every 1000 events to prevent spam",
+  "description": "Debug - Added detailed logging to Chainsaw detection parsing; user reported '74 detections but 0 violations created'; logs first detection structure and keys to diagnose JSON format mismatch",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -120,6 +120,7 @@
     "7.2.15": "Enhancement - Auto-enable Windows threat-hunting rules on download; improved path detection from 'rules-threat-hunting' and '/windows/' (exact match) to 'threat-hunting' and 'windows' (case-insensitive flexible match); handles path variations in SigmaHQ repo structure; download success message now shows total enabled count: 'X new rules added (Y enabled)'; helps user see which rules are active immediately after download",
     "7.2.16": "Enhancement - Improved enable_threat_hunting_rules.py script for manual rule enabling; completely rewrote logic to find Windows threat-hunting rules by checking category contains 'windows' AND (tags/title/description contains threat/hunting/anomaly/suspicious/detection keywords OR YAML contains threat-hunting path); handles JSON-encoded tags properly; shows detailed summary with newly enabled count, already enabled count, total Windows threat-hunting rules, and total enabled rules in database; if no matches found, shows category breakdown for troubleshooting; run with: sudo -u casescope /opt/casescope/venv/bin/python3 enable_threat_hunting_rules.py",
     "7.2.17": "UI Enhancement - Replaced progress bars with simple event count text; user reported 'bar pulsates - it jumps then sets back to 0'; removed all progress-bar HTML/CSS and replaced with clean text display showing 'X / Y events'; JavaScript now only updates text content, no width animations; tasks.py now sends current/total in meta for accurate display; updates happen every 1000 events (bulk index interval); eliminated visual jumping/pulsating behavior; cleaner, more stable UI",
-    "7.2.18": "Performance - Real-time progress updates; user requested 'update counts in real time not batches of 1000'; reduced bulk index batch from 1000 to 100 events; UI now updates 10x more frequently (every 100 events instead of 1000); progress meta sent with every batch; logging reduced to every 1000 events (event_count % 1000 == 0) to prevent log spam; provides near real-time feedback while maintaining good indexing performance"
+    "7.2.18": "Performance - Real-time progress updates; user requested 'update counts in real time not batches of 1000'; reduced bulk index batch from 1000 to 100 events; UI now updates 10x more frequently (every 100 events instead of 1000); progress meta sent with every batch; logging reduced to every 1000 events (event_count % 1000 == 0) to prevent log spam; provides near real-time feedback while maintaining good indexing performance",
+    "7.2.19": "Debug - Enhanced Chainsaw detection parsing logging; user reported logs showing 'Chainsaw returned 74 detection(s)' but '✓ Created 0 violation records' indicating parsing failure; added debug logging to output first detection JSON structure (first 500 chars) and keys for each detection; added warning when detection has no 'detections' list; helps diagnose JSON format mismatch between expected and actual Chainsaw v2.12.2 output format"
   }
 }
