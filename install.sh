@@ -1406,7 +1406,19 @@ main() {
     # Run installation steps
     check_requirements
     install_dependencies
-    install_chainsaw
+    
+    # Chainsaw installation is CRITICAL - fail if it doesn't work
+    if ! install_chainsaw; then
+        echo -e "${RED}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${RED}║           CRITICAL: Chainsaw Installation Failed!          ║${NC}"
+        echo -e "${RED}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo
+        echo -e "${RED}Chainsaw is required for SIGMA rule processing.${NC}"
+        echo -e "${YELLOW}Installation cannot continue without it.${NC}"
+        echo
+        exit 1
+    fi
+    
     create_user
     handle_existing_data
     create_directories

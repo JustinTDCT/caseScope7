@@ -290,7 +290,10 @@ def case_selection():
 @login_required
 def set_active_case(case_id):
     """Set the active case"""
-    case = Case.query.get_or_404(case_id)
+    case = db.session.get(Case, case_id)
+    if not case:
+        flash('Case not found.', 'error')
+        return redirect(url_for('case_selection'))
     session['active_case_id'] = case_id
     flash(f'Active case set to: {case.name}', 'success')
     return redirect(url_for('case_dashboard'))
@@ -304,7 +307,10 @@ def case_dashboard():
         flash('Please select a case first.', 'warning')
         return redirect(url_for('case_selection'))
     
-    case = Case.query.get_or_404(active_case_id)
+    case = db.session.get(Case, active_case_id)
+    if not case:
+        flash('Case not found.', 'error')
+        return redirect(url_for('case_selection'))
     
     # Get case-specific statistics
     total_files = CaseFile.query.filter_by(case_id=case.id, is_deleted=False).count()
@@ -331,7 +337,10 @@ def upload_files():
         flash('Please select a case before uploading files.', 'warning')
         return redirect(url_for('case_selection'))
     
-    case = Case.query.get_or_404(active_case_id)
+    case = db.session.get(Case, active_case_id)
+    if not case:
+        flash('Case not found.', 'error')
+        return redirect(url_for('case_selection'))
     
     if request.method == 'POST':
         files = request.files.getlist('files')
@@ -469,7 +478,10 @@ def list_files():
         flash('Please select a case first.', 'warning')
         return redirect(url_for('case_selection'))
     
-    case = Case.query.get_or_404(active_case_id)
+    case = db.session.get(Case, active_case_id)
+    if not case:
+        flash('Case not found.', 'error')
+        return redirect(url_for('case_selection'))
     files = CaseFile.query.filter_by(case_id=case.id, is_deleted=False).order_by(CaseFile.uploaded_at.desc()).all()
     
     return render_file_list(case, files)
