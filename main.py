@@ -3624,6 +3624,33 @@ def render_sigma_rules_page(all_rules, enabled_count, total_count, total_violati
                 box-shadow: 0 2px 4px rgba(76,175,80,0.3); border: 1px solid rgba(255,255,255,0.1);
             }}
             .content {{ padding: 30px; }}
+            .menu-title {{
+                font-size: 0.8em; font-weight: 600; color: rgba(255,255,255,0.6); text-transform: uppercase;
+                letter-spacing: 0.5px; margin: 15px 0 8px 0; padding-left: 5px;
+            }}
+            .menu-item {{ 
+                display: block; color: white; text-decoration: none; padding: 12px 16px; margin: 6px 0; 
+                border-radius: 12px; background: linear-gradient(145deg, #3949ab, #283593);
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+                transition: all 0.3s ease; border: 1px solid rgba(255,255,255,0.1); font-size: 0.95em;
+            }}
+            .menu-item:hover {{ 
+                background: linear-gradient(145deg, #5c6bc0, #3949ab);
+                transform: translateX(5px);
+                box-shadow: 0 8px 15px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.2);
+            }}
+            .menu-item.active {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                box-shadow: 0 4px 12px rgba(76,175,80,0.4), inset 0 1px 0 rgba(255,255,255,0.2);
+            }}
+            .menu-item.placeholder {{ 
+                background: linear-gradient(145deg, #424242, #2e2e2e); 
+                color: #aaa; cursor: not-allowed; opacity: 0.7;
+            }}
+            .menu-item.placeholder:hover {{
+                transform: none;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+            }}
             .logout-btn {{
                 background: linear-gradient(145deg, #f44336, #d32f2f); color: white !important;
                 padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 0.9em;
@@ -3952,6 +3979,33 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
                 box-shadow: 0 2px 4px rgba(76,175,80,0.3); border: 1px solid rgba(255,255,255,0.1);
             }}
             .content {{ padding: 30px; }}
+            .menu-title {{
+                font-size: 0.8em; font-weight: 600; color: rgba(255,255,255,0.6); text-transform: uppercase;
+                letter-spacing: 0.5px; margin: 15px 0 8px 0; padding-left: 5px;
+            }}
+            .menu-item {{ 
+                display: block; color: white; text-decoration: none; padding: 12px 16px; margin: 6px 0; 
+                border-radius: 12px; background: linear-gradient(145deg, #3949ab, #283593);
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+                transition: all 0.3s ease; border: 1px solid rgba(255,255,255,0.1); font-size: 0.95em;
+            }}
+            .menu-item:hover {{ 
+                background: linear-gradient(145deg, #5c6bc0, #3949ab);
+                transform: translateX(5px);
+                box-shadow: 0 8px 15px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.2);
+            }}
+            .menu-item.active {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                box-shadow: 0 4px 12px rgba(76,175,80,0.4), inset 0 1px 0 rgba(255,255,255,0.2);
+            }}
+            .menu-item.placeholder {{ 
+                background: linear-gradient(145deg, #424242, #2e2e2e); 
+                color: #aaa; cursor: not-allowed; opacity: 0.7;
+            }}
+            .menu-item.placeholder:hover {{
+                transform: none;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+            }}
             .logout-btn {{
                 background: linear-gradient(145deg, #f44336, #d32f2f); color: white !important;
                 padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 0.9em;
