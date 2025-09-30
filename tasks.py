@@ -272,7 +272,7 @@ def enrich_events_with_detections(index_name, detections_by_event):
             response = opensearch_client.bulk(
                 body=bulk_body,
                 index=index_name,
-                timeout='60s'
+                timeout=60
             )
             
             if response.get('errors'):
