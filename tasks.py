@@ -40,15 +40,21 @@ logger.info("Importing Flask app and database models...")
 from main import app, db, CaseFile, Case, SigmaRule, SigmaViolation
 logger.info("Flask app and models imported successfully")
 
-# OpenSearch connection
+# OpenSearch connection with extended timeouts for complex SIGMA queries
 logger.info("Initializing OpenSearch client...")
+from opensearchpy import RequestsHttpConnection
+
 opensearch_client = OpenSearch(
     hosts=[{'host': 'localhost', 'port': 9200}],
     http_compress=True,
     use_ssl=False,
     verify_certs=False,
     ssl_assert_hostname=False,
-    ssl_show_warn=False
+    ssl_show_warn=False,
+    connection_class=RequestsHttpConnection,
+    timeout=60,  # Default connect+read timeout
+    max_retries=3,
+    retry_on_timeout=True
 )
 logger.info("OpenSearch client initialized")
 
@@ -364,7 +370,8 @@ def process_sigma_rules(self, file_id, index_name):
                         if isinstance(opensearch_query, dict):
                             search_body = {
                                 "query": opensearch_query,
-                                "size": 1000  # Max results per rule
+                                "size": 1000,  # Max results per rule
+                                "track_total_hits": 10000  # Avoid expensive exact counts for huge result sets
                             }
                         else:
                             # Fallback for string queries
@@ -376,14 +383,17 @@ def process_sigma_rules(self, file_id, index_name):
                                         "default_operator": "AND"
                                     }
                                 },
-                                "size": 1000
+                                "size": 1000,
+                                "track_total_hits": 10000
                             }
                         
                         logger.debug(f"Search body type: {type(opensearch_query)}, Query: {str(opensearch_query)[:200]}")
                         
+                        # Execute with extended timeout for complex SIGMA queries (up to 120s)
                         response = opensearch_client.search(
                             index=index_name,
-                            body=search_body
+                            body=search_body,
+                            request_timeout=120  # Per-request timeout for large boolean queries
                         )
                         
                         hits = response['hits']['hits']

@@ -5,7 +5,11 @@ Handles background processing for file indexing and SIGMA rule processing
 """
 
 from celery import Celery
-from celery.signals import worker_ready, worker_shutdown, task_prerun, task_postrun, task_failure
+from celery.signals import (
+    worker_ready, worker_shutdown, 
+    task_prerun, task_postrun, task_failure, task_received,
+    before_task_publish, after_task_publish
+)
 import os
 import sys
 
@@ -54,6 +58,13 @@ celery_app.conf.update(
         'priority_steps': [0],  # Disable celery0..9 fan-out
         'visibility_timeout': 3600,
     },
+    # Prevent Celery from hijacking root logger
+    worker_hijack_root_logger=False,
+    # Detailed log formats for debugging
+    worker_log_format='[%(asctime)s] [%(levelname)s] [%(processName)s/%(name)s] %(message)s',
+    worker_task_log_format='[%(asctime)s] [%(levelname)s] [%(task_name)s(%(task_id)s)] %(message)s',
+    # Enable task-sent events for better visibility
+    task_send_sent_event=True,
 )
 
 # Signal handlers for verbose logging
@@ -104,6 +115,35 @@ def on_task_failure(sender, task_id, exception, args, kwargs, traceback, einfo, 
     logger.error(f"[TASK FAILED] {sender.name} (ID: {task_id})")
     logger.error(f"[TASK FAILED] Exception: {exception}")
     logger.error(f"[TASK FAILED] Traceback: {traceback}")
+
+@task_received.connect
+def on_task_received(request=None, **kwargs):
+    """Log the exact moment a task lands on the worker"""
+    logger.info("="*80)
+    logger.info(f"[TASK RECEIVED] Task landed on worker!")
+    logger.info(f"[TASK RECEIVED] Task ID: {request.id}")
+    logger.info(f"[TASK RECEIVED] Task Name: {request.name}")
+    logger.info(f"[TASK RECEIVED] Args: {request.argsrepr}")
+    logger.info(f"[TASK RECEIVED] Kwargs: {request.kwargsrepr}")
+    logger.info(f"[TASK RECEIVED] ETA: {request.eta}")
+    logger.info(f"[TASK RECEIVED] Retries: {request.retries}")
+    logger.info("="*80)
+
+@before_task_publish.connect
+def on_before_publish(headers=None, body=None, exchange=None, routing_key=None, **kwargs):
+    """Log when web process is about to publish a task"""
+    logger.info(f"[TASK PUBLISH] Preparing to send task: {headers.get('task') if headers else 'unknown'}")
+    logger.info(f"[TASK PUBLISH] Routing key: {routing_key}, Exchange: {exchange}")
+
+@after_task_publish.connect
+def on_after_publish(headers=None, body=None, exchange=None, routing_key=None, **kwargs):
+    """Log when web process successfully published a task"""
+    task_id = headers.get('id') if headers else 'unknown'
+    task_name = headers.get('task') if headers else 'unknown'
+    logger.info(f"[TASK SENT] Successfully queued task to Redis")
+    logger.info(f"[TASK SENT] Task ID: {task_id}")
+    logger.info(f"[TASK SENT] Task Name: {task_name}")
+    logger.info(f"[TASK SENT] Routing key: {routing_key}")
 
 # Import tasks
 logger.info("Auto-discovering tasks...")

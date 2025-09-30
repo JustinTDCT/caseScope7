@@ -377,6 +377,14 @@ update_opensearch_config() {
             else
                 log_warning "Warning: max_clause_count is $ACTUAL_VALUE (expected 8192)"
             fi
+            
+            # Configure cluster to keep queries alive even if client disconnects (prevents timeout cancellations)
+            log "Configuring OpenSearch to tolerate client disconnects during long queries..."
+            curl -s -X PUT http://127.0.0.1:9200/_cluster/settings \
+                -H 'Content-Type: application/json' \
+                -d '{"transient":{"search.default_keep_alive":"5m"}}' >/dev/null 2>&1
+            log "✓ Configured search.default_keep_alive=5m"
+            
             return 0
         fi
     done
@@ -781,7 +789,9 @@ ExecStartPre=/bin/echo "[Worker] Starting Celery worker with DEBUG logging..."
 ExecStartPre=/bin/mkdir -p /opt/casescope/tmp /opt/casescope/logs
 ExecStartPre=/bin/chown -R casescope:casescope /opt/casescope/tmp /opt/casescope/logs
 ExecStart=/opt/casescope/venv/bin/celery -A celery_app worker \
-    --loglevel=DEBUG \
+    -Q celery \
+    -l DEBUG \
+    -E \
     --concurrency=2 \
     --max-tasks-per-child=50 \
     --logfile=/opt/casescope/logs/celery_worker.log \
