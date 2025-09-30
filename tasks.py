@@ -17,7 +17,7 @@ import xmltodict
 
 # SIGMA processing imports
 from sigma.collection import SigmaCollection
-from sigma.backends.opensearch import OpensearchBackend
+from sigma.backends.opensearch import OpensearchLuceneBackend
 from sigma.processing.pipeline import ProcessingPipeline, ProcessingItem
 from sigma.processing.transformations import FieldMappingTransformation
 from sigma.exceptions import SigmaError
@@ -310,7 +310,7 @@ def process_sigma_rules(self, file_id, index_name):
             
             # Create pipeline for field mapping
             pipeline = create_casescope_pipeline()
-            backend = OpensearchBackend(processing_pipeline=pipeline)
+            backend = OpensearchLuceneBackend(processing_pipeline=pipeline)
             
             total_violations = 0
             rules_processed = 0
