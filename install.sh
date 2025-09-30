@@ -177,6 +177,68 @@ install_dependencies() {
     log "System dependencies installed successfully"
 }
 
+# Install Chainsaw for SIGMA rule processing
+install_chainsaw() {
+    log "Installing Chainsaw SIGMA processor..."
+    
+    if [ -f "/opt/casescope/bin/chainsaw" ]; then
+        log "Chainsaw already installed"
+        /opt/casescope/bin/chainsaw --version
+        return 0
+    fi
+    
+    # Create bin directory
+    mkdir -p /opt/casescope/bin
+    
+    # Download latest Chainsaw release for x86_64 Linux
+    cd /tmp
+    log "Downloading Chainsaw from GitHub..."
+    CHAINSAW_VERSION="v2.9.2"  # Latest stable version
+    wget -q https://github.com/WithSecureLabs/chainsaw/releases/download/${CHAINSAW_VERSION}/chainsaw_all_platforms+rules.zip
+    
+    if [ $? -ne 0 ]; then
+        log_error "Failed to download Chainsaw"
+        return 1
+    fi
+    
+    # Extract
+    unzip -q chainsaw_all_platforms+rules.zip
+    
+    # Move Linux binary to casescope bin
+    mv chainsaw/chainsaw_x86_64-unknown-linux-gnu /opt/casescope/bin/chainsaw
+    chmod +x /opt/casescope/bin/chainsaw
+    
+    # Move Chainsaw's built-in SIGMA rules and mappings
+    if [ -d "chainsaw/sigma" ]; then
+        log "Installing Chainsaw SIGMA rules..."
+        mkdir -p /opt/casescope/chainsaw
+        mv chainsaw/sigma /opt/casescope/chainsaw/rules
+    fi
+    
+    # Move Chainsaw's built-in mappings (includes sigma-event-logs-all.yml for Windows EVTX)
+    if [ -d "chainsaw/mappings" ]; then
+        log "Installing Chainsaw mappings..."
+        mv chainsaw/mappings /opt/casescope/chainsaw/mappings
+        log "✓ Installed Chainsaw mappings (sigma-event-logs-all.yml for Windows EVTX)"
+    fi
+    
+    # Clean up
+    rm -rf chainsaw chainsaw_all_platforms+rules.zip
+    
+    # Set ownership
+    chown -R casescope:casescope /opt/casescope/bin
+    chown -R casescope:casescope /opt/casescope/chainsaw
+    
+    # Verify installation
+    log "Verifying Chainsaw installation..."
+    if /opt/casescope/bin/chainsaw --version; then
+        log "✓ Chainsaw installed successfully"
+    else
+        log_error "Chainsaw installation verification failed"
+        return 1
+    fi
+}
+
 # Create system user
 create_user() {
     log "Creating casescope system user..."
@@ -1258,7 +1320,7 @@ except Exception as e:
 
 # Main installation function
 main() {
-    log "Starting caseScope 7.1 installation..."
+    log "Starting caseScope 7.2 installation..."
     
     # Get installation choice
     get_choice
@@ -1266,6 +1328,7 @@ main() {
     # Run installation steps
     check_requirements
     install_dependencies
+    install_chainsaw
     create_user
     handle_existing_data
     create_directories

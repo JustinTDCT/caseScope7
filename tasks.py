@@ -161,8 +161,8 @@ def make_index_name(case_id, original_filename):
 
 def create_casescope_pipeline():
     """
-    Create pySigma processing pipeline for caseScope EVTX structure
-    Maps Sigma standard fields to our flattened XML structure
+    DEPRECATED in v7.2.0 - Replaced by Chainsaw
+    Kept for backward compatibility during transition
     """
     field_mapping = FieldMappingTransformation(CASESCOPE_FIELD_MAPPING)
     
@@ -179,6 +179,109 @@ def create_casescope_pipeline():
     )
     
     return pipeline
+
+def export_events_to_json(index_name, output_path):
+    """
+    Export all events from OpenSearch index to JSON file for Chainsaw processing
+    
+    Args:
+        index_name: OpenSearch index name
+        output_path: Path to write JSON file
+    
+    Returns:
+        Number of events exported
+    """
+    logger.info(f"Exporting events from index '{index_name}' to {output_path}...")
+    
+    export_count = 0
+    
+    with open(output_path, 'w') as f:
+        # Use scroll API to export all events efficiently
+        response = opensearch_client.search(
+            index=index_name,
+            scroll='5m',
+            size=1000,
+            body={"query": {"match_all": {}}}
+        )
+        
+        scroll_id = response['_scroll_id']
+        hits = response['hits']['hits']
+        
+        # Write each event as a JSON object (one per line - JSONL format)
+        for hit in hits:
+            event = hit['_source']
+            f.write(json.dumps(event) + '\n')
+            export_count += 1
+        
+        # Continue scrolling until all events exported
+        while len(hits) > 0:
+            response = opensearch_client.scroll(scroll_id=scroll_id, scroll='5m')
+            scroll_id = response['_scroll_id']
+            hits = response['hits']['hits']
+            
+            for hit in hits:
+                event = hit['_source']
+                f.write(json.dumps(event) + '\n')
+                export_count += 1
+        
+        # Clean up scroll
+        try:
+            opensearch_client.clear_scroll(scroll_id=scroll_id)
+        except:
+            pass
+    
+    logger.info(f"✓ Exported {export_count:,} events to {output_path}")
+    return export_count
+
+def enrich_events_with_detections(index_name, detections_by_event):
+    """
+    Enrich indexed events with SIGMA detection metadata
+    Adds 'sigma_detections' and 'has_violations' fields to matching events
+    
+    Args:
+        index_name: OpenSearch index name
+        detections_by_event: Dict mapping event_id -> list of detections
+    """
+    logger.info(f"Enriching {len(detections_by_event)} events with detection metadata...")
+    
+    # Bulk update using OpenSearch update API
+    bulk_actions = []
+    for event_id, detections in detections_by_event.items():
+        action = {
+            "update": {
+                "_index": index_name,
+                "_id": event_id
+            }
+        }
+        doc = {
+            "doc": {
+                "sigma_detections": detections,
+                "has_violations": True,
+                "violation_count": len(detections)
+            }
+        }
+        
+        bulk_actions.append(json.dumps(action))
+        bulk_actions.append(json.dumps(doc))
+    
+    if bulk_actions:
+        # Send bulk update request
+        bulk_body = '\n'.join(bulk_actions) + '\n'
+        
+        try:
+            response = opensearch_client.bulk(
+                body=bulk_body,
+                index=index_name,
+                timeout='60s'
+            )
+            
+            if response.get('errors'):
+                logger.warning(f"Some events failed to enrich: {response}")
+            else:
+                logger.info(f"✓ Successfully enriched {len(detections_by_event)} events")
+        except Exception as e:
+            logger.error(f"Failed to enrich events: {e}")
+            raise
 
 def flatten_event(event_data, prefix='', max_depth=10, current_depth=0):
     """
@@ -478,17 +581,27 @@ def index_evtx_file(self, file_id):
 @celery_app.task(bind=True, name='tasks.process_sigma_rules')
 def process_sigma_rules(self, file_id, index_name):
     """
-    Run SIGMA rules against indexed events
+    Run SIGMA rules against indexed events using Chainsaw
+    
+    NEW IN v7.2.0: Complete architectural rewrite
+    - Uses Chainsaw CLI (battle-tested SIGMA engine) instead of pySigma
+    - Exports events from OpenSearch to JSON
+    - Runs Chainsaw hunt with all enabled SIGMA rules
+    - Parses Chainsaw detections and creates violation records
+    - Enriches indexed events with detection metadata
     
     Args:
         file_id: Database ID of the CaseFile
-        index_name: OpenSearch index to scan
+        index_name: OpenSearch index containing events
     """
     import time
+    import subprocess
+    import tempfile
+    import shutil
     task_start_time = time.time()
     
     logger.info("="*80)
-    logger.info(f"SIGMA RULE PROCESSING TASK RECEIVED")
+    logger.info(f"CHAINSAW SIGMA PROCESSING TASK RECEIVED")
     logger.info(f"Task ID: {self.request.id}")
     logger.info(f"File ID: {file_id}")
     logger.info(f"Index Name: {index_name}")
@@ -496,6 +609,7 @@ def process_sigma_rules(self, file_id, index_name):
     logger.info("="*80)
     
     with app.app_context():
+        temp_dir = None
         try:
             logger.info(f"Querying database for CaseFile ID {file_id}...")
             case_file = db.session.get(CaseFile, file_id)
@@ -515,10 +629,9 @@ def process_sigma_rules(self, file_id, index_name):
             
             # Get all enabled SIGMA rules
             logger.info("Querying for enabled SIGMA rules...")
-            logger.info(f"Database URI: {app.config.get('SQLALCHEMY_DATABASE_URI', 'NOT SET')}")
             enabled_rules = SigmaRule.query.filter_by(is_enabled=True).all()
             total_rules = SigmaRule.query.count()
-            logger.info(f"Found {len(enabled_rules)} enabled SIGMA rules to process (out of {total_rules} total rules)")
+            logger.info(f"Found {len(enabled_rules)} enabled SIGMA rules (out of {total_rules} total)")
             logger.info(f"TASK SUMMARY: TaskID={self.request.id}, FileID={file_id}, Index={index_name}, Rules={len(enabled_rules)}/{total_rules}")
             
             if not enabled_rules:
@@ -527,127 +640,163 @@ def process_sigma_rules(self, file_id, index_name):
                 db.session.commit()
                 return {'status': 'success', 'message': 'No enabled rules', 'violations': 0}
             
-            # Create pipeline for field mapping
-            pipeline = create_casescope_pipeline()
-            backend = OpensearchLuceneBackend(processing_pipeline=pipeline)
+            # Create temporary directory for Chainsaw processing
+            temp_dir = tempfile.mkdtemp(prefix='casescope_chainsaw_')
+            logger.info(f"Created temporary directory: {temp_dir}")
             
-            total_violations = 0
-            rules_processed = 0
-            rules_failed = 0
+            # Step 1: Export events from OpenSearch to JSON
+            events_json_path = os.path.join(temp_dir, 'events.json')
+            logger.info(f"Exporting {case_file.event_count:,} events from OpenSearch to {events_json_path}...")
+            
+            export_count = export_events_to_json(index_name, events_json_path)
+            logger.info(f"✓ Exported {export_count:,} events to JSON")
+            
+            # Step 2: Export enabled SIGMA rules to temporary directory
+            rules_dir = os.path.join(temp_dir, 'sigma_rules')
+            os.makedirs(rules_dir, exist_ok=True)
+            logger.info(f"Exporting {len(enabled_rules)} enabled SIGMA rules to {rules_dir}...")
             
             for rule in enabled_rules:
-                try:
-                    logger.info(f"Processing rule: {rule.title}")
-                    
-                    # Parse Sigma rule
+                rule_file = os.path.join(rules_dir, f"{rule.id}_{sanitize_filename(rule.title)}.yml")
+                with open(rule_file, 'w') as f:
+                    f.write(rule.rule_yaml)
+            
+            logger.info(f"✓ Exported {len(enabled_rules)} rules")
+            
+            # Step 3: Run Chainsaw hunt
+            chainsaw_output_path = os.path.join(temp_dir, 'chainsaw_detections.json')
+            logger.info(f"Running Chainsaw hunt...")
+            logger.info(f"  Events: {events_json_path}")
+            logger.info(f"  Rules: {rules_dir}")
+            logger.info(f"  Output: {chainsaw_output_path}")
+            
+            # Use Chainsaw's built-in sigma-event-logs-all.yml mapping
+            # This is maintained by the Chainsaw team and covers all Windows EVTX fields
+            chainsaw_mapping = '/opt/casescope/chainsaw/mappings/sigma-event-logs-all.yml'
+            
+            chainsaw_cmd = [
+                '/opt/casescope/bin/chainsaw',
+                'hunt',
+                events_json_path,
+                '--rules', rules_dir,
+                '--mapping', chainsaw_mapping,
+                '--json',
+                '--output', chainsaw_output_path
+            ]
+            
+            logger.info(f"Executing: {' '.join(chainsaw_cmd)}")
+            
+            result = subprocess.run(
+                chainsaw_cmd,
+                capture_output=True,
+                text=True,
+                timeout=600  # 10 minute timeout for large files
+            )
+            
+            if result.returncode != 0:
+                logger.error(f"Chainsaw failed with return code {result.returncode}")
+                logger.error(f"STDOUT: {result.stdout}")
+                logger.error(f"STDERR: {result.stderr}")
+                raise Exception(f"Chainsaw hunt failed: {result.stderr}")
+            
+            logger.info(f"✓ Chainsaw hunt completed successfully")
+            logger.info(f"Chainsaw output: {result.stdout[:500]}")  # First 500 chars
+            
+            # Step 4: Parse Chainsaw detections and create violation records
+            logger.info(f"Parsing Chainsaw detections from {chainsaw_output_path}...")
+            
+            total_violations = 0
+            detections_by_event = {}  # Map event_id -> list of detections
+            
+            # Parse Chainsaw JSON output
+            if os.path.exists(chainsaw_output_path) and os.path.getsize(chainsaw_output_path) > 0:
+                with open(chainsaw_output_path, 'r') as f:
+                    chainsaw_results = json.load(f)
+                
+                logger.info(f"Chainsaw returned {len(chainsaw_results)} detection(s)")
+                
+                # Chainsaw output format: list of detection objects
+                for detection in chainsaw_results:
                     try:
-                        sigma_collection = SigmaCollection.from_yaml(rule.rule_yaml)
-                    except Exception as e:
-                        logger.warning(f"Failed to parse rule {rule.title}: {e}")
-                        rules_failed += 1
-                        continue
-                    
-                    # Convert to OpenSearch query
-                    try:
-                        queries = backend.convert(sigma_collection)
-                        # Backend returns a list of queries (one per rule in collection)
-                        if isinstance(queries, list):
-                            opensearch_query = queries[0] if queries else None
-                        else:
-                            opensearch_query = queries
+                        # Extract detection metadata
+                        doc = detection.get('document', {})
+                        detections_list = detection.get('detections', [])
                         
-                        if not opensearch_query:
-                            logger.warning(f"No query generated for rule {rule.title}")
-                            rules_failed += 1
+                        if not detections_list:
                             continue
-                    except Exception as e:
-                        logger.warning(f"Failed to convert rule {rule.title}: {e}")
-                        rules_failed += 1
-                        continue
-                    
-                    # Execute query against index
-                    try:
-                        # Build complete search body
-                        # pySigma backend returns a dict query, use it directly (not in query_string)
-                        if isinstance(opensearch_query, dict):
-                            search_body = {
-                                "query": opensearch_query,
-                                "size": 1000,  # Max results per rule
-                                "track_total_hits": 10000  # Avoid expensive exact counts for huge result sets
-                            }
-                        else:
-                            # Fallback for string queries
-                            search_body = {
-                                "query": {
-                                    "query_string": {
-                                        "query": opensearch_query,
-                                        "analyze_wildcard": True,
-                                        "default_operator": "AND"
-                                    }
-                                },
-                                "size": 1000,
-                                "track_total_hits": 10000
-                            }
                         
-                        logger.debug(f"Search body type: {type(opensearch_query)}, Query: {str(opensearch_query)[:200]}")
+                        # Get event identifiers
+                        metadata = doc.get('_casescope_metadata', {})
+                        record_number = metadata.get('record_number')
+                        file_id_from_event = metadata.get('file_id')
                         
-                        # Execute with extended timeout for complex SIGMA queries (up to 120s)
-                        response = opensearch_client.search(
-                            index=index_name,
-                            body=search_body,
-                            request_timeout=120  # Per-request timeout for large boolean queries
-                        )
+                        # Create a unique event ID (same as indexing uses)
+                        import hashlib
+                        event_id = hashlib.sha256(f"{file_id}_{record_number}".encode()).hexdigest()[:16]
                         
-                        hits = response['hits']['hits']
-                        logger.info(f"Rule '{rule.title}' matched {len(hits)} events")
-                        
-                        # Create violation records for matches
-                        for hit in hits:
-                            # Check if violation already exists for this event/rule combo
+                        # Process each SIGMA detection for this event
+                        for det in detections_list:
+                            rule_name = det.get('name', 'Unknown Rule')
+                            rule_level = det.get('level', 'medium')
+                            rule_path = det.get('rule_path', '')
+                            
+                            # Find matching SigmaRule in database by comparing rule name/content
+                            matching_rule = None
+                            for db_rule in enabled_rules:
+                                if db_rule.title == rule_name or rule_name in db_rule.rule_yaml:
+                                    matching_rule = db_rule
+                                    break
+                            
+                            if not matching_rule:
+                                logger.warning(f"Could not find database rule for Chainsaw detection: {rule_name}")
+                                continue
+                            
+                            # Check if violation already exists
                             existing = SigmaViolation.query.filter_by(
                                 file_id=file_id,
-                                rule_id=rule.id,
-                                event_id=hit['_id']
+                                rule_id=matching_rule.id,
+                                event_id=event_id
                             ).first()
                             
                             if not existing:
+                                # Create new violation record
                                 violation = SigmaViolation(
                                     case_id=case.id,
                                     file_id=file_id,
-                                    rule_id=rule.id,
-                                    event_id=hit['_id'],
-                                    event_data=json.dumps(hit['_source']),
-                                    matched_fields=json.dumps({}),  # Could extract matched fields
-                                    severity=rule.level
+                                    rule_id=matching_rule.id,
+                                    event_id=event_id,
+                                    event_data=json.dumps(doc),
+                                    matched_fields=json.dumps(det),  # Store full detection metadata
+                                    severity=rule_level
                                 )
                                 db.session.add(violation)
                                 total_violations += 1
-                        
-                        # Commit after each rule
-                        db.session.commit()
-                        rules_processed += 1
+                                
+                                # Track detections for enrichment
+                                if event_id not in detections_by_event:
+                                    detections_by_event[event_id] = []
+                                detections_by_event[event_id].append({
+                                    'rule_name': rule_name,
+                                    'rule_id': matching_rule.id,
+                                    'level': rule_level,
+                                    'matched_on': det.get('matched', [])
+                                })
                         
                     except Exception as e:
-                        logger.warning(f"Search failed for rule {rule.title}: {e}")
-                        rules_failed += 1
+                        logger.warning(f"Error processing Chainsaw detection: {e}")
                         continue
                 
-                except Exception as e:
-                    logger.error(f"Unexpected error processing rule {rule.title}: {e}")
-                    rules_failed += 1
-                    continue
-                
-                # Update task progress
-                progress = int((rules_processed + rules_failed) / len(enabled_rules) * 100)
-                self.update_state(
-                    state='PROGRESS',
-                    meta={
-                        'current': rules_processed + rules_failed,
-                        'total': len(enabled_rules),
-                        'violations': total_violations,
-                        'status': f'Processed {rules_processed}/{len(enabled_rules)} rules'
-                    }
-                )
+                # Commit all violations
+                db.session.commit()
+                logger.info(f"✓ Created {total_violations} violation records")
+            else:
+                logger.info("No detections found by Chainsaw (empty output file)")
+            
+            # Step 5: Enrich indexed events with detection metadata
+            if detections_by_event:
+                logger.info(f"Enriching {len(detections_by_event)} events with detection metadata...")
+                enrich_events_with_detections(index_name, detections_by_event)
+                logger.info(f"✓ Events enriched with detection flags")
             
             # Update file record with violation count and mark as completed
             case_file.violation_count = total_violations
@@ -655,30 +804,43 @@ def process_sigma_rules(self, file_id, index_name):
             case_file.celery_task_id = None  # Clear task ID on completion
             db.session.commit()
             
+            # Clean up temporary directory
+            if temp_dir and os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+                logger.info(f"✓ Cleaned up temporary directory")
+            
             # Calculate task duration
             task_duration = time.time() - task_start_time
             
             logger.info("="*80)
-            logger.info(f"SIGMA PROCESSING COMPLETED: {total_violations} violations found")
-            logger.info(f"Rules processed: {rules_processed}, Failed: {rules_failed}")
+            logger.info(f"CHAINSAW SIGMA PROCESSING COMPLETED: {total_violations} violations found")
+            logger.info(f"Rules checked: {len(enabled_rules)}")
+            logger.info(f"Events scanned: {case_file.event_count:,}")
             logger.info(f"Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info(f"Duration: {task_duration:.2f} seconds ({task_duration/60:.2f} minutes)")
             logger.info("="*80)
             
             return {
                 'status': 'success',
-                'message': f'Processed {rules_processed} rules, found {total_violations} violations',
+                'message': f'Chainsaw processed {len(enabled_rules)} rules, found {total_violations} violations',
                 'violations': total_violations,
-                'rules_processed': rules_processed,
-                'rules_failed': rules_failed
+                'rules_processed': len(enabled_rules),
+                'rules_failed': 0
             }
         
         except Exception as e:
             logger.error("="*80)
-            logger.error(f"SIGMA PROCESSING FAILED: {e}")
+            logger.error(f"CHAINSAW SIGMA PROCESSING FAILED: {e}")
             logger.error("="*80)
             import traceback
             logger.error(traceback.format_exc())
+            
+            # Clean up temporary directory on failure
+            if temp_dir and os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir)
+                except:
+                    pass
             
             case_file = db.session.get(CaseFile, file_id)
             if case_file:

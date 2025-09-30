@@ -731,12 +731,26 @@ def search():
     if request.method == 'POST':
         query_str = request.form.get('query', '').strip()
         page = int(request.form.get('page', 1))
+        violations_only = request.form.get('violations_only') == 'true'
         
         if query_str:
             try:
                 # Build OpenSearch query from user input (this transforms the query)
                 # But we keep query_str unchanged for display
-                os_query = build_opensearch_query(query_str)
+                base_query = build_opensearch_query(query_str)
+                
+                # NEW IN v7.2.0: Filter for SIGMA violations if checkbox checked
+                if violations_only:
+                    os_query = {
+                        "bool": {
+                            "must": [
+                                base_query,
+                                {"term": {"has_violations": True}}
+                            ]
+                        }
+                    }
+                else:
+                    os_query = base_query
                 
                 # Search across all indices for this case
                 from_offset = (page - 1) * per_page
@@ -3404,6 +3418,10 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                         <input type="text" name="query" class="search-input" placeholder="Enter search query (e.g., EventID:4624 AND Computer:SERVER01)" value="{query_str}" autofocus>
                         <input type="hidden" name="page" id="pageInput" value="{page}">
                         <div class="search-actions">
+                            <label style="display: flex; align-items: center; margin-right: 15px; color: rgba(255,255,255,0.9);">
+                                <input type="checkbox" name="violations_only" value="true" style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                <span style="font-size: 14px;">🚨 Show only SIGMA violations</span>
+                            </label>
                             <button type="submit" class="btn-search">🔍 Search</button>
                             <button type="button" class="help-toggle" onclick="toggleHelp()">❓ Query Help</button>
                         </div>
