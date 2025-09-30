@@ -136,6 +136,7 @@ class CaseFile(db.Model):
     estimated_event_count = db.Column(db.Integer, default=0)  # Estimated total events for progress
     violation_count = db.Column(db.Integer, default=0)
     indexing_status = db.Column(db.String(20), default='Uploaded')  # Uploaded, Indexing, Running Rules, Completed, Failed
+    celery_task_id = db.Column(db.String(100), nullable=True)  # Current Celery task ID for progress tracking
     
     # Relationships
     case = db.relationship('Case', backref='files')
@@ -194,7 +195,7 @@ class SigmaViolation(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 # Routes
 @app.route('/')
@@ -574,9 +575,10 @@ def rerun_rules(file_id):
                     priority=0,  # Force single list key
                 )
                 
-                # Don't check task.state/task.ready() immediately - creates misleading result metadata
-                # Worker will process the task and update DB directly
-                print(f"[Re-run Rules] Queued task ID: {task.id}")
+                # Save task ID for progress tracking
+                case_file.celery_task_id = task.id
+                db.session.commit()
+                print(f"[Re-run Rules] Queued task ID: {task.id}, saved to DB")
                 
                 flash(f'Re-running SIGMA rules for {case_file.original_filename}', 'success')
                 print(f"[Re-run Rules] Queued rule processing task {task.id} for file ID {file_id}: {case_file.original_filename}, index: {index_name}")
@@ -615,7 +617,7 @@ def violations():
         flash('Please select a case first', 'warning')
         return redirect(url_for('select_case'))
     
-    case = Case.query.get(case_id)
+    case = db.session.get(Case, case_id)
     if not case:
         flash('Case not found', 'error')
         return redirect(url_for('select_case'))
@@ -699,7 +701,7 @@ def search():
         flash('Please select a case first.', 'warning')
         return redirect(url_for('case_selection'))
     
-    case = Case.query.get(active_case_id)
+    case = db.session.get(Case, active_case_id)
     if not case:
         flash('Case not found.', 'error')
         session.pop('active_case_id', None)
@@ -712,12 +714,11 @@ def search():
         flash('No indexed files in this case. Upload and index files first.', 'warning')
         return redirect(url_for('list_files'))
     
-    # Build list of indices to search
+    # Build list of indices to search using shared helper
+    from tasks import make_index_name
     indices = []
     for file in indexed_files:
-        name = os.path.splitext(file.original_filename)[0]
-        name = name.replace('%', '_').replace(' ', '_').replace('-', '_').lower()[:100]
-        index_name = f"case{case.id}_{name}"
+        index_name = make_index_name(case.id, file.original_filename)
         indices.append(index_name)
     
     results = []
@@ -5146,6 +5147,12 @@ def init_db():
                     db.session.execute(text('ALTER TABLE case_file ADD COLUMN estimated_event_count INTEGER DEFAULT 0'))
                     db.session.commit()
                     print("Migration completed: estimated_event_count column added")
+                
+                if 'celery_task_id' not in columns:
+                    print("Running migration: Adding celery_task_id column to case_file table...")
+                    db.session.execute(text('ALTER TABLE case_file ADD COLUMN celery_task_id VARCHAR(100)'))
+                    db.session.commit()
+                    print("Migration completed: celery_task_id column added")
         except Exception as e:
             print(f"Migration check/execution note: {e}")
             db.session.rollback()
@@ -5166,6 +5173,100 @@ def init_db():
         
         # Load default SIGMA rules
         load_default_sigma_rules()
+
+# File processing progress API endpoint
+@app.route('/api/file/progress/<int:file_id>')
+@login_required
+def file_progress(file_id):
+    """
+    Get real-time processing progress for a file
+    Returns Celery task state, progress, and status
+    """
+    case_file = db.session.get(CaseFile, file_id)
+    if not case_file:
+        return jsonify({'error': 'File not found'}), 404
+    
+    # Check if user has access to this file's case
+    if case_file.case_id != session.get('active_case_id'):
+        return jsonify({'error': 'Access denied'}), 403
+    
+    response = {
+        'file_id': file_id,
+        'filename': case_file.original_filename,
+        'status': case_file.indexing_status,
+        'event_count': case_file.event_count,
+        'violation_count': case_file.violation_count,
+        'is_indexed': case_file.is_indexed
+    }
+    
+    # If there's a Celery task ID, check its state
+    if case_file.celery_task_id and celery_app:
+        try:
+            from celery.result import AsyncResult
+            task_result = AsyncResult(case_file.celery_task_id, app=celery_app)
+            
+            response['celery_state'] = task_result.state
+            response['task_id'] = case_file.celery_task_id
+            
+            # Get detailed task info based on state
+            if task_result.state == 'PENDING':
+                response['progress'] = 0
+                response['message'] = 'Task queued, waiting to start'
+            elif task_result.state == 'STARTED':
+                response['progress'] = 10
+                response['message'] = 'Task started'
+            elif task_result.state == 'PROGRESS':
+                # Get progress metadata if available
+                if task_result.info:
+                    response['progress'] = int((task_result.info.get('current', 0) / 
+                                               max(task_result.info.get('total', 1), 1)) * 100)
+                    response['message'] = task_result.info.get('status', 'Processing')
+                    response['rules_processed'] = task_result.info.get('current', 0)
+                    response['total_rules'] = task_result.info.get('total', 0)
+                    response['violations_found'] = task_result.info.get('violations', 0)
+                else:
+                    response['progress'] = 50
+                    response['message'] = 'Processing'
+            elif task_result.state == 'SUCCESS':
+                response['progress'] = 100
+                response['message'] = 'Completed'
+                # Update DB if status doesn't match
+                if case_file.indexing_status != 'Completed':
+                    case_file.indexing_status = 'Completed'
+                    case_file.celery_task_id = None  # Clear task ID
+                    db.session.commit()
+            elif task_result.state == 'FAILURE':
+                response['progress'] = 0
+                response['message'] = f'Failed: {str(task_result.info)}'
+                response['error'] = str(task_result.info)
+                # Update DB
+                if case_file.indexing_status != 'Failed':
+                    case_file.indexing_status = 'Failed'
+                    case_file.celery_task_id = None
+                    db.session.commit()
+            else:
+                # Other states (RETRY, REVOKED, etc.)
+                response['progress'] = 0
+                response['message'] = task_result.state
+        except Exception as e:
+            response['celery_error'] = str(e)
+            response['celery_state'] = 'UNKNOWN'
+    else:
+        # No task ID - use DB status
+        if case_file.indexing_status == 'Completed':
+            response['progress'] = 100
+            response['message'] = 'Completed'
+        elif case_file.indexing_status == 'Failed':
+            response['progress'] = 0
+            response['message'] = 'Failed'
+        elif case_file.indexing_status == 'Running Rules':
+            response['progress'] = 50
+            response['message'] = 'Running Rules (no task tracking)'
+        else:
+            response['progress'] = 0
+            response['message'] = case_file.indexing_status
+    
+    return jsonify(response)
 
 # Health check endpoint for diagnostics and monitoring
 @app.route('/healthz')

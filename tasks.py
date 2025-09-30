@@ -649,9 +649,10 @@ def process_sigma_rules(self, file_id, index_name):
                     }
                 )
             
-            # Update file record with violation count
+            # Update file record with violation count and mark as completed
             case_file.violation_count = total_violations
             case_file.indexing_status = 'Completed'
+            case_file.celery_task_id = None  # Clear task ID on completion
             db.session.commit()
             
             # Calculate task duration
@@ -682,6 +683,7 @@ def process_sigma_rules(self, file_id, index_name):
             case_file = db.session.get(CaseFile, file_id)
             if case_file:
                 case_file.indexing_status = 'Failed'
+                case_file.celery_task_id = None  # Clear task ID on failure
                 db.session.commit()
             
             return {'status': 'error', 'message': str(e)}
