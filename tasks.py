@@ -360,16 +360,26 @@ def process_sigma_rules(self, file_id, index_name):
                     # Execute query against index
                     try:
                         # Build complete search body
-                        search_body = {
-                            "query": {
-                                "query_string": {
-                                    "query": opensearch_query,
-                                    "analyze_wildcard": True,
-                                    "default_operator": "AND"
-                                }
-                            },
-                            "size": 1000  # Max results per rule
-                        }
+                        # pySigma backend returns a dict query, use it directly (not in query_string)
+                        if isinstance(opensearch_query, dict):
+                            search_body = {
+                                "query": opensearch_query,
+                                "size": 1000  # Max results per rule
+                            }
+                        else:
+                            # Fallback for string queries
+                            search_body = {
+                                "query": {
+                                    "query_string": {
+                                        "query": opensearch_query,
+                                        "analyze_wildcard": True,
+                                        "default_operator": "AND"
+                                    }
+                                },
+                                "size": 1000
+                            }
+                        
+                        logger.debug(f"Search body type: {type(opensearch_query)}, Query: {str(opensearch_query)[:200]}")
                         
                         response = opensearch_client.search(
                             index=index_name,
