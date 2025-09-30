@@ -507,22 +507,28 @@ def index_evtx_file(self, file_id):
                             events.append(flat_event)
                             event_count += 1
                             
-                            # Bulk index every 1000 events
-                            if len(events) >= 1000:
+                            # Bulk index every 100 events for faster UI updates
+                            if len(events) >= 100:
                                 bulk_index_events(index_name, events)
                                 events = []
                                 
-                                # Update progress
+                                # Update progress - send current/total for UI display
                                 case_file.event_count = event_count
                                 db.session.commit()
                                 
-                                # Update task progress
+                                # Update task progress with current and total counts
                                 self.update_state(
                                     state='PROGRESS',
-                                    meta={'current': event_count, 'status': f'Indexed {event_count:,} events'}
+                                    meta={
+                                        'current': event_count, 
+                                        'total': case_file.estimated_event_count or event_count,
+                                        'status': f'{event_count:,} / {case_file.estimated_event_count:,} events' if case_file.estimated_event_count else f'{event_count:,} events'
+                                    }
                                 )
                                 
-                                logger.info(f"Progress: {event_count:,} events indexed")
+                                # Log progress less frequently to reduce log spam
+                                if event_count % 1000 == 0:
+                                    logger.info(f"Progress: {event_count:,} / {case_file.estimated_event_count:,} events indexed")
                     
                     except Exception as e:
                         logger.warning(f"Error parsing record {record.record_num()}: {e}")

@@ -2391,24 +2391,21 @@ def render_file_list(case, files):
                 status_display = '<div id="status-{0}" class="status-text">Counting Events...</div>'.format(file.id)
             status_class = 'uploaded'
         elif file.indexing_status == 'Indexing':
-            # Calculate initial progress
+            # Show current/total counts without progress bar
             estimated = file.estimated_event_count or int((file.file_size / 1048576) * 1000)
             current_events = file.event_count or 0
-            initial_progress = min(int((current_events / estimated) * 100), 99) if estimated > 0 else 5
             
-            progress_html = '''<div id="status-{0}" class="progress-container" data-file-id="{0}">
-                <div class="progress-text">Indexing...</div>
-                <div class="progress-bar-bg"><div class="progress-bar indexing-bar" id="progress-{0}" style="width: {2}%"></div></div>
-                <div class="progress-events" id="events-{0}">{3:,} / {4:,} events</div>
-            </div>'''.format(file.id, file.id, initial_progress, current_events, estimated)
-            status_display = progress_html
+            status_html = '''<div id="status-{0}" class="status-text" data-file-id="{0}">
+                <div style="font-weight: 600; color: #4caf50;">Indexing...</div>
+                <div id="events-{0}" style="font-size: 0.9em; color: rgba(255,255,255,0.8); margin-top: 4px;">{1:,} / {2:,} events</div>
+            </div>'''.format(file.id, current_events, estimated)
+            status_display = status_html
             status_class = 'indexing'
         elif file.indexing_status == 'Running Rules':
-            progress_html = '''<div id="status-{0}" class="progress-container" data-file-id="{0}">
-                <div class="progress-text">Running Rules...</div>
-                <div class="progress-bar-bg"><div class="progress-bar rules-bar" id="progress-{0}" style="width: 100%"></div></div>
+            status_html = '''<div id="status-{0}" class="status-text" data-file-id="{0}">
+                <div style="font-weight: 600; color: #ff9800;">Running Rules...</div>
             </div>'''.format(file.id)
-            status_display = progress_html
+            status_display = status_html
             status_class = 'running-rules'
         elif file.indexing_status == 'Completed':
             status_display = '<div id="status-{0}" class="status-text">Completed</div>'.format(file.id)
@@ -2932,19 +2929,14 @@ def render_file_list(case, files):
                             }}
                             
                             if (data.status === 'Indexing') {{
-                                if (progressBar) {{
-                                    const newWidth = Math.max(5, Math.min(data.progress, 99));
-                                    progressBar.style.width = newWidth + '%';
-                                }}
+                                // Update count text (no progress bar)
                                 if (eventsText) {{
                                     const currentEvents = data.event_count.toLocaleString();
                                     const totalEvents = data.estimated_event_count.toLocaleString();
                                     eventsText.textContent = currentEvents + ' / ' + totalEvents + ' events';
                                 }}
                             }} else if (data.status === 'Running Rules') {{
-                                if (progressBar) {{
-                                    progressBar.style.width = '100%';
-                                }}
+                                // No progress bar needed, just status text
                             }} else if (data.status === 'Completed') {{
                                 // Reload page to show final status
                                 console.log('File completed, reloading page...');
