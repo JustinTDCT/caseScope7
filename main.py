@@ -844,6 +844,9 @@ def download_sigma_rules():
                                 logsource = rule_data.get('logsource', {})
                                 category = logsource.get('category', logsource.get('product', 'unknown'))
                                 
+                                # Auto-enable threat-hunting rules from rules-threat-hunting/windows directory
+                                is_threat_hunting = 'rules-threat-hunting' in file_path and '/windows/' in file_path
+                                
                                 # Create rule
                                 rule = SigmaRule(
                                     name=rule_data.get('id', file.replace('.yml', '').replace('.yaml', '')),
@@ -857,7 +860,7 @@ def download_sigma_rules():
                                     rule_yaml=yaml_content,
                                     rule_hash=rule_hash,
                                     is_builtin=False,
-                                    is_enabled=False,  # Disabled by default for bulk imports
+                                    is_enabled=is_threat_hunting,  # Auto-enable threat-hunting rules
                                     uploaded_by=current_user.id
                                 )
                                 
@@ -976,21 +979,8 @@ def sigma_rules():
                 flash('Cannot delete built-in rules', 'error')
             return redirect(url_for('sigma_rules'))
     
-    # GET request - show rules with optional search filter
-    search_query = request.args.get('search', '').strip()
-    
-    if search_query:
-        # Search in title, level, category (case-insensitive partial matching)
-        all_rules = SigmaRule.query.filter(
-            db.or_(
-                SigmaRule.title.ilike(f'%{search_query}%'),
-                SigmaRule.level.ilike(f'%{search_query}%'),
-                SigmaRule.category.ilike(f'%{search_query}%')
-            )
-        ).order_by(SigmaRule.is_builtin.desc(), SigmaRule.level.desc(), SigmaRule.title).all()
-    else:
-        all_rules = SigmaRule.query.order_by(SigmaRule.is_builtin.desc(), SigmaRule.level.desc(), SigmaRule.title).all()
-    
+    # GET request - show all rules (search is client-side JavaScript)
+    all_rules = SigmaRule.query.order_by(SigmaRule.is_builtin.desc(), SigmaRule.level.desc(), SigmaRule.title).all()
     enabled_count = SigmaRule.query.filter_by(is_enabled=True).count()
     total_count = SigmaRule.query.count()
     
@@ -999,7 +989,7 @@ def sigma_rules():
     critical_violations = SigmaViolation.query.join(SigmaRule).filter(SigmaRule.level == 'critical').count()
     high_violations = SigmaViolation.query.join(SigmaRule).filter(SigmaRule.level == 'high').count()
     
-    return render_sigma_rules_page(all_rules, enabled_count, total_count, total_violations, critical_violations, high_violations, search_query)
+    return render_sigma_rules_page(all_rules, enabled_count, total_count, total_violations, critical_violations, high_violations)
 
 
 def get_event_description(event_id, channel, provider, event_data):
@@ -3523,7 +3513,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
     </html>
     '''
 
-def render_sigma_rules_page(all_rules, enabled_count, total_count, total_violations, critical_violations, high_violations, search_query=''):
+def render_sigma_rules_page(all_rules, enabled_count, total_count, total_violations, critical_violations, high_violations):
     """Render SIGMA Rules Management Page"""
     from flask import get_flashed_messages
     
@@ -3571,7 +3561,7 @@ def render_sigma_rules_page(all_rules, enabled_count, total_count, total_violati
         rule_violations = SigmaViolation.query.filter_by(rule_id=rule.id).count()
         
         rules_html += f'''
-        <tr class="rule-row">
+        <tr class="rule-row" data-rule-id="{rule.id}">
             <td>
                 <div class="rule-title">{rule.title}</div>
                 <div class="rule-meta">{builtin_badge} {tags_html}</div>
@@ -3608,11 +3598,6 @@ def render_sigma_rules_page(all_rules, enabled_count, total_count, total_violati
             </td>
         </tr>
         '''
-    
-    # Add clear button if search is active
-    clear_button = ''
-    if search_query:
-        clear_button = '<a href="/sigma-rules" style="padding: 12px 24px; background: linear-gradient(145deg, #757575, #616161); border-radius: 8px; text-decoration: none; color: white; white-space: nowrap;">Clear</a>'
     
     return f'''
     <!DOCTYPE html>
@@ -3852,14 +3837,16 @@ def render_sigma_rules_page(all_rules, enabled_count, total_count, total_violati
                 
                 <div style="margin: 30px 0;">
                     <h3 style="margin-bottom: 15px;">🔍 Search Rules</h3>
-                    <form method="GET" action="/sigma-rules" style="display: flex; gap: 10px; align-items: center;">
-                        <input type="text" name="search" value="{search_query}" placeholder="Search by title, level, or category..." 
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="text" id="ruleSearch" placeholder="Search by title, level, or category..." 
                                style="flex: 1; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); 
-                                      background: rgba(255,255,255,0.1); color: white; font-size: 14px;">
-                        <button type="submit" style="padding: 12px 24px; background: linear-gradient(145deg, #4caf50, #388e3c); 
-                                                     border-radius: 8px; white-space: nowrap;">Search</button>
-                        {clear_button}
-                    </form>
+                                      background: rgba(255,255,255,0.1); color: white; font-size: 14px;"
+                               onkeyup="filterRules()">
+                        <button onclick="document.getElementById('ruleSearch').value=''; filterRules();" 
+                                style="padding: 12px 24px; background: linear-gradient(145deg, #757575, #616161); 
+                                       border-radius: 8px; white-space: nowrap; border: none; color: white; cursor: pointer;">Clear</button>
+                    </div>
+                    <div id="searchStatus" style="margin-top: 10px; font-size: 14px; color: rgba(255,255,255,0.7);"></div>
                 </div>
                 
                 <table class="rules-table">
@@ -3888,6 +3875,41 @@ def render_sigma_rules_page(all_rules, enabled_count, total_count, total_violati
                     row.style.display = 'table-row';
                 }} else {{
                     row.style.display = 'none';
+                }}
+            }}
+            
+            function filterRules() {{
+                const searchInput = document.getElementById('ruleSearch').value.toLowerCase();
+                const rows = document.querySelectorAll('.rule-row');
+                let visibleCount = 0;
+                let totalCount = rows.length;
+                
+                rows.forEach(function(row) {{
+                    const title = row.querySelector('.rule-title').textContent.toLowerCase();
+                    const level = row.querySelectorAll('.level-badge')[0].textContent.toLowerCase();
+                    const category = row.querySelectorAll('td')[2].textContent.toLowerCase();
+                    
+                    if (title.includes(searchInput) || level.includes(searchInput) || category.includes(searchInput)) {{
+                        row.style.display = '';
+                        const detailsRow = document.getElementById('rule-details-' + row.dataset.ruleId);
+                        if (detailsRow && detailsRow.style.display !== 'none') {{
+                            detailsRow.style.display = '';
+                        }}
+                        visibleCount++;
+                    }} else {{
+                        row.style.display = 'none';
+                        const detailsRow = document.getElementById('rule-details-' + row.dataset.ruleId);
+                        if (detailsRow) {{
+                            detailsRow.style.display = 'none';
+                        }}
+                    }}
+                }});
+                
+                const status = document.getElementById('searchStatus');
+                if (searchInput) {{
+                    status.textContent = `Showing ${{visibleCount}} of ${{totalCount}} rules`;
+                }} else {{
+                    status.textContent = '';
                 }}
             }}
         </script>
