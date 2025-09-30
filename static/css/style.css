@@ -811,6 +811,79 @@ body {
   color: var(--text-secondary);
 }
 
+/* SIGMA Rule Badges */
+.badge-critical {
+  background: rgba(211, 47, 47, 0.2);
+  color: #f44336;
+}
+
+.badge-high {
+  background: rgba(244, 67, 54, 0.2);
+  color: #ff5722;
+}
+
+.badge-medium {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ff9800;
+}
+
+.badge-low {
+  background: rgba(33, 150, 243, 0.2);
+  color: #2196f3;
+}
+
+.badge-builtin {
+  background: rgba(156, 39, 176, 0.2);
+  color: #9c27b0;
+}
+
+.badge-custom {
+  background: rgba(0, 188, 212, 0.2);
+  color: #00bcd4;
+}
+
+.badge-tag {
+  background: rgba(96, 125, 139, 0.2);
+  color: #90a4ae;
+  font-size: 0.7rem;
+}
+
+/* Rule Details */
+.rule-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.rule-meta {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.rule-details {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.rule-yaml {
+  padding: 1rem;
+}
+
+.rule-yaml h4 {
+  margin: 0 0 0.75rem 0;
+  color: var(--success-color);
+}
+
+.rule-yaml pre {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
 /* Statistics Cards - Reduced by 15% */
 .stat-card {
   display: flex;

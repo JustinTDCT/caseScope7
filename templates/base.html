@@ -103,6 +103,18 @@
                         Event Search
                     </a>
                 </div>
+                
+                <div class="nav-section">
+                    <div class="nav-title">Detection</div>
+                    <a href="{{ url_for('sigma_rules') }}" class="nav-item {% if request.endpoint == 'sigma_rules' %}active{% endif %}">
+                        <i class="fas fa-shield-alt"></i>
+                        SIGMA Rules
+                    </a>
+                    <a href="{{ url_for('violations') }}" class="nav-item {% if request.endpoint == 'violations' %}active{% endif %}">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Violations
+                    </a>
+                </div>
                 {% endif %}
 
                 {% if current_user.can_admin() %}

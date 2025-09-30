@@ -37,6 +37,17 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+# Template filters
+@app.template_filter('from_json')
+def from_json_filter(value):
+    """Parse JSON string to Python object"""
+    if not value:
+        return []
+    try:
+        return json.loads(value)
+    except:
+        return []
+
 # OpenSearch Client
 opensearch_client = OpenSearch(
     hosts=[{'host': 'localhost', 'port': 9200}],
@@ -952,7 +963,13 @@ def sigma_rules():
     critical_violations = SigmaViolation.query.join(SigmaRule).filter(SigmaRule.level == 'critical').count()
     high_violations = SigmaViolation.query.join(SigmaRule).filter(SigmaRule.level == 'high').count()
     
-    return render_sigma_rules_page(all_rules, enabled_count, total_count, total_violations, critical_violations, high_violations)
+    return render_template('sigma_rules.html',
+                          all_rules=all_rules,
+                          enabled_count=enabled_count,
+                          total_count=total_count,
+                          total_violations=total_violations,
+                          critical_violations=critical_violations,
+                          high_violations=high_violations)
 
 
 def get_event_description(event_id, channel, provider, event_data):
