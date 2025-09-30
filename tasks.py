@@ -640,18 +640,18 @@ def process_sigma_rules(self, file_id, index_name):
                 db.session.commit()
                 return {'status': 'success', 'message': 'No enabled rules', 'violations': 0}
             
+            # Verify EVTX file exists
+            if not os.path.exists(case_file.file_path):
+                logger.error(f"EVTX file not found: {case_file.file_path}")
+                return {'status': 'error', 'message': f'EVTX file not found: {case_file.file_path}'}
+            
+            logger.info(f"EVTX file path: {case_file.file_path}")
+            
             # Create temporary directory for Chainsaw processing
             temp_dir = tempfile.mkdtemp(prefix='casescope_chainsaw_')
             logger.info(f"Created temporary directory: {temp_dir}")
             
-            # Step 1: Export events from OpenSearch to JSON
-            events_json_path = os.path.join(temp_dir, 'events.json')
-            logger.info(f"Exporting {case_file.event_count:,} events from OpenSearch to {events_json_path}...")
-            
-            export_count = export_events_to_json(index_name, events_json_path)
-            logger.info(f"✓ Exported {export_count:,} events to JSON")
-            
-            # Step 2: Export enabled SIGMA rules to temporary directory
+            # Step 1: Export enabled SIGMA rules to temporary directory
             rules_dir = os.path.join(temp_dir, 'sigma_rules')
             os.makedirs(rules_dir, exist_ok=True)
             logger.info(f"Exporting {len(enabled_rules)} enabled SIGMA rules to {rules_dir}...")
@@ -663,10 +663,10 @@ def process_sigma_rules(self, file_id, index_name):
             
             logger.info(f"✓ Exported {len(enabled_rules)} rules")
             
-            # Step 3: Run Chainsaw hunt
+            # Step 2: Run Chainsaw hunt against original EVTX file
             chainsaw_output_path = os.path.join(temp_dir, 'chainsaw_detections.json')
             logger.info(f"Running Chainsaw hunt...")
-            logger.info(f"  Events: {events_json_path}")
+            logger.info(f"  EVTX file: {case_file.file_path}")
             logger.info(f"  Rules: {rules_dir}")
             logger.info(f"  Output: {chainsaw_output_path}")
             
@@ -675,12 +675,11 @@ def process_sigma_rules(self, file_id, index_name):
             chainsaw_mapping = '/opt/casescope/chainsaw/mappings/sigma-event-logs-all.yml'
             
             # Chainsaw v2.12 syntax: chainsaw hunt <evtx_path> --sigma <rules_dir> --mapping <mapping> --json --output <output>
-            # The first positional argument is the EVTX/log path to hunt through
-            # Rules are specified with --sigma flag
+            # Chainsaw processes the original EVTX file, outputs detections as JSON
             chainsaw_cmd = [
                 '/opt/casescope/bin/chainsaw',
                 'hunt',
-                events_json_path,  # Path to search (accepts JSON, EVTX, or directory)
+                case_file.file_path,  # Original EVTX file
                 '--sigma', rules_dir,  # SIGMA rules directory
                 '--mapping', chainsaw_mapping,
                 '--json',
@@ -705,7 +704,7 @@ def process_sigma_rules(self, file_id, index_name):
             logger.info(f"✓ Chainsaw hunt completed successfully")
             logger.info(f"Chainsaw output: {result.stdout[:500]}")  # First 500 chars
             
-            # Step 4: Parse Chainsaw detections and create violation records
+            # Step 3: Parse Chainsaw detections and create violation records
             logger.info(f"Parsing Chainsaw detections from {chainsaw_output_path}...")
             
             total_violations = 0
