@@ -1,7 +1,7 @@
 {
-  "version": "7.1.82",
+  "version": "7.1.83",
   "release_date": "2025-09-30",
-  "description": "Critical Fix - Added task_default_exchange_type='direct' to both web and worker Celery configurations to ensure queue routing compatibility; without exchange_type both web and worker must explicitly agree on direct exchange type for Redis broker",
+  "description": "Critical Fix - Replaced send_task() with signature().apply_async() for proper Redis queue message creation; send_task() only creates metadata without queueing actual message when task not registered locally; signature() properly serializes and queues task to Redis",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -85,6 +85,7 @@
     "7.1.79": "Critical Fix - Fixed tasks not reaching worker: web service was importing celery_app.py which created duplicate Celery app instance with signal handlers causing broker routing conflict; now creates minimal Celery connection in main.py without importing celery_app module; worker and web now properly share same Redis broker queue",
     "7.1.80": "Debug Enhancement - Added comprehensive debug logging: Re-run Rules now logs celery_app broker/backend URLs, task state, Redis queue length before/after send_task; worker startup now logs all registered tasks, Redis connection status, all Redis keys, and queue length; added diagnose_celery.sh script for manual Redis/Celery diagnostics",
     "7.1.81": "Critical Fix - Fixed tasks not being queued to Redis: Celery send_task() was creating task metadata but not queuing actual messages because configuration didn't specify default queue/exchange/routing_key; added task_default_queue='celery', task_default_exchange='celery', task_default_routing_key='celery' to main.py Celery config; diagnostic revealed queue length stayed at 0 after send_task() calls",
-    "7.1.82": "Critical Fix - Added task_default_exchange_type='direct' to both web (main.py) and worker (celery_app.py) Celery configurations; Celery requires explicit exchange_type when using custom routing to ensure web service and worker agree on message routing protocol; direct exchange type routes messages based on exact routing key match"
+    "7.1.82": "Critical Fix - Added task_default_exchange_type='direct' to both web (main.py) and worker (celery_app.py) Celery configurations; Celery requires explicit exchange_type when using custom routing to ensure web service and worker agree on message routing protocol; direct exchange type routes messages based on exact routing key match",
+    "7.1.83": "Critical Fix - Replaced send_task() with signature().apply_async() throughout main.py (upload, re-index, re-run rules); send_task() with unregistered task name only creates result metadata in Redis but doesn't queue actual task message; signature() creates proper Celery task message and queues to Redis celery list for worker consumption; this is the root cause of queue length staying at 0"
   }
 }

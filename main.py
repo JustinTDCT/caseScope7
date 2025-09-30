@@ -444,7 +444,9 @@ def upload_files():
                     
                     for uploaded_file in recent_files:
                         if celery_app:
-                            celery_app.send_task('tasks.start_file_indexing', args=[uploaded_file.id])
+                            from celery import signature
+                            sig = signature('tasks.start_file_indexing', args=[uploaded_file.id], app=celery_app)
+                            sig.apply_async()
                             print(f"[Upload] Queued indexing for file ID {uploaded_file.id}: {uploaded_file.original_filename}")
                         else:
                             print(f"[Upload] WARNING: Celery not available, task not queued for file ID {uploaded_file.id}")
@@ -507,7 +509,9 @@ def reindex_file(file_id):
         # Queue indexing task
         try:
             if celery_app:
-                celery_app.send_task('tasks.start_file_indexing', args=[file_id])
+                from celery import signature
+                sig = signature('tasks.start_file_indexing', args=[file_id], app=celery_app)
+                sig.apply_async()
                 flash(f'Re-indexing started for {case_file.original_filename}', 'success')
                 print(f"[Re-index] Queued re-indexing for file ID {file_id}: {case_file.original_filename}")
             else:
@@ -569,7 +573,10 @@ def rerun_rules(file_id):
                 print(f"[Re-run Rules] DEBUG: celery_app backend: {celery_app.conf.result_backend}")
                 print(f"[Re-run Rules] DEBUG: Calling send_task with task='tasks.process_sigma_rules', args=[{file_id}, '{index_name}']")
                 
-                task = celery_app.send_task('tasks.process_sigma_rules', args=[file_id, index_name])
+                # Use signature and apply_async for proper queueing
+                from celery import signature
+                sig = signature('tasks.process_sigma_rules', args=[file_id, index_name], app=celery_app)
+                task = sig.apply_async()
                 
                 print(f"[Re-run Rules] DEBUG: Task object created: {task}")
                 print(f"[Re-run Rules] DEBUG: Task ID: {task.id}")
