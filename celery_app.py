@@ -43,11 +43,17 @@ celery_app.conf.update(
     task_soft_time_limit=3300,  # 55 minute soft limit
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=50,
-    # Explicit queue configuration to match web service
+    # Explicit queue configuration
     task_default_queue='celery',
     task_default_exchange='celery',
     task_default_exchange_type='direct',
     task_default_routing_key='celery',
+    # CRITICAL: Transport hardening to guarantee single Redis LIST key
+    # Prevents fan-out to celery0..9, ensures web and worker use same key
+    broker_transport_options={
+        'priority_steps': [0],  # Disable celery0..9 fan-out
+        'visibility_timeout': 3600,
+    },
 )
 
 # Signal handlers for verbose logging
