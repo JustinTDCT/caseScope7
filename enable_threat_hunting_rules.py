@@ -14,28 +14,41 @@ print("="*80)
 print()
 
 with app.app_context():
-    # Find all rules from threat-hunting/windows directory
-    # Check the rule_yaml content since that's where the file path is stored
+    # The file path was checked during import but not stored in the DB
+    # However, threat-hunting rules often have specific tags or references
+    # Let's check all rules and look for threat-hunting indicators
     all_rules = SigmaRule.query.all()
-    threat_hunting_rules = [
-        rule for rule in all_rules 
-        if 'threat-hunting/windows' in (rule.rule_yaml or '').lower()
-        or 'threat_hunting/windows' in (rule.category or '').lower()
-    ]
+    
+    print(f"Scanning {len(all_rules)} rules for threat-hunting indicators...")
+    print()
+    
+    # Check for rules with threat_hunting in tags or title
+    threat_hunting_rules = []
+    for rule in all_rules:
+        # Check tags (stored as JSON)
+        tags_lower = (rule.tags or '').lower()
+        title_lower = (rule.title or '').lower()
+        
+        # Look for threat hunting indicators
+        if any(indicator in tags_lower or indicator in title_lower for indicator in [
+            'threat_hunting', 'threat-hunting', 'hunting', 'anomaly'
+        ]):
+            threat_hunting_rules.append(rule)
     
     if not threat_hunting_rules:
         print("No threat-hunting rules found!")
         print()
         print("Checking what rules exist...")
-        all_rules = SigmaRule.query.all()
         print(f"Total rules in database: {len(all_rules)}")
         
         if all_rules:
-            print("\nSample rules:")
+            print("\nSample rules (checking for threat-hunting path in YAML):")
             for rule in all_rules[:10]:
                 print(f"  - {rule.title}")
                 print(f"    Category: {rule.category}")
-                print(f"    File path: {rule.file_path}")
+                # Check if rule_yaml contains path info
+                if rule.rule_yaml and 'rules-threat-hunting' in rule.rule_yaml:
+                    print(f"    ⭐ THREAT HUNTING RULE FOUND!")
                 print()
     else:
         print(f"Found {len(threat_hunting_rules)} threat-hunting rules")
