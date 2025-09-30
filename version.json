@@ -1,7 +1,7 @@
 {
-  "version": "7.1.70",
+  "version": "7.1.71",
   "release_date": "2025-09-30",
-  "description": "Bugfix - Fixed SIGMA navigation menu styling by adding missing menu-item CSS to SIGMA Rules and Violations pages embedded styles",
+  "description": "Bugfix - Fixed Re-run Rules progress tracking by adding 'Running Rules' status to activeFiles detection in JavaScript auto-refresh logic",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -73,6 +73,7 @@
     "7.1.67": "Feature Complete - Full SIGMA Detection Pipeline: Implemented SigmaHQ rule downloader (downloads 3000+ rules from GitHub via git clone); created comprehensive pySigma field mapping pipeline (70+ field mappings from Sigma standard → caseScope flattened EVTX structure); built rule execution engine in tasks.py using pySigma OpensearchBackend with custom processing pipeline; automatic SIGMA rule processing after EVTX indexing with violation detection and tracking; created violations viewer page (/violations) with severity filtering (critical/high/medium/low), rule/file filtering, review status tracking, paginated results, expandable violation details showing full event data; violation review system with notes and analyst tracking; added 🚨 SIGMA Violations to navigation menu; full integration with existing indexing workflow (Uploaded → Counting → Indexing → Running Rules → Completed)",
     "7.1.68": "Bugfix - Fixed pyparsing dependency version conflict: pinned pyparsing==3.0.9 in requirements.txt to resolve ImportError (cannot import 'List' from pyparsing) that was preventing Celery worker from starting; newer pyparsing versions (3.1.0+) removed the List class that pySigma 0.10.9 depends on",
     "7.1.69": "Bugfix - Fixed pySigma backend class name: changed OpensearchBackend to OpensearchLuceneBackend in tasks.py for compatibility with pysigma-backend-opensearch 1.0.1; the backend module reorganized class names and OpensearchLuceneBackend is the correct import for Lucene query syntax generation",
-    "7.1.70": "Bugfix - Fixed SIGMA navigation menu styling: added missing .menu-item and .menu-title CSS styles to SIGMA Rules and Violations pages' embedded stylesheets; menu links now render as styled buttons instead of plain text links; matches styling of other pages"
+    "7.1.70": "Bugfix - Fixed SIGMA navigation menu styling: added missing .menu-item and .menu-title CSS styles to SIGMA Rules and Violations pages' embedded stylesheets; menu links now render as styled buttons instead of plain text links; matches styling of other pages",
+    "7.1.71": "Bugfix - Fixed Re-run Rules progress tracking: added 'Running Rules' status to JavaScript activeFiles detection so progress bars and auto-refresh work when manually re-running SIGMA rules; previously only detected Uploaded/Pending/Counting/Preparing statuses"
   }
 }

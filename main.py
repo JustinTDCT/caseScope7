@@ -2826,7 +2826,7 @@ def render_file_list(case, files):
                     }}
                 }});
                 
-                // Also check for Uploaded/Pending/Counting/Preparing status
+                // Also check for Uploaded/Pending/Counting/Preparing/Running Rules status
                 const statusElements = document.querySelectorAll('[id^="status-"]');
                 statusElements.forEach(function(elem) {{
                     const fileId = elem.id.split('-')[1];
@@ -2834,7 +2834,8 @@ def render_file_list(case, files):
                     if ((statusText.includes('Uploaded') || 
                          statusText.includes('Pending') || 
                          statusText.includes('Counting') || 
-                         statusText.includes('Preparing')) && 
+                         statusText.includes('Preparing') ||
+                         statusText.includes('Running Rules')) && 
                         !activeFiles.includes(fileId)) {{
                         activeFiles.push(fileId);
                     }}
