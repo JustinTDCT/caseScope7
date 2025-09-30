@@ -976,8 +976,21 @@ def sigma_rules():
                 flash('Cannot delete built-in rules', 'error')
             return redirect(url_for('sigma_rules'))
     
-    # GET request - show rules
-    all_rules = SigmaRule.query.order_by(SigmaRule.is_builtin.desc(), SigmaRule.level.desc(), SigmaRule.title).all()
+    # GET request - show rules with optional search filter
+    search_query = request.args.get('search', '').strip()
+    
+    if search_query:
+        # Search in title, level, category (case-insensitive partial matching)
+        all_rules = SigmaRule.query.filter(
+            db.or_(
+                SigmaRule.title.ilike(f'%{search_query}%'),
+                SigmaRule.level.ilike(f'%{search_query}%'),
+                SigmaRule.category.ilike(f'%{search_query}%')
+            )
+        ).order_by(SigmaRule.is_builtin.desc(), SigmaRule.level.desc(), SigmaRule.title).all()
+    else:
+        all_rules = SigmaRule.query.order_by(SigmaRule.is_builtin.desc(), SigmaRule.level.desc(), SigmaRule.title).all()
+    
     enabled_count = SigmaRule.query.filter_by(is_enabled=True).count()
     total_count = SigmaRule.query.count()
     
@@ -986,7 +999,7 @@ def sigma_rules():
     critical_violations = SigmaViolation.query.join(SigmaRule).filter(SigmaRule.level == 'critical').count()
     high_violations = SigmaViolation.query.join(SigmaRule).filter(SigmaRule.level == 'high').count()
     
-    return render_sigma_rules_page(all_rules, enabled_count, total_count, total_violations, critical_violations, high_violations)
+    return render_sigma_rules_page(all_rules, enabled_count, total_count, total_violations, critical_violations, high_violations, search_query)
 
 
 def get_event_description(event_id, channel, provider, event_data):
@@ -3510,7 +3523,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
     </html>
     '''
 
-def render_sigma_rules_page(all_rules, enabled_count, total_count, total_violations, critical_violations, high_violations):
+def render_sigma_rules_page(all_rules, enabled_count, total_count, total_violations, critical_violations, high_violations, search_query=''):
     """Render SIGMA Rules Management Page"""
     from flask import get_flashed_messages
     
@@ -3595,6 +3608,11 @@ def render_sigma_rules_page(all_rules, enabled_count, total_count, total_violati
             </td>
         </tr>
         '''
+    
+    # Add clear button if search is active
+    clear_button = ''
+    if search_query:
+        clear_button = '<a href="/sigma-rules" style="padding: 12px 24px; background: linear-gradient(145deg, #757575, #616161); border-radius: 8px; text-decoration: none; color: white; white-space: nowrap;">Clear</a>'
     
     return f'''
     <!DOCTYPE html>
@@ -3829,6 +3847,18 @@ def render_sigma_rules_page(all_rules, enabled_count, total_count, total_violati
                         <input type="hidden" name="action" value="upload">
                         <input type="file" name="rule_file" accept=".yml,.yaml" required>
                         <button type="submit">Upload Rule</button>
+                    </form>
+                </div>
+                
+                <div style="margin: 30px 0;">
+                    <h3 style="margin-bottom: 15px;">🔍 Search Rules</h3>
+                    <form method="GET" action="/sigma-rules" style="display: flex; gap: 10px; align-items: center;">
+                        <input type="text" name="search" value="{search_query}" placeholder="Search by title, level, or category..." 
+                               style="flex: 1; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); 
+                                      background: rgba(255,255,255,0.1); color: white; font-size: 14px;">
+                        <button type="submit" style="padding: 12px 24px; background: linear-gradient(145deg, #4caf50, #388e3c); 
+                                                     border-radius: 8px; white-space: nowrap;">Search</button>
+                        {clear_button}
                     </form>
                 </div>
                 
