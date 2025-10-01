@@ -1431,13 +1431,13 @@ def search():
                 traceback.print_exc()
     
     # Get search history for this case (last 10)
-    recent_searches = SearchHistory.query.filter_by(
+    recent_searches = db.session.query(SearchHistory).filter_by(
         user_id=current_user.id, 
         case_id=case.id
     ).order_by(SearchHistory.executed_at.desc()).limit(10).all()
     
     # Get saved searches for this user/case
-    saved_searches = SavedSearch.query.filter(
+    saved_searches = db.session.query(SavedSearch).filter(
         SavedSearch.user_id == current_user.id,
         (SavedSearch.case_id == case.id) | (SavedSearch.case_id == None)
     ).order_by(SavedSearch.last_used.desc().nullslast(), SavedSearch.created_at.desc()).all()
