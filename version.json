@@ -1,7 +1,7 @@
 {
-  "version": "7.8.1",
+  "version": "7.8.3",
   "release_date": "2025-10-01",
-  "description": "Bugfix - Fixed installer SCRIPT_DIR detection failing when run from /tmp; improved path detection with fallback methods; changed home directory search from glob patterns to for loop iteration; added caseScope7_cursor to search paths; fixes 'Cannot locate application files' error on Option 1 installs",
+  "description": "Bugfix - Fixed case creation log_audit call with incorrect parameters causing 'unexpected keyword argument user_id' error; removed template_id references from case creation (templates removed in 7.7.3); removed template selection dropdown from create case form; simplified render_case_form to only accept users parameter",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -160,6 +160,8 @@
     "7.7.4": "UI Consistency Fix - Rewrote render_case_management to match files list page structure; added header section with page title and user/logout; proper sidebar styling matching other pages; consistent table styling with file-table class; all render-based matching codebase pattern",
     "7.7.5": "UI Fix - Exact match to files list: logo uses .case/.scope classes with green/white colors; logout as link not form button; h1 in content section; all CSS copied from files list including text-shadow, inset box-shadow, placeholder hover states",
     "7.8.0": "Feature - File Management; /file-management route shows all files across all cases; table columns: Select checkbox, Filename, Case (clickable), Uploaded, Size, Uploader, Status, Events, Violations, Actions; client-side filtering by filename/case/status with search box and dropdowns; bulk actions: Re-index Selected, Re-run Rules on Selected, Delete Selected (admin only); Select All checkbox respects active filters; individual file actions match list files page; audit logging; enabled File Management menu item",
-    "7.8.1": "Bugfix - Fixed installer SCRIPT_DIR detection failing when run from /tmp; improved path detection with fallback methods; changed home directory search from glob patterns to for loop iteration; added caseScope7_cursor to search paths; fixes 'Cannot locate application files' error on Option 1 installs"
+    "7.8.1": "Bugfix - Fixed installer SCRIPT_DIR detection failing when run from /tmp; improved path detection with fallback methods; changed home directory search from glob patterns to for loop iteration; added caseScope7_cursor to search paths; fixes 'Cannot locate application files' error on Option 1 installs",
+    "7.8.2": "Bugfix - Fixed flash messages accumulating and appearing all at once on Case Selection page; login and change_password routes now properly consume flash messages using get_flashed_messages() instead of manual session access; messages now display immediately on the page where they're generated",
+    "7.8.3": "Bugfix - Fixed case creation log_audit call with incorrect parameters causing 'unexpected keyword argument user_id' error; removed template_id references from case creation (templates removed in 7.7.3); removed template selection dropdown from create case form; simplified render_case_form to only accept users parameter"
   }
 }

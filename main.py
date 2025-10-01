@@ -344,17 +344,6 @@ def create_case():
             case_number = f"CASE-{int(time.time())}"
             
             try:
-                # Apply template defaults if template selected
-                if template_id and template_id != '':
-                    template = db.session.get(CaseTemplate, int(template_id))
-                    if template:
-                        if not description:
-                            description = template.description
-                        if priority == 'Medium':  # Only override if still default
-                            priority = template.default_priority
-                        if not tags and template.default_tags:
-                            tags = template.default_tags
-                
                 new_case = Case(
                     name=name,
                     description=description,
@@ -362,7 +351,6 @@ def create_case():
                     priority=priority,
                     tags=tags,
                     created_by=current_user.id,
-                    template_id=int(template_id) if template_id and template_id != '' else None,
                     assignee_id=int(assignee_id) if assignee_id and assignee_id != '' else None
                 )
                 db.session.add(new_case)
@@ -377,13 +365,7 @@ def create_case():
                 session['active_case_id'] = new_case.id
                 
                 # Log the action
-                log_audit(
-                    user_id=session.get('user_id'),
-                    action='create_case',
-                    category='case_management',
-                    details=f'Created case: {name} (ID: {new_case.id})',
-                    success=True
-                )
+                log_audit('create_case', 'case_management', f'Created case: {name} (ID: {new_case.id})', success=True)
                 
                 flash(f'Case "{name}" created successfully!', 'success')
                 return redirect(url_for('case_dashboard'))
@@ -392,10 +374,9 @@ def create_case():
                 db.session.rollback()
                 flash(f'Error creating case: {str(e)}', 'error')
     
-    # GET request - load templates and users for the form
-    templates = CaseTemplate.query.filter_by(is_active=True).order_by(CaseTemplate.name).all()
+    # GET request - load users for the form
     users = User.query.filter_by(is_active=True).order_by(User.username).all()
-    return render_case_form(templates, users)
+    return render_case_form(users)
 
 @app.route('/case/select')
 @login_required
@@ -2464,12 +2445,12 @@ def login():
             traceback.print_exc()
             flash('Database error. Please check system logs.', 'error')
     
-    # Flash messages for display
+    # Get flash messages for display on login page
+    from flask import get_flashed_messages
     flash_messages = ""
-    if hasattr(session, '_flashes') and session._flashes:
-        for category, message in session._flashes:
-            flash_messages += f'<div class="alert alert-{category}">{message}</div>'
-        session._flashes.clear()
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        flash_messages += f'<div class="alert alert-{category}">{message}</div>'
     
     return f'''
     <!DOCTYPE html>
@@ -2921,12 +2902,12 @@ def change_password():
             flash('Password changed successfully.', 'success')
             return redirect(url_for('dashboard'))
     
-    # Flash messages for display
+    # Get flash messages for display on change password page
+    from flask import get_flashed_messages
     flash_messages = ""
-    if hasattr(session, '_flashes') and session._flashes:
-        for category, message in session._flashes:
-            flash_messages += f'<div class="alert alert-{category}">{message}</div>'
-        session._flashes.clear()
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        flash_messages += f'<div class="alert alert-{category}">{message}</div>'
     
     return f'''
     <!DOCTYPE html>
@@ -6070,19 +6051,12 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
     </html>
     '''
 
-def render_case_form(templates=None, users=None):
+def render_case_form(users=None):
     """Render case creation form with sidebar layout"""
-    if templates is None:
-        templates = []
     if users is None:
         users = []
     
     sidebar_menu = render_sidebar_menu('case_select')
-    
-    # Build template options
-    template_options = '<option value="">-- No Template --</option>'
-    for template in templates:
-        template_options += f'<option value="{template.id}">{template.name}</option>'
     
     # Build assignee options
     assignee_options = '<option value="">-- Unassigned --</option>'
@@ -6235,12 +6209,6 @@ def render_case_form(templates=None, users=None):
                 <div class="form-group">
                     <label for="description">Description</label>
                     <textarea id="description" name="description" placeholder="Enter case description (optional)"></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="template_id">Case Template (optional)</label>
-                    <select id="template_id" name="template_id">
-                        {template_options}
-                    </select>
                 </div>
                 <div class="form-group">
                     <label for="priority">Priority</label>
