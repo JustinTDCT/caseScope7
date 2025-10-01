@@ -1,7 +1,7 @@
 {
-  "version": "7.2.34",
+  "version": "7.2.35",
   "release_date": "2025-10-01",
-  "description": "Bugfix - Fixed UnboundLocalError for violations_only on GET requests; v7.2.33 only initialized violations_only inside POST block causing error on initial page load; moved violations_only=False initialization before request.method check",
+  "description": "Critical Bugfix - Fixed search results not displaying when violations checkbox checked; filenames with special characters like '%4' broke HTML rendering; added HTML escaping for source_file, computer, and event_type fields; added traceback logging to exception handler for better debugging",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -136,6 +136,7 @@
     "7.2.31": "Bugfix - Fixed NameError in enrich_events_with_detections; v7.2.30 changed parameter name from detections_by_event to detections_by_record_number but missed updating the success log message; caused enrichment to fail with 'name detections_by_event is not defined' after successful bulk update; fixed variable reference in log statement",
     "7.2.32": "UI Enhancement - Preserve SIGMA violations checkbox state across pagination; checkbox now stays checked when navigating between pages; added checked attribute based on violations_only variable",
     "7.2.33": "Bugfix - Fixed render_search_page missing violations_only parameter; v7.2.32 added violations_only variable reference but didn't add it to function signature; caused NameError when loading search page; added violations_only parameter with default False to render_search_page and updated call site",
-    "7.2.34": "Bugfix - Fixed UnboundLocalError for violations_only on GET requests; v7.2.33 only initialized violations_only inside POST block causing error on initial page load; moved violations_only=False initialization before request.method check"
+    "7.2.34": "Bugfix - Fixed UnboundLocalError for violations_only on GET requests; v7.2.33 only initialized violations_only inside POST block causing error on initial page load; moved violations_only=False initialization before request.method check",
+    "7.2.35": "Critical Bugfix - Fixed search results not displaying when violations checkbox checked; filenames with special characters like '%4' broke HTML rendering; added HTML escaping for source_file, computer, and event_type fields; added traceback logging to exception handler for better debugging"
   }
 }

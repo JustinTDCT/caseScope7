@@ -849,8 +849,10 @@ def search():
                     })
                 
             except Exception as e:
+                import traceback
                 error_message = f"Search error: {str(e)}"
                 print(f"[Search] Error: {e}")
+                traceback.print_exc()
     
     return render_search_page(case, query_str, results, total_hits, page, per_page, error_message, len(indexed_files), violations_only)
 
@@ -2987,13 +2989,19 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             import json
             full_data_json = json.dumps(result['full_data']).replace("'", "\\'")
             
+            # Escape HTML entities to prevent rendering errors
+            import html
+            escaped_source_file = html.escape(result['source_file'], quote=True)
+            escaped_computer = html.escape(result['computer'], quote=True)
+            escaped_event_type = html.escape(result['event_type'], quote=True)
+            
             result_rows += f'''
             <tr class="result-row" onclick="toggleDetails('{result_id}')">
                 <td>{result['event_id']}</td>
                 <td>{result['timestamp'][:19] if result['timestamp'] != 'N/A' else 'N/A'}</td>
-                <td>{result['event_type']}</td>
-                <td><span class="field-tag" onclick="addToQuery(event, 'source_filename', '{result['source_file']}')">{result['source_file']}</span></td>
-                <td><span class="field-tag" onclick="addToQuery(event, 'Computer', '{result['computer']}')">{result['computer']}</span></td>
+                <td>{escaped_event_type}</td>
+                <td><span class="field-tag" onclick="addToQuery(event, 'source_filename', '{escaped_source_file}')">{escaped_source_file}</span></td>
+                <td><span class="field-tag" onclick="addToQuery(event, 'Computer', '{escaped_computer}')">{escaped_computer}</span></td>
             </tr>
             <tr id="{result_id}" class="details-row" style="display: none;">
                 <td colspan="5">
