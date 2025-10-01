@@ -1078,6 +1078,89 @@ def review_violation(violation_id):
     flash('✓ Violation marked as reviewed', 'success')
     return redirect(url_for('violations'))
 
+@app.route('/search/export', methods=['POST'])
+@login_required
+def export_search():
+    """Export search results to CSV"""
+    import csv
+    import io
+    from flask import make_response
+    
+    active_case_id = session.get('active_case_id')
+    if not active_case_id:
+        flash('Please select a case first.', 'warning')
+        return redirect(url_for('case_selection'))
+    
+    case = db.session.get(Case, active_case_id)
+    if not case:
+        flash('Case not found.', 'error')
+        return redirect(url_for('case_selection'))
+    
+    query_str = request.form.get('query', '*')
+    violations_only = request.form.get('violations_only') == 'true'
+    
+    # Get indexed files
+    indexed_files = CaseFile.query.filter_by(case_id=case.id, is_indexed=True, is_deleted=False).all()
+    if not indexed_files:
+        flash('No indexed files to export.', 'error')
+        return redirect(url_for('search'))
+    
+    from tasks import make_index_name
+    indices = [make_index_name(case.id, f.original_filename) for f in indexed_files]
+    
+    # Build query
+    query = build_opensearch_query(query_str)
+    filters = []
+    if violations_only:
+        filters.append({"exists": {"field": "has_violations"}})
+    
+    search_body = {
+        "query": {
+            "bool": {
+                "must": [query],
+                "filter": filters
+            }
+        } if filters else query,
+        "_source": True,
+        "size": 10000  # Max export size
+    }
+    
+    try:
+        response = opensearch_client.search(
+            index=','.join(indices),
+            body=search_body
+        )
+        
+        # Create CSV
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['Timestamp', 'Event ID', 'Event Type', 'Computer', 'Source File', 'Has Violations', 'Violation Count'])
+        
+        for hit in response['hits']['hits']:
+            source = hit['_source']
+            timestamp = source.get('System_TimeCreated_@SystemTime') or source.get('System_TimeCreated_SystemTime') or 'N/A'
+            event_id = source.get('System_EventID_#text') or source.get('System_EventID') or 'N/A'
+            event_type = source.get('event_type', 'Unknown Event')
+            computer = source.get('System_Computer', 'N/A')
+            source_file = source.get('_casescope_metadata', {}).get('filename', 'N/A')
+            has_violations = 'Yes' if source.get('has_violations') else 'No'
+            violation_count = source.get('violation_count', 0)
+            
+            writer.writerow([timestamp, event_id, event_type, computer, source_file, has_violations, violation_count])
+        
+        output.seek(0)
+        resp = make_response(output.getvalue())
+        resp.headers['Content-Type'] = 'text/csv'
+        resp.headers['Content-Disposition'] = f'attachment; filename=casescope_search_{case.name.replace(" ", "_")}.csv'
+        
+        log_audit('export_search', 'file_operation', f'Exported {response["hits"]["total"]["value"]} search results from case {case.name}')
+        
+        return resp
+        
+    except Exception as e:
+        flash(f'Export error: {str(e)}', 'error')
+        return redirect(url_for('search'))
+
 @app.route('/search', methods=['GET', 'POST'])
 @login_required
 def search():
@@ -4251,6 +4334,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                 display: flex;
                 gap: 15px;
                 align-items: center;
+                flex-wrap: wrap;
             }}
             .btn-search {{
                 padding: 12px 30px;
@@ -4269,6 +4353,24 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                 background: linear-gradient(145deg, #66bb6a, #4caf50);
                 transform: translateY(-2px);
                 box-shadow: 0 6px 16px rgba(76,175,80,0.5);
+            }}
+            .btn-export {{
+                padding: 12px 30px;
+                background: linear-gradient(145deg, #ff9800, #f57c00);
+                color: white;
+                border: none;
+                border-radius: 10px;
+                font-size: 1em;
+                font-weight: 600;
+                cursor: pointer;
+                box-shadow: 0 4px 12px rgba(255,152,0,0.4);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .btn-export:hover {{
+                background: linear-gradient(145deg, #ffa726, #ff9800);
+                transform: translateY(-2px);
+                box-shadow: 0 6px 16px rgba(255,152,0,0.5);
             }}
             .help-toggle {{
                 background: rgba(33,150,243,0.3);
@@ -4446,6 +4548,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                                 <span style="font-size: 14px;">🚨 Show only SIGMA violations</span>
                             </label>
                             <button type="submit" class="btn-search">🔍 Search</button>
+                            <button type="button" class="btn-export" onclick="exportResults()">📥 Export CSV</button>
                             <button type="button" class="help-toggle" onclick="toggleHelp()">❓ Query Help</button>
                         </div>
                     </form>
@@ -4548,6 +4651,14 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             function searchPage(pageNum) {{
                 document.getElementById('pageInput').value = pageNum;
                 document.getElementById('searchForm').submit();
+            }}
+            
+            function exportResults() {{
+                const form = document.getElementById('searchForm');
+                const originalAction = form.action;
+                form.action = '/search/export';
+                form.submit();
+                form.action = originalAction;
             }}
         </script>
     </body>

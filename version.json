@@ -1,7 +1,7 @@
 {
-  "version": "7.4.0",
+  "version": "7.5.0",
   "release_date": "2025-10-01",
-  "description": "Feature - Audit Logging System; added AuditLog model to track user actions; logs authentication (login/logout/failed attempts with IP), file operations (uploads), search queries, and admin actions (user create/edit/delete); created /audit-log page (admin only) with filterable view by category/user/success status; 50 results per page with pagination; sidebar menu updated with Audit Log link",
+  "description": "Feature - CSV Export; added /search/export endpoint to export search results to CSV file; exports up to 10000 events with columns: Timestamp, Event ID, Event Type, Computer, Source File, Has Violations, Violation Count; Export CSV button on search page; preserves current query and violations filter; logs export actions to audit log; filename includes case name",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -144,6 +144,7 @@
     "7.3.0": "Feature - User Management System; added /users route (admin only) with create/edit/delete functionality; create user with username/email/password/role validation; edit user email/role/status with optional password reset; delete user with protections (cannot delete self or last admin); user table with role badges (green/blue/orange) and active/inactive status indicators; modal dialogs for create/edit actions; password minimum 8 characters; roles: administrator/analyst/read-only; enabled User Management menu item replacing Coming Soon placeholder",
     "7.3.1": "Bugfix - Fixed sidebar menu indentation causing broken HTML rendering; removed extra indentation from Management section menu items; fixed table header styling by adding thead element with solid gradient background and transparent th backgrounds with white text and bottom border; matches previous styling fixes from v7.1.x series",
     "7.3.2": "Bugfix - Added missing menu-item CSS classes to user management page; sidebar menu links were not styled because render_user_management lacked menu-item, menu-title, placeholder, and active class definitions; added full menu styling block matching other pages",
-    "7.4.0": "Feature - Audit Logging System; added AuditLog model to track user actions; logs authentication (login/logout/failed attempts with IP), file operations (uploads), search queries, and admin actions (user create/edit/delete); created /audit-log page (admin only) with filterable view by category/user/success status; 50 results per page with pagination; sidebar menu updated with Audit Log link"
+    "7.4.0": "Feature - Audit Logging System; added AuditLog model to track user actions; logs authentication (login/logout/failed attempts with IP), file operations (uploads), search queries, and admin actions (user create/edit/delete); created /audit-log page (admin only) with filterable view by category/user/success status; 50 results per page with pagination; sidebar menu updated with Audit Log link",
+    "7.5.0": "Feature - CSV Export; added /search/export endpoint to export search results to CSV file; exports up to 10000 events with columns: Timestamp, Event ID, Event Type, Computer, Source File, Has Violations, Violation Count; Export CSV button on search page; preserves current query and violations filter; logs export actions to audit log; filename includes case name"
   }
 }
