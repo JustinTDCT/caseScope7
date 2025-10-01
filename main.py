@@ -4754,6 +4754,26 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                     <form method="POST" id="searchForm">
                         <input type="text" name="query" class="search-input" placeholder="Enter search query (e.g., EventID:4624 AND Computer:SERVER01)" value="{query_str}" autofocus>
                         <input type="hidden" name="page" id="pageInput" value="{page}">
+                        
+                        <div style="display: flex; gap: 15px; margin-bottom: 15px; align-items: center; flex-wrap: wrap;">
+                            <label style="color: rgba(255,255,255,0.9); font-size: 14px;">
+                                ⏰ Time Range:
+                                <select name="time_range" id="timeRange" onchange="toggleCustomDates()" style="margin-left: 8px; padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.1); color: white;">
+                                    <option value="all" {'selected' if time_range == 'all' else ''}>All Time</option>
+                                    <option value="24h" {'selected' if time_range == '24h' else ''}>Last 24 Hours</option>
+                                    <option value="7d" {'selected' if time_range == '7d' else ''}>Last 7 Days</option>
+                                    <option value="30d" {'selected' if time_range == '30d' else ''}>Last 30 Days</option>
+                                    <option value="custom" {'selected' if time_range == 'custom' else ''}>Custom Range</option>
+                                </select>
+                            </label>
+                            
+                            <div id="customDates" style="display: {'flex' if time_range == 'custom' else 'none'}; gap: 10px; align-items: center;">
+                                <input type="datetime-local" name="custom_start" value="{custom_start or ''}" style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.1); color: white;">
+                                <span style="color: rgba(255,255,255,0.7);">to</span>
+                                <input type="datetime-local" name="custom_end" value="{custom_end or ''}" style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.1); color: white;">
+                            </div>
+                        </div>
+                        
                         <div class="search-actions">
                             <label style="display: flex; align-items: center; margin-right: 15px; color: rgba(255,255,255,0.9);">
                                 <input type="checkbox" name="violations_only" value="true" {'checked' if violations_only else ''} style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
@@ -4871,6 +4891,12 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                 form.action = '/search/export';
                 form.submit();
                 form.action = originalAction;
+            }}
+            
+            function toggleCustomDates() {{
+                const select = document.getElementById('timeRange');
+                const customDiv = document.getElementById('customDates');
+                customDiv.style.display = select.value === 'custom' ? 'flex' : 'none';
             }}
         </script>
     </body>

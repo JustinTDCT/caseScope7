@@ -1,7 +1,7 @@
 {
-  "version": "7.6.1",
+  "version": "7.6.2",
   "release_date": "2025-10-01",
-  "description": "Bugfix - Fixed AttributeError on search page; changed SearchHistory.query.filter_by and SavedSearch.query.filter to use db.session.query() for SQLAlchemy 2.0 compatibility; search page now loads correctly with history and saved searches",
+  "description": "UI Enhancement - Added time range filter controls to search page; dropdown with All Time, Last 24 Hours, Last 7 Days, Last 30 Days, Custom Range options; custom range shows datetime-local inputs for start/end; toggleCustomDates() JavaScript function to show/hide custom inputs; preserves selected time range across searches",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -150,6 +150,7 @@
     "7.5.2": "Bugfix - Fixed CSV export ERR_RESPONSE_HEADERS_MULTIPLE_CONTENT_DISPOSITION error; moved log_audit call before response creation to prevent headers being set twice; added charset=utf-8 to Content-Type; quoted filename in Content-Disposition header",
     "7.5.3": "Enhancement - Improved CSV export data completeness; added Full Event Data column with complete JSON event structure; enhanced field extraction with multiple fallback paths for timestamp, event_id, computer to prevent N/A values; better metadata handling; updated README.md with correct GitHub repository URL",
     "7.6.0": "Feature - Search Enhancements; added SavedSearch and SearchHistory models; time range filters (24h, 7d, 30d, custom date range, all); search history tracking (last 10 searches per case); saved searches with name, query, filters; API endpoints /search/save, /search/saved/<id>/load, /search/saved/<id>/delete; auto-tracks result counts and usage stats; migration script for new tables",
-    "7.6.1": "Bugfix - Fixed AttributeError on search page; changed SearchHistory.query.filter_by and SavedSearch.query.filter to use db.session.query() for SQLAlchemy 2.0 compatibility; search page now loads correctly with history and saved searches"
+    "7.6.1": "Bugfix - Fixed AttributeError on search page; changed SearchHistory.query.filter_by and SavedSearch.query.filter to use db.session.query() for SQLAlchemy 2.0 compatibility; search page now loads correctly with history and saved searches",
+    "7.6.2": "UI Enhancement - Added time range filter controls to search page; dropdown with All Time, Last 24 Hours, Last 7 Days, Last 30 Days, Custom Range options; custom range shows datetime-local inputs for start/end; toggleCustomDates() JavaScript function to show/hide custom inputs; preserves selected time range across searches"
   }
 }
