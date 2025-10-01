@@ -97,6 +97,38 @@ class AuditLog(db.Model):
     # Relationship
     user = db.relationship('User', backref='audit_logs')
 
+class SavedSearch(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    case_id = db.Column(db.Integer, db.ForeignKey('case.id'), nullable=True)  # Null = all cases
+    name = db.Column(db.String(200), nullable=False)
+    query = db.Column(db.Text, nullable=False)
+    time_range = db.Column(db.String(50))  # 24h, 7d, 30d, custom, all
+    custom_start = db.Column(db.DateTime)  # For custom range
+    custom_end = db.Column(db.DateTime)    # For custom range
+    violations_only = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_used = db.Column(db.DateTime)
+    use_count = db.Column(db.Integer, default=0)
+    
+    # Relationships
+    user = db.relationship('User', backref='saved_searches')
+    case = db.relationship('Case', backref='saved_searches')
+
+class SearchHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    case_id = db.Column(db.Integer, db.ForeignKey('case.id'), nullable=False)
+    query = db.Column(db.Text, nullable=False)
+    time_range = db.Column(db.String(50))
+    violations_only = db.Column(db.Boolean, default=False)
+    result_count = db.Column(db.Integer)
+    executed_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = db.relationship('User', backref='search_history')
+    case = db.relationship('Case', backref='search_history')
+
 class Case(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
@@ -1223,11 +1255,17 @@ def search():
     page = 1
     per_page = 50
     violations_only = False
+    time_range = 'all'
+    custom_start = None
+    custom_end = None
     
     if request.method == 'POST':
         query_str = request.form.get('query', '').strip()
         page = int(request.form.get('page', 1))
         violations_only = request.form.get('violations_only') == 'true'
+        time_range = request.form.get('time_range', 'all')
+        custom_start = request.form.get('custom_start')
+        custom_end = request.form.get('custom_end')
         
         if query_str:
             try:
@@ -1235,14 +1273,53 @@ def search():
                 # But we keep query_str unchanged for display
                 base_query = build_opensearch_query(query_str)
                 
-                # NEW IN v7.2.0: Filter for SIGMA violations if checkbox checked
+                # Build filters list
+                filters = []
+                
+                # Add violations filter if checked
                 if violations_only:
+                    filters.append({"exists": {"field": "has_violations"}})
+                
+                # Add time range filter
+                if time_range != 'all':
+                    from datetime import timedelta
+                    now = datetime.utcnow()
+                    
+                    if time_range == '24h':
+                        start_time = now - timedelta(hours=24)
+                    elif time_range == '7d':
+                        start_time = now - timedelta(days=7)
+                    elif time_range == '30d':
+                        start_time = now - timedelta(days=30)
+                    elif time_range == 'custom' and custom_start:
+                        from datetime import datetime as dt
+                        start_time = dt.fromisoformat(custom_start)
+                        end_time = dt.fromisoformat(custom_end) if custom_end else now
+                        filters.append({
+                            "range": {
+                                "System_TimeCreated_@SystemTime": {
+                                    "gte": start_time.isoformat(),
+                                    "lte": end_time.isoformat()
+                                }
+                            }
+                        })
+                        start_time = None  # Skip the simple gte below
+                    
+                    if start_time:
+                        filters.append({
+                            "range": {
+                                "System_TimeCreated_@SystemTime": {
+                                    "gte": start_time.isoformat()
+                                }
+                            }
+                        })
+                
+                # Combine base query with filters
+                if filters:
                     os_query = {
                         "bool": {
-                            "must": [
-                                base_query,
-                                {"exists": {"field": "has_violations"}}
-                            ]
+                            "must": [base_query],
+                            "filter": filters
                         }
                     }
                 else:
@@ -1270,6 +1347,21 @@ def search():
                 
                 total_hits = response['hits']['total']['value']
                 log_audit('search', 'search', f'Searched case {case.name} for "{query_str}" - {total_hits} results')
+                
+                # Add to search history
+                try:
+                    history = SearchHistory(
+                        user_id=current_user.id,
+                        case_id=case.id,
+                        query=query_str,
+                        time_range=time_range,
+                        violations_only=violations_only,
+                        result_count=total_hits
+                    )
+                    db.session.add(history)
+                    db.session.commit()
+                except:
+                    db.session.rollback()
                 
                 for hit in response['hits']['hits']:
                     source = hit['_source']
@@ -1338,7 +1430,102 @@ def search():
                 print(f"[Search] Error: {e}")
                 traceback.print_exc()
     
-    return render_search_page(case, query_str, results, total_hits, page, per_page, error_message, len(indexed_files), violations_only)
+    # Get search history for this case (last 10)
+    recent_searches = SearchHistory.query.filter_by(
+        user_id=current_user.id, 
+        case_id=case.id
+    ).order_by(SearchHistory.executed_at.desc()).limit(10).all()
+    
+    # Get saved searches for this user/case
+    saved_searches = SavedSearch.query.filter(
+        SavedSearch.user_id == current_user.id,
+        (SavedSearch.case_id == case.id) | (SavedSearch.case_id == None)
+    ).order_by(SavedSearch.last_used.desc().nullslast(), SavedSearch.created_at.desc()).all()
+    
+    return render_search_page(case, query_str, results, total_hits, page, per_page, error_message, len(indexed_files), violations_only, time_range, custom_start, custom_end, recent_searches, saved_searches)
+
+@app.route('/search/save', methods=['POST'])
+@login_required
+def save_search():
+    """Save a search query"""
+    try:
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        query = data.get('query', '').strip()
+        case_id = data.get('case_id')
+        time_range = data.get('time_range', 'all')
+        custom_start = data.get('custom_start')
+        custom_end = data.get('custom_end')
+        violations_only = data.get('violations_only', False)
+        
+        if not name or not query:
+            return jsonify({'success': False, 'message': 'Name and query required'}), 400
+        
+        # Parse datetime if custom range
+        from datetime import datetime as dt
+        cs = dt.fromisoformat(custom_start) if custom_start else None
+        ce = dt.fromisoformat(custom_end) if custom_end else None
+        
+        saved = SavedSearch(
+            user_id=current_user.id,
+            case_id=case_id,
+            name=name,
+            query=query,
+            time_range=time_range,
+            custom_start=cs,
+            custom_end=ce,
+            violations_only=violations_only
+        )
+        db.session.add(saved)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': f'Search "{name}" saved'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/search/saved/<int:search_id>/load', methods=['POST'])
+@login_required
+def load_saved_search(search_id):
+    """Load and execute a saved search"""
+    try:
+        saved = db.session.get(SavedSearch, search_id)
+        if not saved or saved.user_id != current_user.id:
+            return jsonify({'success': False, 'message': 'Search not found'}), 404
+        
+        # Update usage stats
+        saved.last_used = datetime.utcnow()
+        saved.use_count += 1
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'query': saved.query,
+            'time_range': saved.time_range,
+            'custom_start': saved.custom_start.isoformat() if saved.custom_start else None,
+            'custom_end': saved.custom_end.isoformat() if saved.custom_end else None,
+            'violations_only': saved.violations_only
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/search/saved/<int:search_id>/delete', methods=['POST'])
+@login_required
+def delete_saved_search(search_id):
+    """Delete a saved search"""
+    try:
+        saved = db.session.get(SavedSearch, search_id)
+        if not saved or saved.user_id != current_user.id:
+            return jsonify({'success': False, 'message': 'Search not found'}), 404
+        
+        name = saved.name
+        db.session.delete(saved)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': f'Deleted "{name}"'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/sigma-rules/download', methods=['POST'])
 @login_required
@@ -4072,7 +4259,7 @@ def render_user_management(users):
     </html>
     '''
 
-def render_search_page(case, query_str, results, total_hits, page, per_page, error_message, indexed_file_count, violations_only=False):
+def render_search_page(case, query_str, results, total_hits, page, per_page, error_message, indexed_file_count, violations_only=False, time_range='all', custom_start=None, custom_end=None, recent_searches=[], saved_searches=[]):
     """Render search interface with results"""
     from flask import get_flashed_messages
     flash_messages_html = ""
