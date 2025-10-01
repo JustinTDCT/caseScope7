@@ -7589,11 +7589,11 @@ def render_edit_case(case, users):
     '''
 
 def render_case_management(cases, users):
-    """Render case management page"""
+    """Render case management page - matches files list structure"""
+    from flask import get_flashed_messages
     sidebar_menu = render_sidebar_menu('case_management')
     
     # Get flash messages
-    from flask import get_flashed_messages
     flash_messages_html = ""
     messages = get_flashed_messages(with_categories=True)
     for category, message in messages:
@@ -7606,11 +7606,6 @@ def render_case_management(cases, users):
         </div>
         '''
     
-    # Build assignee options for quick assignment
-    assignee_options = '<option value="">-- Unassigned --</option>'
-    for user in users:
-        assignee_options += f'<option value="{user.id}">{user.username}</option>'
-    
     # Build case rows
     case_rows = ""
     for case in cases:
@@ -7620,14 +7615,17 @@ def render_case_management(cases, users):
         assignee_name = case.assignee.username if case.assignee else 'Unassigned'
         tags_display = html.escape(case.tags or 'None')
         
-        # Action buttons
-        actions = f'<a href="/case/edit/{case.id}" style="text-decoration: none;"><button style="padding: 6px 12px; font-size: 14px;">Edit</button></a>'
+        # Action buttons matching files list style
+        actions_list = []
+        actions_list.append(f'<a href="/case/edit/{case.id}" style="text-decoration: none;"><button class="btn-action" style="background: linear-gradient(145deg, #2196f3, #1976d2);">✏️ Edit</button></a>')
         
         if case.status == 'Closed' or case.status == 'Archived':
-            actions += f'<button onclick="reopenCase({case.id}, \'{html.escape(case.name)}\')" style="padding: 6px 12px; font-size: 14px; background: linear-gradient(145deg, #4caf50, #388e3c);">Reopen</button>'
+            actions_list.append(f'<button class="btn-action" onclick="reopenCase({case.id}, \'{html.escape(case.name)}\')" style="background: linear-gradient(145deg, #4caf50, #388e3c);">↻ Reopen</button>')
         else:
-            actions += f'<button onclick="closeCase({case.id}, \'{html.escape(case.name)}\')" style="padding: 6px 12px; font-size: 14px; background: linear-gradient(145deg, #ff9800, #f57c00);">Close</button>'
-            actions += f'<button onclick="archiveCase({case.id}, \'{html.escape(case.name)}\')" style="padding: 6px 12px; font-size: 14px; background: linear-gradient(145deg, #757575, #616161);">Archive</button>'
+            actions_list.append(f'<button class="btn-action" onclick="closeCase({case.id}, \'{html.escape(case.name)}\')" style="background: linear-gradient(145deg, #ff9800, #f57c00);">✓ Close</button>')
+            actions_list.append(f'<button class="btn-action" onclick="archiveCase({case.id}, \'{html.escape(case.name)}\')" style="background: linear-gradient(145deg, #757575, #616161);">📦 Archive</button>')
+        
+        actions = '<div style="display: flex; flex-wrap: wrap; gap: 4px;">' + ''.join(actions_list) + '</div>'
         
         case_rows += f'''
         <tr>
@@ -7657,7 +7655,7 @@ def render_case_management(cases, users):
                 background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
                 color: white; 
                 margin: 0; 
-                display: flex;
+                display: flex; 
                 min-height: 100vh; 
             }}
             .sidebar {{ 
@@ -7669,65 +7667,103 @@ def render_case_management(cases, users):
                     inset -1px 0 0 rgba(255,255,255,0.1);
                 backdrop-filter: blur(10px);
             }}
-            .main-content {{ flex: 1; padding: 30px; overflow-y: auto; }}
+            .main-content {{ flex: 1; }}
+            .header {{ 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 15px 30px; 
+                display: flex; 
+                justify-content: space-between; 
+                align-items: center;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                min-height: 60px;
+            }}
+            .case-title {{
+                font-size: 1.3em;
+                font-weight: 600;
+            }}
+            .user-info {{ 
+                display: flex; 
+                align-items: center; 
+                gap: 20px;
+                font-size: 1em;
+            }}
+            .logout-btn {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                color: white !important;
+                padding: 8px 16px;
+                border-radius: 8px;
+                text-decoration: none;
+                font-size: 0.9em;
+                font-weight: 500;
+                box-shadow: 0 4px 8px rgba(244,67,54,0.3);
+                border: none;
+                cursor: pointer;
+            }}
             .sidebar-logo {{
                 text-align: center;
                 font-size: 2.2em;
-                font-weight: bold;
-                margin-bottom: 5px;
-                padding: 5px;
+                font-weight: 300;
+                margin-bottom: 15px;
+                padding: 5px 0 8px 0;
+                border-bottom: 1px solid rgba(76,175,80,0.3);
             }}
             .version-badge {{
+                font-size: 0.4em;
                 background: linear-gradient(145deg, #4caf50, #388e3c);
                 color: white;
-                padding: 4px 12px;
-                border-radius: 12px;
-                font-size: 0.75em;
-                display: inline-block;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                padding: 3px 6px;
+                border-radius: 6px;
                 margin-top: 5px;
+                display: inline-block;
+                box-shadow: 0 2px 4px rgba(76,175,80,0.3);
             }}
-            .menu-title {{
-                color: rgba(255,255,255,0.6);
-                font-size: 0.85em;
-                font-weight: 600;
-                text-transform: uppercase;
-                margin: 15px 0 8px 0;
-                letter-spacing: 1px;
-            }}
-            .menu-item {{
-                display: block;
-                padding: 10px 15px;
-                margin: 4px 0;
-                background: rgba(255,255,255,0.05);
-                border-radius: 8px;
-                color: white;
-                text-decoration: none;
-                transition: all 0.3s;
+            .content {{ padding: 30px; }}
+            .menu-item {{ 
+                display: block; 
+                color: white; 
+                text-decoration: none; 
+                padding: 12px 16px; 
+                margin: 6px 0; 
+                border-radius: 12px; 
+                background: linear-gradient(145deg, #3949ab, #283593);
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                transition: all 0.3s ease;
                 border: 1px solid rgba(255,255,255,0.1);
+                font-size: 0.95em;
             }}
-            .menu-item:hover {{
-                background: rgba(255,255,255,0.15);
+            .menu-item:hover {{ 
+                background: linear-gradient(145deg, #5c6bc0, #3949ab);
                 transform: translateX(5px);
-                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                box-shadow: 0 8px 15px rgba(0,0,0,0.4);
             }}
             .menu-item.active {{
-                background: linear-gradient(145deg, #1e88e5, #1976d2);
-                border-color: rgba(255,255,255,0.2);
-                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                background: linear-gradient(145deg, #4caf50, #388e3c);
             }}
-            .menu-item.placeholder {{
-                opacity: 0.5;
+            .menu-item.placeholder {{ 
+                background: linear-gradient(145deg, #424242, #2e2e2e); 
+                color: #aaa; 
                 cursor: not-allowed;
+                opacity: 0.7;
+            }}
+            .menu-item.placeholder:hover {{
+                transform: none;
+            }}
+            h3.menu-title {{
+                font-size: 1.1em;
+                margin: 15px 0 8px 0;
+                color: #4caf50;
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+                padding-bottom: 4px;
             }}
             .flash-message {{
-                padding: 12px 16px;
-                border-radius: 8px;
-                margin-bottom: 15px;
+                padding: 15px 20px;
+                border-radius: 10px;
+                margin-bottom: 20px;
                 display: flex;
                 align-items: center;
-                gap: 10px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                gap: 12px;
+                box-shadow: 0 6px 15px rgba(0,0,0,0.3);
             }}
             .flash-success {{ background: linear-gradient(145deg, #4caf50, #388e3c); }}
             .flash-error {{ background: linear-gradient(145deg, #f44336, #d32f2f); }}
@@ -7739,34 +7775,28 @@ def render_case_management(cases, users):
                 color: white;
                 cursor: pointer;
                 font-size: 24px;
-                line-height: 1;
             }}
-            h1 {{ margin-top: 0; font-weight: 300; }}
-            table {{
+            .file-table {{
                 width: 100%;
-                border-collapse: separate;
-                border-spacing: 0;
-                margin-top: 20px;
-                background: rgba(255,255,255,0.05);
-                border-radius: 10px;
+                background: linear-gradient(145deg, #3f51b5, #283593);
+                border-radius: 15px;
                 overflow: hidden;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+                margin-top: 20px;
             }}
-            thead {{
-                background: linear-gradient(145deg, #1e88e5, #1976d2);
-            }}
-            th {{
-                padding: 12px;
+            .file-table th, .file-table td {{
+                padding: 12px 15px;
                 text-align: left;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                vertical-align: middle;
+            }}
+            .file-table th {{
+                background: #283593;
                 font-weight: 600;
-                background: transparent;
                 color: white;
                 border-bottom: 2px solid rgba(255,255,255,0.2);
             }}
-            td {{
-                padding: 12px;
-                border-bottom: 1px solid rgba(255,255,255,0.1);
-            }}
-            tr:hover {{
+            .file-table tr:hover {{
                 background: rgba(255,255,255,0.08);
             }}
             .priority-low {{ color: #81c784; }}
@@ -7777,95 +7807,66 @@ def render_case_management(cases, users):
             .status-in-progress {{ color: #2196f3; }}
             .status-closed {{ color: #9e9e9e; }}
             .status-archived {{ color: #757575; }}
-            button {{
+            .btn-action {{
                 background: linear-gradient(145deg, #4caf50, #388e3c);
                 color: white;
-                padding: 8px 16px;
+                padding: 6px 12px;
                 border: none;
                 border-radius: 6px;
                 cursor: pointer;
-                font-size: 14px;
+                font-size: 13px;
                 font-weight: 500;
                 box-shadow: 0 2px 6px rgba(0,0,0,0.2);
                 transition: all 0.2s;
-                margin-right: 5px;
+                white-space: nowrap;
             }}
-            button:hover {{
+            .btn-action:hover {{
                 transform: translateY(-1px);
                 box-shadow: 0 4px 8px rgba(0,0,0,0.3);
             }}
-            .modal {{
-                display: none;
-                position: fixed;
-                z-index: 1000;
-                left: 0;
-                top: 0;
-                width: 100%;
-                height: 100%;
-                background-color: rgba(0,0,0,0.7);
-            }}
-            .modal-content {{
-                background: linear-gradient(145deg, #283593, #1e88e5);
-                margin: 5% auto;
-                padding: 30px;
-                border-radius: 15px;
-                width: 80%;
-                max-width: 600px;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-            }}
-            .close {{
-                color: white;
-                float: right;
-                font-size: 28px;
-                font-weight: bold;
-                cursor: pointer;
-            }}
-            .form-group {{ margin-bottom: 15px; }}
-            label {{ display: block; margin-bottom: 5px; font-weight: 500; }}
-            input, textarea, select {{
-                width: 100%;
-                padding: 10px;
-                border: none;
-                border-radius: 6px;
-                background: rgba(255,255,255,0.1);
-                color: white;
-                font-size: 14px;
-                box-sizing: border-box;
-            }}
-            textarea {{ resize: vertical; min-height: 80px; }}
         </style>
     </head>
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
-                📁 caseScope
-                <div class="version-badge">v{APP_VERSION}</div>
+                <span class="case">📁 case</span><span class="scope">Scope</span>
+                <div class="version-badge">7.7.3</div>
             </div>
             {sidebar_menu}
         </div>
         <div class="main-content">
-            {flash_messages_html}
-            <h1>Case Management</h1>
-            <p style="margin-bottom: 20px; opacity: 0.9;">Manage all cases - edit details, assign users, close or archive cases.</p>
-            
-            <table>
-                <thead>
-                    <tr>
-                        <th>Case Number</th>
-                        <th>Name</th>
-                        <th>Priority</th>
-                        <th>Status</th>
-                        <th>Assigned To</th>
-                        <th>Tags</th>
-                        <th>Files</th>
-                        <th>Created</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {case_rows}
-                </tbody>
-            </table>
+            <div class="header">
+                <div class="case-title">⚙️ Case Management</div>
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
+                    <form method="POST" action="/logout" style="margin: 0;">
+                        <button type="submit" class="logout-btn">Logout</button>
+                    </form>
+                </div>
+            </div>
+            <div class="content">
+                {flash_messages_html}
+                <p style="margin-bottom: 20px; opacity: 0.9; font-size: 1.05em;">Manage all cases - edit details, assign users, close or archive cases.</p>
+                
+                <table class="file-table">
+                    <thead>
+                        <tr>
+                            <th>Case Number</th>
+                            <th>Name</th>
+                            <th>Priority</th>
+                            <th>Status</th>
+                            <th>Assigned To</th>
+                            <th>Tags</th>
+                            <th>Files</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {case_rows}
+                    </tbody>
+                </table>
+            </div>
         </div>
         
         <script>
