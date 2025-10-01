@@ -757,7 +757,7 @@ def search():
                         "bool": {
                             "must": [
                                 base_query,
-                                {"term": {"has_violations": "true"}}
+                                {"exists": {"field": "has_violations"}}
                             ]
                         }
                     }

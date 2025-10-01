@@ -276,7 +276,11 @@ def enrich_events_with_detections(index_name, detections_by_event):
             )
             
             if response.get('errors'):
-                logger.warning(f"Some events failed to enrich: {response}")
+                logger.error(f"Bulk update had errors!")
+                for item in response.get('items', []):
+                    if 'update' in item and 'error' in item['update']:
+                        logger.error(f"Update error: {item['update']['error']}")
+                logger.warning(f"Full response: {response}")
             else:
                 logger.info(f"✓ Successfully enriched {len(detections_by_event)} events")
         except Exception as e:
