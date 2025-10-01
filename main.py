@@ -1571,21 +1571,21 @@ def render_sidebar_menu(active_page=''):
         active_page: The current page identifier (e.g., 'dashboard', 'upload', 'files', 'search')
     """
     return f'''
-        <h3 class="menu-title">Navigation</h3>
-        <a href="/dashboard" class="menu-item {'active' if active_page == 'dashboard' else ''}">📊 System Dashboard</a>
-        <a href="/case/dashboard" class="menu-item {'active' if active_page == 'case_dashboard' else ''}">🎯 Case Dashboard</a>
-        <a href="/case/select" class="menu-item {'active' if active_page == 'case_select' else ''}">📁 Case Selection</a>
-        <a href="/upload" class="menu-item {'active' if active_page == 'upload' else ''}">📤 Upload Files</a>
-        <a href="/files" class="menu-item {'active' if active_page == 'files' else ''}">📄 List Files</a>
-        <a href="/search" class="menu-item {'active' if active_page == 'search' else ''}">🔍 Search Events</a>
-        <a href="/violations" class="menu-item {'active' if active_page == 'violations' else ''}">🚨 SIGMA Violations</a>
-        
-            <h3 class="menu-title">Management</h3>
-            <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
-            <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
-            <a href="/users" class="menu-item {'active' if active_page == 'user_management' else ''}">👥 User Management</a>
-            <a href="/sigma-rules" class="menu-item {'active' if active_page == 'sigma_rules' else ''}">📋 SIGMA Rules</a>
-            <a href="/update-event-ids" class="menu-item" onclick="return confirm('Updating Event IDs will add new event descriptions. After updating, you should Re-index all files to apply the new descriptions. Continue?')">🔄 Update Event ID Database</a>
+<h3 class="menu-title">Navigation</h3>
+<a href="/dashboard" class="menu-item {'active' if active_page == 'dashboard' else ''}">📊 System Dashboard</a>
+<a href="/case/dashboard" class="menu-item {'active' if active_page == 'case_dashboard' else ''}">🎯 Case Dashboard</a>
+<a href="/case/select" class="menu-item {'active' if active_page == 'case_select' else ''}">📁 Case Selection</a>
+<a href="/upload" class="menu-item {'active' if active_page == 'upload' else ''}">📤 Upload Files</a>
+<a href="/files" class="menu-item {'active' if active_page == 'files' else ''}">📄 List Files</a>
+<a href="/search" class="menu-item {'active' if active_page == 'search' else ''}">🔍 Search Events</a>
+<a href="/violations" class="menu-item {'active' if active_page == 'violations' else ''}">🚨 SIGMA Violations</a>
+
+<h3 class="menu-title">Management</h3>
+<a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
+<a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
+<a href="/users" class="menu-item {'active' if active_page == 'user_management' else ''}">👥 User Management</a>
+<a href="/sigma-rules" class="menu-item {'active' if active_page == 'sigma_rules' else ''}">📋 SIGMA Rules</a>
+<a href="/update-event-ids" class="menu-item" onclick="return confirm('Updating Event IDs will add new event descriptions. After updating, you should Re-index all files to apply the new descriptions. Continue?')">🔄 Update Event ID Database</a>
     '''
 
 
@@ -3417,16 +3417,22 @@ def render_user_management(users):
             
             table {{
                 width: 100%;
+                border-collapse: collapse;
                 background: linear-gradient(145deg, #3f51b5, #283593);
                 border-radius: 12px;
                 overflow: hidden;
                 box-shadow: 0 8px 20px rgba(0,0,0,0.3);
             }}
+            thead {{
+                background: linear-gradient(145deg, #1e3a8a, #1e40af);
+            }}
             th {{
-                background: linear-gradient(145deg, #283593, #1e88e5);
+                background: transparent;
                 padding: 15px;
                 text-align: left;
                 font-weight: 600;
+                color: white;
+                border-bottom: 2px solid rgba(255,255,255,0.2);
             }}
             td {{
                 padding: 15px;
