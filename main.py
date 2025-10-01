@@ -3434,7 +3434,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                         <input type="hidden" name="page" id="pageInput" value="{page}">
                         <div class="search-actions">
                             <label style="display: flex; align-items: center; margin-right: 15px; color: rgba(255,255,255,0.9);">
-                                <input type="checkbox" name="violations_only" value="true" style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                <input type="checkbox" name="violations_only" value="true" {'checked' if violations_only else ''} style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
                                 <span style="font-size: 14px;">🚨 Show only SIGMA violations</span>
                             </label>
                             <button type="submit" class="btn-search">🔍 Search</button>
