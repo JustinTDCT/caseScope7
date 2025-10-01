@@ -1,7 +1,7 @@
 {
-  "version": "7.5.2",
+  "version": "7.5.3",
   "release_date": "2025-10-01",
-  "description": "Bugfix - Fixed CSV export ERR_RESPONSE_HEADERS_MULTIPLE_CONTENT_DISPOSITION error; moved log_audit call before response creation to prevent headers being set twice; added charset=utf-8 to Content-Type; quoted filename in Content-Disposition header",
+  "description": "Enhancement - Improved CSV export data completeness; added Full Event Data column with complete JSON event structure; enhanced field extraction with multiple fallback paths for timestamp, event_id, computer to prevent N/A values; better metadata handling; updated README.md with correct GitHub repository URL",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -147,6 +147,7 @@
     "7.4.0": "Feature - Audit Logging System; added AuditLog model to track user actions; logs authentication (login/logout/failed attempts with IP), file operations (uploads), search queries, and admin actions (user create/edit/delete); created /audit-log page (admin only) with filterable view by category/user/success status; 50 results per page with pagination; sidebar menu updated with Audit Log link",
     "7.5.0": "Feature - CSV Export; added /search/export endpoint to export search results to CSV file; exports up to 10000 events with columns: Timestamp, Event ID, Event Type, Computer, Source File, Has Violations, Violation Count; Export CSV button on search page; preserves current query and violations filter; logs export actions to audit log; filename includes case name",
     "7.5.1": "Critical Bugfix - Fixed bulk re-run rules argument order; /api/rerun-all-rules was passing args=[index_name, file_id] but process_sigma_rules expects args=[file_id, index_name]; caused 'File ID case1_engineering5_... not found in database' errors because it was treating index name as file ID; corrected to args=[case_file.id, index_name]",
-    "7.5.2": "Bugfix - Fixed CSV export ERR_RESPONSE_HEADERS_MULTIPLE_CONTENT_DISPOSITION error; moved log_audit call before response creation to prevent headers being set twice; added charset=utf-8 to Content-Type; quoted filename in Content-Disposition header"
+    "7.5.2": "Bugfix - Fixed CSV export ERR_RESPONSE_HEADERS_MULTIPLE_CONTENT_DISPOSITION error; moved log_audit call before response creation to prevent headers being set twice; added charset=utf-8 to Content-Type; quoted filename in Content-Disposition header",
+    "7.5.3": "Enhancement - Improved CSV export data completeness; added Full Event Data column with complete JSON event structure; enhanced field extraction with multiple fallback paths for timestamp, event_id, computer to prevent N/A values; better metadata handling; updated README.md with correct GitHub repository URL"
   }
 }

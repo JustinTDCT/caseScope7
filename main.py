@@ -1134,19 +1134,42 @@ def export_search():
         # Create CSV
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(['Timestamp', 'Event ID', 'Event Type', 'Computer', 'Source File', 'Has Violations', 'Violation Count'])
+        writer.writerow(['Timestamp', 'Event ID', 'Event Type', 'Computer', 'Source File', 'Has Violations', 'Violation Count', 'Full Event Data'])
         
         for hit in response['hits']['hits']:
             source = hit['_source']
-            timestamp = source.get('System_TimeCreated_@SystemTime') or source.get('System_TimeCreated_SystemTime') or 'N/A'
-            event_id = source.get('System_EventID_#text') or source.get('System_EventID') or 'N/A'
+            
+            # Extract fields with proper fallbacks
+            timestamp = source.get('System_TimeCreated_@SystemTime') or \
+                       source.get('System_TimeCreated_SystemTime') or \
+                       source.get('System_TimeCreated', {}).get('@SystemTime', '') or \
+                       source.get('@timestamp', '')
+            
+            event_id = source.get('System_EventID_#text') or \
+                      source.get('System_EventID', {}).get('#text', '') or \
+                      source.get('System_EventID') or \
+                      source.get('EventID', '')
+            
             event_type = source.get('event_type', 'Unknown Event')
-            computer = source.get('System_Computer', 'N/A')
-            source_file = source.get('_casescope_metadata', {}).get('filename', 'N/A')
+            
+            computer = source.get('System_Computer') or \
+                      source.get('Computer', '')
+            
+            # Get source file from metadata
+            metadata = source.get('_casescope_metadata', {})
+            if isinstance(metadata, dict):
+                source_file = metadata.get('filename', '')
+            else:
+                source_file = ''
+            
             has_violations = 'Yes' if source.get('has_violations') else 'No'
             violation_count = source.get('violation_count', 0)
             
-            writer.writerow([timestamp, event_id, event_type, computer, source_file, has_violations, violation_count])
+            # Full event data as JSON string
+            import json
+            full_data = json.dumps(source, indent=None)
+            
+            writer.writerow([timestamp, event_id, event_type, computer, source_file, has_violations, violation_count, full_data])
         
         output.seek(0)
         csv_data = output.getvalue()

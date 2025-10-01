@@ -32,7 +32,7 @@ caseScope is a comprehensive digital forensics platform for analyzing Windows Ev
 
 ```bash
 # Clone repository
-git clone https://github.com/your-repo/caseScope7.git /home/jdube/caseScope7
+git clone https://github.com/JustinTDCT/caseScope7.git /home/jdube/caseScope7
 cd /home/jdube/caseScope7
 
 # Run installer
