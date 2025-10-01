@@ -749,6 +749,173 @@ def update_event_ids():
     flash('Event ID database is already up to date with 100+ Windows Event IDs. If you download new Event IDs, re-index all files to apply the new descriptions.', 'success')
     return redirect(url_for('dashboard'))
 
+@app.route('/users', methods=['GET'])
+@login_required
+def user_management():
+    """User management page (admin only)"""
+    if current_user.role != 'administrator':
+        flash('Access denied. Administrator privileges required.', 'error')
+        return redirect(url_for('dashboard'))
+    
+    # Get all users
+    users = User.query.order_by(User.created_at.desc()).all()
+    
+    return render_user_management(users)
+
+@app.route('/users/create', methods=['POST'])
+@login_required
+def create_user():
+    """Create new user (admin only)"""
+    if current_user.role != 'administrator':
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    try:
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '')
+        role = request.form.get('role', 'read-only')
+        
+        # Validation
+        if not username or not email or not password:
+            flash('Username, email, and password are required.', 'error')
+            return redirect(url_for('user_management'))
+        
+        if len(password) < 8:
+            flash('Password must be at least 8 characters.', 'error')
+            return redirect(url_for('user_management'))
+        
+        if role not in ['administrator', 'analyst', 'read-only']:
+            flash('Invalid role specified.', 'error')
+            return redirect(url_for('user_management'))
+        
+        # Check if username or email already exists
+        if User.query.filter_by(username=username).first():
+            flash(f'Username "{username}" already exists.', 'error')
+            return redirect(url_for('user_management'))
+        
+        if User.query.filter_by(email=email).first():
+            flash(f'Email "{email}" already exists.', 'error')
+            return redirect(url_for('user_management'))
+        
+        # Create user
+        new_user = User(
+            username=username,
+            email=email,
+            role=role,
+            is_active=True,
+            force_password_change=False
+        )
+        new_user.set_password(password)
+        
+        db.session.add(new_user)
+        db.session.commit()
+        
+        flash(f'User "{username}" created successfully.', 'success')
+        print(f"[User Management] Created user: {username} (role: {role}) by {current_user.username}")
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error creating user: {str(e)}', 'error')
+        print(f"[User Management] Error creating user: {e}")
+    
+    return redirect(url_for('user_management'))
+
+@app.route('/users/edit/<int:user_id>', methods=['POST'])
+@login_required
+def edit_user(user_id):
+    """Edit user (admin only)"""
+    if current_user.role != 'administrator':
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    user = db.session.get(User, user_id)
+    if not user:
+        flash('User not found.', 'error')
+        return redirect(url_for('user_management'))
+    
+    try:
+        email = request.form.get('email', '').strip()
+        role = request.form.get('role', user.role)
+        is_active = request.form.get('is_active') == 'true'
+        new_password = request.form.get('new_password', '').strip()
+        
+        # Validation
+        if not email:
+            flash('Email is required.', 'error')
+            return redirect(url_for('user_management'))
+        
+        if role not in ['administrator', 'analyst', 'read-only']:
+            flash('Invalid role specified.', 'error')
+            return redirect(url_for('user_management'))
+        
+        # Check if email already exists (excluding current user)
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user and existing_user.id != user_id:
+            flash(f'Email "{email}" already in use.', 'error')
+            return redirect(url_for('user_management'))
+        
+        # Update user
+        user.email = email
+        user.role = role
+        user.is_active = is_active
+        
+        if new_password:
+            if len(new_password) < 8:
+                flash('Password must be at least 8 characters.', 'error')
+                return redirect(url_for('user_management'))
+            user.set_password(new_password)
+            user.force_password_change = False
+        
+        db.session.commit()
+        
+        flash(f'User "{user.username}" updated successfully.', 'success')
+        print(f"[User Management] Updated user: {user.username} by {current_user.username}")
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error updating user: {str(e)}', 'error')
+        print(f"[User Management] Error updating user: {e}")
+    
+    return redirect(url_for('user_management'))
+
+@app.route('/users/delete/<int:user_id>', methods=['POST'])
+@login_required
+def delete_user(user_id):
+    """Delete user (admin only)"""
+    if current_user.role != 'administrator':
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    user = db.session.get(User, user_id)
+    if not user:
+        flash('User not found.', 'error')
+        return redirect(url_for('user_management'))
+    
+    # Prevent deleting self
+    if user.id == current_user.id:
+        flash('Cannot delete your own account.', 'error')
+        return redirect(url_for('user_management'))
+    
+    # Prevent deleting last administrator
+    if user.role == 'administrator':
+        admin_count = User.query.filter_by(role='administrator').count()
+        if admin_count <= 1:
+            flash('Cannot delete the last administrator account.', 'error')
+            return redirect(url_for('user_management'))
+    
+    try:
+        username = user.username
+        db.session.delete(user)
+        db.session.commit()
+        
+        flash(f'User "{username}" deleted successfully.', 'success')
+        print(f"[User Management] Deleted user: {username} by {current_user.username}")
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting user: {str(e)}', 'error')
+        print(f"[User Management] Error deleting user: {e}")
+    
+    return redirect(url_for('user_management'))
+
 @app.route('/violations', methods=['GET'])
 @login_required
 def violations():
@@ -1416,7 +1583,7 @@ def render_sidebar_menu(active_page=''):
             <h3 class="menu-title">Management</h3>
             <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
             <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
-            <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
+            <a href="/users" class="menu-item {'active' if active_page == 'user_management' else ''}">👥 User Management</a>
             <a href="/sigma-rules" class="menu-item {'active' if active_page == 'sigma_rules' else ''}">📋 SIGMA Rules</a>
             <a href="/update-event-ids" class="menu-item" onclick="return confirm('Updating Event IDs will add new event descriptions. After updating, you should Re-index all files to apply the new descriptions. Continue?')">🔄 Update Event ID Database</a>
     '''
@@ -3129,6 +3296,361 @@ def render_file_list(case, files):
                 .catch(error => {{
                     alert('Error: ' + error.message);
                 }});
+            }}
+        </script>
+    </body>
+    </html>
+    '''
+
+def render_user_management(users):
+    """Render user management page"""
+    from flask import get_flashed_messages
+    flash_messages_html = ""
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        icon = "⚠️" if category == "warning" else "❌" if category == "error" else "✅"
+        flash_messages_html += f'''
+        <div class="flash-message flash-{category}">
+            <span class="flash-icon">{icon}</span>
+            <span class="flash-text">{message}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        '''
+    
+    # Build user rows
+    user_rows = ""
+    for user in users:
+        status_class = "active" if user.is_active else "inactive"
+        status_text = "Active" if user.is_active else "Inactive"
+        role_badge_color = "#4caf50" if user.role == "administrator" else "#2196f3" if user.role == "analyst" else "#ff9800"
+        
+        user_rows += f'''
+        <tr>
+            <td>{user.username}</td>
+            <td>{user.email}</td>
+            <td><span class="role-badge" style="background: {role_badge_color};">{user.role.title()}</span></td>
+            <td><span class="status-badge status-{status_class}">{status_text}</span></td>
+            <td>{user.created_at.strftime('%Y-%m-%d %H:%M')}</td>
+            <td class="actions-cell">
+                <button class="btn-action btn-edit" onclick="showEditModal({user.id}, '{user.username}', '{user.email}', '{user.role}', {str(user.is_active).lower()})">✏️ Edit</button>
+                <button class="btn-action btn-delete" onclick="confirmDeleteUser({user.id}, '{user.username}')" {'disabled' if user.id == current_user.id else ''}>🗑️ Delete</button>
+            </td>
+        </tr>
+        '''
+    
+    if not user_rows:
+        user_rows = '<tr><td colspan="6" style="text-align: center; padding: 40px;">No users found</td></tr>'
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>User Management - caseScope 7.2</title>
+        <style>
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                display: flex; 
+                min-height: 100vh; 
+            }}
+            .sidebar {{ 
+                width: 280px; 
+                background: linear-gradient(145deg, #303f9f, #283593); 
+                padding: 20px; 
+                box-shadow: 5px 0 20px rgba(0,0,0,0.4), inset -1px 0 0 rgba(255,255,255,0.1);
+            }}
+            .main-content {{ flex: 1; }}
+            .header {{ 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 15px 30px; 
+                display: flex; 
+                justify-content: space-between; 
+                align-items: center;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                min-height: 60px;
+            }}
+            .sidebar-logo {{
+                text-align: center;
+                font-size: 2.2em;
+                font-weight: 300;
+                margin-bottom: 15px;
+                padding: 5px 0 8px 0;
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+            }}
+            .sidebar-logo .case {{ color: #4caf50; }}
+            .sidebar-logo .scope {{ color: white; }}
+            .version-badge {{
+                font-size: 0.4em;
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 3px 6px;
+                border-radius: 6px;
+                margin-top: 5px;
+                display: inline-block;
+            }}
+            .content {{ padding: 30px; }}
+            .logout-btn {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                color: white !important;
+                padding: 8px 16px;
+                border-radius: 8px;
+                text-decoration: none;
+                font-weight: 500;
+                box-shadow: 0 4px 8px rgba(244,67,54,0.3);
+            }}
+            .flash-message {{
+                padding: 15px 20px;
+                margin: 20px 0;
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                animation: slideIn 0.3s ease;
+            }}
+            .flash-success {{ background: linear-gradient(145deg, #4caf50, #388e3c); }}
+            .flash-error {{ background: linear-gradient(145deg, #f44336, #d32f2f); }}
+            .flash-warning {{ background: linear-gradient(145deg, #ff9800, #f57c00); }}
+            .flash-close {{ background: rgba(255,255,255,0.2); border: none; color: white; cursor: pointer; }}
+            @keyframes slideIn {{ from {{ opacity: 0; transform: translateY(-10px); }} to {{ opacity: 1; transform: translateY(0); }} }}
+            
+            table {{
+                width: 100%;
+                background: linear-gradient(145deg, #3f51b5, #283593);
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+            }}
+            th {{
+                background: linear-gradient(145deg, #283593, #1e88e5);
+                padding: 15px;
+                text-align: left;
+                font-weight: 600;
+            }}
+            td {{
+                padding: 15px;
+                border-top: 1px solid rgba(255,255,255,0.1);
+            }}
+            tr:hover {{ background: rgba(255,255,255,0.05); }}
+            
+            .role-badge {{
+                padding: 4px 12px;
+                border-radius: 6px;
+                font-size: 0.9em;
+                font-weight: 600;
+                display: inline-block;
+            }}
+            .status-badge {{
+                padding: 4px 12px;
+                border-radius: 6px;
+                font-size: 0.9em;
+                font-weight: 600;
+            }}
+            .status-active {{ background: #4caf50; }}
+            .status-inactive {{ background: #f44336; }}
+            
+            .btn {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 12px 24px;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                font-weight: 600;
+                margin: 20px 0;
+            }}
+            .btn-action {{
+                padding: 8px 12px;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                margin: 0 5px;
+                font-size: 0.9em;
+            }}
+            .btn-edit {{ background: linear-gradient(145deg, #2196f3, #1976d2); color: white; }}
+            .btn-delete {{ background: linear-gradient(145deg, #f44336, #d32f2f); color: white; }}
+            .btn-action:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+            
+            .modal {{
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.8);
+                z-index: 1000;
+            }}
+            .modal-content {{
+                background: linear-gradient(145deg, #3f51b5, #283593);
+                margin: 50px auto;
+                padding: 30px;
+                border-radius: 15px;
+                max-width: 500px;
+                box-shadow: 0 15px 40px rgba(0,0,0,0.5);
+            }}
+            .form-group {{ margin: 15px 0; }}
+            .form-group label {{ display: block; margin-bottom: 5px; font-weight: 600; }}
+            .form-group input, .form-group select {{
+                width: 100%;
+                padding: 10px;
+                border-radius: 6px;
+                border: 1px solid rgba(255,255,255,0.2);
+                background: rgba(255,255,255,0.1);
+                color: white;
+                font-size: 1em;
+            }}
+            .modal-buttons {{ margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end; }}
+        </style>
+    </head>
+    <body>
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
+            </div>
+            {render_sidebar_menu('user_management')}
+        </div>
+        <div class="main-content">
+            <div class="header">
+                <h1>👥 User Management</h1>
+                <div>
+                    <span>Welcome, {current_user.username}</span>
+                    <a href="/logout" class="logout-btn">Logout</a>
+                </div>
+            </div>
+            <div class="content">
+                {flash_messages_html}
+                
+                <button class="btn" onclick="showCreateModal()">➕ Create New User</button>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {user_rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Create User Modal -->
+        <div id="createModal" class="modal">
+            <div class="modal-content">
+                <h2>Create New User</h2>
+                <form method="POST" action="/users/create">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" name="email" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" name="password" required minlength="8">
+                    </div>
+                    <div class="form-group">
+                        <label>Role</label>
+                        <select name="role" required>
+                            <option value="read-only">Read Only</option>
+                            <option value="analyst">Analyst</option>
+                            <option value="administrator">Administrator</option>
+                        </select>
+                    </div>
+                    <div class="modal-buttons">
+                        <button type="button" class="btn" onclick="closeModal('createModal')" style="background: #666;">Cancel</button>
+                        <button type="submit" class="btn">Create User</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Edit User Modal -->
+        <div id="editModal" class="modal">
+            <div class="modal-content">
+                <h2>Edit User</h2>
+                <form method="POST" id="editForm">
+                    <input type="hidden" id="edit-user-id">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="edit-username" readonly style="background: rgba(255,255,255,0.05);">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" name="email" id="edit-email" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Role</label>
+                        <select name="role" id="edit-role" required>
+                            <option value="read-only">Read Only</option>
+                            <option value="analyst">Analyst</option>
+                            <option value="administrator">Administrator</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select name="is_active" id="edit-active" required>
+                            <option value="true">Active</option>
+                            <option value="false">Inactive</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>New Password (leave blank to keep current)</label>
+                        <input type="password" name="new_password" id="edit-password" minlength="8">
+                    </div>
+                    <div class="modal-buttons">
+                        <button type="button" class="btn" onclick="closeModal('editModal')" style="background: #666;">Cancel</button>
+                        <button type="submit" class="btn">Update User</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <script>
+            function showCreateModal() {{
+                document.getElementById('createModal').style.display = 'block';
+            }}
+            
+            function showEditModal(id, username, email, role, isActive) {{
+                document.getElementById('edit-user-id').value = id;
+                document.getElementById('edit-username').value = username;
+                document.getElementById('edit-email').value = email;
+                document.getElementById('edit-role').value = role;
+                document.getElementById('edit-active').value = isActive.toString();
+                document.getElementById('editForm').action = '/users/edit/' + id;
+                document.getElementById('editModal').style.display = 'block';
+            }}
+            
+            function closeModal(modalId) {{
+                document.getElementById(modalId).style.display = 'none';
+            }}
+            
+            function confirmDeleteUser(id, username) {{
+                if (confirm('Delete user "' + username + '"? This cannot be undone.')) {{
+                    var form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = '/users/delete/' + id;
+                    document.body.appendChild(form);
+                    form.submit();
+                }}
+            }}
+            
+            // Close modal when clicking outside
+            window.onclick = function(event) {{
+                if (event.target.className === 'modal') {{
+                    event.target.style.display = 'none';
+                }}
             }}
         </script>
     </body>

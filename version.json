@@ -1,7 +1,7 @@
 {
-  "version": "7.2.38",
+  "version": "7.3.0",
   "release_date": "2025-10-01",
-  "description": "UI Bugfix - Fixed button styling on case dashboard render function; added proper gradient backgrounds, box shadows, border none, cursor pointer, and font weight to Re-index All Files and Re-run All Rules buttons; wrapped buttons in div containers with margin-top for better spacing; matches styling of other action buttons",
+  "description": "Feature - User Management System; added /users route (admin only) with create/edit/delete functionality; create user with username/email/password/role validation; edit user email/role/status with optional password reset; delete user with protections (cannot delete self or last admin); user table with role badges (green/blue/orange) and active/inactive status indicators; modal dialogs for create/edit actions; password minimum 8 characters; roles: administrator/analyst/read-only; enabled User Management menu item replacing Coming Soon placeholder",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -140,6 +140,7 @@
     "7.2.35": "Critical Bugfix - Fixed search results not displaying when violations checkbox checked; filenames with special characters like '%4' broke HTML rendering; added HTML escaping for source_file, computer, and event_type fields; added traceback logging to exception handler for better debugging",
     "7.2.36": "Enhancement - Updated system dashboard to reflect all implemented features; changed version from 7.1 to 7.2; updated Active Features tile to show SIGMA Rule Processing (Chainsaw) and Real-time Progress Tracking as operational; enhanced success banner to showcase EVTX Indexing with Event Type Descriptions, SIGMA Rule Processing with 3000+ rules, Violation Detection & Filtering; added SIGMA rules management to Quick Actions",
     "7.2.37": "UI Enhancement - Removed Active Features tile and green installation banner from system dashboard; enabled Update Event ID Database menu item with user notice to re-index after updates; replaced Manage Rules button on case dashboard with Re-run All Rules button; added Re-index All Files button to Events tile; added both bulk action buttons (Re-index All Files and Re-run All Rules) to List Files page header; created API endpoints /api/reindex-all-files and /api/rerun-all-rules for bulk operations",
-    "7.2.38": "UI Bugfix - Fixed button styling on case dashboard render function; added proper gradient backgrounds, box shadows, border none, cursor pointer, and font weight to Re-index All Files and Re-run All Rules buttons; wrapped buttons in div containers with margin-top for better spacing; matches styling of other action buttons"
+    "7.2.38": "UI Bugfix - Fixed button styling on case dashboard render function; added proper gradient backgrounds, box shadows, border none, cursor pointer, and font weight to Re-index All Files and Re-run All Rules buttons; wrapped buttons in div containers with margin-top for better spacing; matches styling of other action buttons",
+    "7.3.0": "Feature - User Management System; added /users route (admin only) with create/edit/delete functionality; create user with username/email/password/role validation; edit user email/role/status with optional password reset; delete user with protections (cannot delete self or last admin); user table with role badges (green/blue/orange) and active/inactive status indicators; modal dialogs for create/edit actions; password minimum 8 characters; roles: administrator/analyst/read-only; enabled User Management menu item replacing Coming Soon placeholder"
   }
 }
