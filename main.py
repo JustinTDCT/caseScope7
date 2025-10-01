@@ -755,7 +755,7 @@ def api_rerun_all_rules():
                     
                     celery_app.send_task(
                         'tasks.process_sigma_rules',
-                        args=[index_name, case_file.id],
+                        args=[case_file.id, index_name],
                         queue='celery',
                         priority=0,
                     )
