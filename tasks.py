@@ -233,7 +233,7 @@ def export_events_to_json(index_name, output_path):
     logger.info(f"✓ Exported {export_count:,} events to {output_path}")
     return export_count
 
-def enrich_events_with_detections(index_name, detections_by_record_number):
+def enrich_events_with_detections(index_name, detections_by_record_number, file_id):
     """
     Enrich indexed events with SIGMA detection metadata by EventRecordID
     Adds 'sigma_detections' and 'has_violations' fields to matching events
@@ -241,54 +241,35 @@ def enrich_events_with_detections(index_name, detections_by_record_number):
     Args:
         index_name: OpenSearch index name
         detections_by_record_number: Dict mapping EventRecordID -> list of detections
+        file_id: File ID to generate correct document IDs
     """
     logger.info(f"Enriching {len(detections_by_record_number)} events with detection metadata...")
     
-    # Search OpenSearch to find actual document IDs by EventRecordID
-    # Then bulk update using those IDs
+    # Use the same hash-based ID generation as indexing
+    # Indexing creates doc_id = hashlib.sha256(f"{file_id}_{record_num}").hexdigest()[:16]
+    import hashlib
+    
     bulk_actions = []
     for record_num, detections in detections_by_record_number.items():
-        # Query OpenSearch to find the document with this EventRecordID
-        try:
-            search_result = opensearch_client.search(
-                index=index_name,
-                body={
-                    "query": {
-                        "bool": {
-                            "should": [
-                                {"term": {"System_EventRecordID": str(record_num)}},
-                                {"term": {"_casescope_metadata_record_number": str(record_num)}}
-                            ]
-                        }
-                    },
-                    "size": 1,
-                    "_source": False
-                },
-                timeout=10
-            )
-            
-            if search_result['hits']['total']['value'] > 0:
-                actual_doc_id = search_result['hits']['hits'][0]['_id']
-                
-                action = {
-                    "update": {
-                        "_index": index_name,
-                        "_id": actual_doc_id
-                    }
-                }
-                doc = {
-                    "doc": {
-                        "sigma_detections": detections,
-                        "has_violations": True,
-                        "violation_count": len(detections)
-                    }
-                }
-                
-                bulk_actions.append(json.dumps(action))
-                bulk_actions.append(json.dumps(doc))
-        except Exception as e:
-            logger.warning(f"Could not find document for EventRecordID {record_num}: {e}")
-            continue
+        # Generate the same doc ID that was created during indexing
+        doc_id = hashlib.sha256(f"{file_id}_{record_num}".encode()).hexdigest()[:16]
+        
+        action = {
+            "update": {
+                "_index": index_name,
+                "_id": doc_id
+            }
+        }
+        doc = {
+            "doc": {
+                "sigma_detections": detections,
+                "has_violations": True,
+                "violation_count": len(detections)
+            }
+        }
+        
+        bulk_actions.append(json.dumps(action))
+        bulk_actions.append(json.dumps(doc))
     
     if bulk_actions:
         # Send bulk update request
@@ -864,7 +845,7 @@ def process_sigma_rules(self, file_id, index_name):
             # Step 5: Enrich indexed events with detection metadata
             if detections_by_record_number:
                 logger.info(f"Enriching {len(detections_by_record_number)} events with detection metadata...")
-                enrich_events_with_detections(index_name, detections_by_record_number)
+                enrich_events_with_detections(index_name, detections_by_record_number, file_id)
                 logger.info(f"✓ Events enriched with detection flags")
             
             # Update file record with violation count and mark as completed
