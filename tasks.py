@@ -254,7 +254,12 @@ def enrich_events_with_detections(index_name, detections_by_record_number):
                 index=index_name,
                 body={
                     "query": {
-                        "term": {"System_EventRecordID": str(record_num)}
+                        "bool": {
+                            "should": [
+                                {"term": {"System_EventRecordID": str(record_num)}},
+                                {"term": {"_casescope_metadata_record_number": str(record_num)}}
+                            ]
+                        }
                     },
                     "size": 1,
                     "_source": False
@@ -518,6 +523,16 @@ def index_evtx_file(self, file_id):
                             
                             # Flatten the structure for easier searching
                             flat_event = flatten_event(event_data)
+                            
+                            # Get Event ID for description
+                            event_id = flat_event.get('System_EventID_#text', 'N/A')
+                            channel = flat_event.get('System_Channel', '')
+                            provider = flat_event.get('System_Provider_@Name', '')
+                            
+                            # Add Event Type description for searchability
+                            from main import get_event_description
+                            event_description = get_event_description(event_id, channel, provider, flat_event)
+                            flat_event['event_type'] = event_description
                             
                             # Add metadata
                             flat_event['_casescope_metadata'] = {
