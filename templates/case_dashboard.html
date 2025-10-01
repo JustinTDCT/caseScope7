@@ -49,25 +49,33 @@
             </div>
         </div>
 
-        <div class="stat-card clickable" onclick="searchViolations('all')">
+        <div class="stat-card">
             <div class="stat-icon danger">
                 <i class="fas fa-shield-alt"></i>
             </div>
             <div class="stat-content">
                 <div class="stat-value">{{ sigma_violations + chainsaw_violations }}</div>
                 <div class="stat-label">Rule Violations</div>
-                <div class="stat-subtitle">{{ sigma_violations }} Sigma + {{ chainsaw_violations }} Chainsaw</div>
+                <div class="stat-subtitle">
+                    <button onclick="rerunAllRules()" class="btn btn-sm btn-warning" style="margin-top: 8px;">
+                        <i class="fas fa-redo"></i> Re-run All Rules
+                    </button>
+                </div>
             </div>
         </div>
 
-        <div class="stat-card clickable" onclick="searchEvents()">
+        <div class="stat-card">
             <div class="stat-icon primary">
                 <i class="fas fa-database"></i>
             </div>
             <div class="stat-content">
                 <div class="stat-value">{{ total_events }}</div>
                 <div class="stat-label">Total Events Ingested</div>
-                <div class="stat-subtitle">Click to search OpenSearch</div>
+                <div class="stat-subtitle">
+                    <button onclick="reindexAllFiles()" class="btn btn-sm btn-primary" style="margin-top: 8px;">
+                        <i class="fas fa-sync"></i> Re-index All Files
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -613,6 +621,58 @@ function searchEvents() {
     const searchUrl = `{{ url_for('search') }}?q=*&case_id=${caseId}`;
     window.location.href = searchUrl;
     debugLog(`Searching all events for case ${caseId}`);
+}
+
+function rerunAllRules() {
+    if (!confirm('This will re-run SIGMA rules on all indexed files in this case. This may take several minutes. Continue?')) {
+        return;
+    }
+    
+    fetch('/api/rerun-all-rules', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ case_id: {{ case.id }} })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`Successfully queued ${data.files_queued} file(s) for SIGMA rule processing.`);
+            location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Failed to queue files for processing'));
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error.message);
+    });
+}
+
+function reindexAllFiles() {
+    if (!confirm('This will re-index all files in this case. Existing events will be removed and re-created. This may take several minutes. Continue?')) {
+        return;
+    }
+    
+    fetch('/api/reindex-all-files', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ case_id: {{ case.id }} })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`Successfully queued ${data.files_queued} file(s) for re-indexing.`);
+            location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Failed to queue files for re-indexing'));
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error.message);
+    });
 }
 
 function updateProcessingStats() {

@@ -619,6 +619,136 @@ def rerun_rules(file_id):
     
     return redirect(url_for('list_files'))
 
+@app.route('/api/reindex-all-files', methods=['POST'])
+@login_required
+def api_reindex_all_files():
+    """API endpoint to re-index all files in a case"""
+    try:
+        data = request.get_json()
+        case_id = data.get('case_id')
+        
+        if not case_id:
+            return jsonify({'success': False, 'message': 'Missing case_id'}), 400
+        
+        # Verify access
+        active_case_id = session.get('active_case_id')
+        if not active_case_id or int(case_id) != active_case_id:
+            return jsonify({'success': False, 'message': 'Access denied'}), 403
+        
+        # Get all indexed files for this case
+        files = CaseFile.query.filter_by(case_id=case_id, is_deleted=False).all()
+        
+        if not files:
+            return jsonify({'success': False, 'message': 'No files found in this case'}), 404
+        
+        files_queued = 0
+        for case_file in files:
+            try:
+                # Reset file status
+                case_file.indexing_status = 'Uploaded'
+                case_file.is_indexed = False
+                case_file.indexed_at = None
+                case_file.event_count = 0
+                case_file.violation_count = 0
+                db.session.commit()
+                
+                # Queue indexing task
+                if celery_app:
+                    celery_app.send_task(
+                        'tasks.start_file_indexing',
+                        args=[case_file.id],
+                        queue='celery',
+                        priority=0,
+                    )
+                    files_queued += 1
+                    print(f"[Bulk Re-index] Queued file ID {case_file.id}: {case_file.original_filename}")
+            except Exception as e:
+                print(f"[Bulk Re-index] Error queuing file {case_file.id}: {e}")
+                continue
+        
+        return jsonify({
+            'success': True,
+            'files_queued': files_queued,
+            'message': f'Successfully queued {files_queued} file(s) for re-indexing'
+        })
+    except Exception as e:
+        print(f"[Bulk Re-index] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/rerun-all-rules', methods=['POST'])
+@login_required
+def api_rerun_all_rules():
+    """API endpoint to re-run SIGMA rules on all indexed files in a case"""
+    try:
+        data = request.get_json()
+        case_id = data.get('case_id')
+        
+        if not case_id:
+            return jsonify({'success': False, 'message': 'Missing case_id'}), 400
+        
+        # Verify access
+        active_case_id = session.get('active_case_id')
+        if not active_case_id or int(case_id) != active_case_id:
+            return jsonify({'success': False, 'message': 'Access denied'}), 403
+        
+        # Get all indexed files for this case
+        files = CaseFile.query.filter_by(case_id=case_id, is_deleted=False, is_indexed=True).all()
+        
+        if not files:
+            return jsonify({'success': False, 'message': 'No indexed files found in this case'}), 404
+        
+        files_queued = 0
+        for case_file in files:
+            try:
+                # Delete existing violations for this file
+                existing_violations = SigmaViolation.query.filter_by(file_id=case_file.id).all()
+                if existing_violations:
+                    print(f"[Bulk Re-run Rules] Deleting {len(existing_violations)} violations for file ID {case_file.id}")
+                    for violation in existing_violations:
+                        db.session.delete(violation)
+                
+                # Reset violation status
+                case_file.indexing_status = 'Running Rules'
+                case_file.violation_count = 0
+                db.session.commit()
+                
+                # Queue SIGMA rule processing
+                if celery_app:
+                    from tasks import make_index_name
+                    index_name = make_index_name(case_file.case_id, case_file.original_filename)
+                    
+                    celery_app.send_task(
+                        'tasks.process_sigma_rules',
+                        args=[index_name, case_file.id],
+                        queue='celery',
+                        priority=0,
+                    )
+                    files_queued += 1
+                    print(f"[Bulk Re-run Rules] Queued file ID {case_file.id}: {case_file.original_filename}")
+            except Exception as e:
+                print(f"[Bulk Re-run Rules] Error queuing file {case_file.id}: {e}")
+                continue
+        
+        return jsonify({
+            'success': True,
+            'files_queued': files_queued,
+            'message': f'Successfully queued {files_queued} file(s) for SIGMA rule processing'
+        })
+    except Exception as e:
+        print(f"[Bulk Re-run Rules] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/update-event-ids', methods=['GET'])
+@login_required
+def update_event_ids():
+    """Update Event ID database (placeholder for future enhancement)"""
+    flash('Event ID database is already up to date with 100+ Windows Event IDs. If you download new Event IDs, re-index all files to apply the new descriptions.', 'success')
+    return redirect(url_for('dashboard'))
+
 @app.route('/violations', methods=['GET'])
 @login_required
 def violations():
@@ -1288,7 +1418,7 @@ def render_sidebar_menu(active_page=''):
             <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
             <a href="/users" class="menu-item placeholder">👥 User Management (Coming Soon)</a>
             <a href="/sigma-rules" class="menu-item {'active' if active_page == 'sigma_rules' else ''}">📋 SIGMA Rules</a>
-            <a href="/event-id-database" class="menu-item placeholder">🔄 Update Event ID Database (Coming Soon)</a>
+            <a href="/update-event-ids" class="menu-item" onclick="return confirm('Updating Event IDs will add new event descriptions. After updating, you should Re-index all files to apply the new descriptions. Continue?')">🔄 Update Event ID Database</a>
     '''
 
 
@@ -1804,14 +1934,6 @@ def dashboard():
                         <p><span class="status operational">✓ Celery Worker: Running</span></p>
                         <p><span class="status operational">✓ Web Server: Running</span></p>
                     </div>
-                    <div class="tile">
-                        <h3>🚀 Active Features</h3>
-                        <p><span class="status operational">✓ Case Management</span></p>
-                        <p><span class="status operational">✓ File Upload & Indexing (EVTX)</span></p>
-                        <p><span class="status operational">✓ Event Search (100+ Event IDs)</span></p>
-                        <p><span class="status operational">✓ SIGMA Rule Processing (Chainsaw)</span></p>
-                        <p><span class="status operational">✓ Real-time Progress Tracking</span></p>
-                    </div>
                 </div>
                 
                 <div class="tiles" style="margin-top: 30px;">
@@ -1825,13 +1947,6 @@ def dashboard():
                         {''.join([f'<p>📄 {file.original_filename[:30]}... ({file.file_size / (1024*1024):.1f} MB)</p>' for file in recent_files[:5]]) if recent_files else '<p style="color: #aaa;">No files uploaded yet</p>'}
                         <p style="margin-top: 15px;"><a href="/files" style="color: #4caf50;">→ View All Files</a></p>
                     </div>
-                </div>
-                
-                <div class="success-banner">
-                    <h3>🎉 caseScope 7.2 Operational!</h3>
-                    <p>✓ All core services running | ✓ {total_cases:,} case(s) | ✓ {total_files:,} file(s) uploaded | ✓ {total_events:,} events indexed | ✓ {total_violations:,} SIGMA violations detected</p>
-                    <p><strong>Active Features:</strong> Case Management, Multi-File Upload (5 files × 3GB), EVTX Indexing with Event Type Descriptions, Advanced Event Search (100+ Event IDs), SIGMA Rule Processing (3000+ rules via Chainsaw v2.12.2), Real-time Progress Tracking, Violation Detection & Filtering</p>
-                    <p><strong>Quick Actions:</strong> <a href="/case/select" style="color: #4caf50;">→ Select a case</a> | <a href="/upload" style="color: #4caf50;">→ Upload files</a> | <a href="/search" style="color: #4caf50;">→ Search events</a> | <a href="/sigma-rules" style="color: #4caf50;">→ Manage SIGMA rules</a></p>
                 </div>
             </div>
         </div>
@@ -2810,8 +2925,10 @@ def render_file_list(case, files):
                 
                 {flash_messages_html}
                 
-                <div style="margin: 20px 0;">
+                <div style="margin: 20px 0; display: flex; gap: 15px; align-items: center;">
                     <a href="/upload" class="btn">📤 Upload Files</a>
+                    <button onclick="reindexAllFilesBulk()" class="btn" style="background: linear-gradient(145deg, #2196f3, #1976d2);">🔄 Re-index All Files</button>
+                    <button onclick="rerunAllRulesBulk()" class="btn" style="background: linear-gradient(145deg, #ff9800, #f57c00);">⚡ Re-run All Rules</button>
                 </div>
                 
                 <table class="file-table">
@@ -2959,6 +3076,58 @@ def render_file_list(case, files):
                             }}
                         }})
                         .catch(err => console.error('Error fetching progress:', err));
+                }});
+            }}
+            
+            function reindexAllFilesBulk() {{
+                if (!confirm('This will re-index ALL files in this case. Existing events will be removed and re-created. This may take several minutes. Continue?')) {{
+                    return;
+                }}
+                
+                fetch('/api/reindex-all-files', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                    }},
+                    body: JSON.stringify({{ case_id: {case.id} }})
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) {{
+                        alert('Successfully queued ' + data.files_queued + ' file(s) for re-indexing.');
+                        location.reload();
+                    }} else {{
+                        alert('Error: ' + (data.message || 'Failed to queue files for re-indexing'));
+                    }}
+                }})
+                .catch(error => {{
+                    alert('Error: ' + error.message);
+                }});
+            }}
+            
+            function rerunAllRulesBulk() {{
+                if (!confirm('This will re-run SIGMA rules on ALL indexed files in this case. This may take several minutes. Continue?')) {{
+                    return;
+                }}
+                
+                fetch('/api/rerun-all-rules', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                    }},
+                    body: JSON.stringify({{ case_id: {case.id} }})
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) {{
+                        alert('Successfully queued ' + data.files_queued + ' file(s) for SIGMA rule processing.');
+                        location.reload();
+                    }} else {{
+                        alert('Error: ' + (data.message || 'Failed to queue files for processing'));
+                    }}
+                }})
+                .catch(error => {{
+                    alert('Error: ' + error.message);
                 }});
             }}
         </script>
