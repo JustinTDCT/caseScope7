@@ -1023,17 +1023,14 @@ def update_event_ids():
     flash('Event ID database is already up to date with 100+ Windows Event IDs. If you download new Event IDs, re-index all files to apply the new descriptions.', 'success')
     return redirect(url_for('dashboard'))
 
-@app.route('/templates', methods=['GET'])
+@app.route('/case-management', methods=['GET'])
 @login_required
-def template_management():
-    """Case template management page (admin only)"""
-    if current_user.role != 'administrator':
-        flash('Access denied. Administrator privileges required.', 'error')
-        return redirect(url_for('dashboard'))
-    
-    # Get all templates
-    templates = CaseTemplate.query.order_by(CaseTemplate.created_at.desc()).all()
-    return render_template_management(templates)
+def case_management():
+    """Case management page - view and manage all cases"""
+    # Get all cases (active and archived)
+    cases = Case.query.order_by(Case.updated_at.desc()).all()
+    users = User.query.filter_by(is_active=True).order_by(User.username).all()
+    return render_case_management(cases, users)
 
 @app.route('/templates/create', methods=['POST'])
 @login_required
@@ -2339,7 +2336,7 @@ def render_sidebar_menu(active_page=''):
 <a href="/violations" class="menu-item {'active' if active_page == 'violations' else ''}">🚨 SIGMA Violations</a>
 
 <h3 class="menu-title">Management</h3>
-<a href="/templates" class="menu-item {'active' if active_page == 'templates' else ''}">⚙️ Case Management</a>
+<a href="/case-management" class="menu-item {'active' if active_page == 'case_management' else ''}">⚙️ Case Management</a>
 <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
 <a href="/users" class="menu-item {'active' if active_page == 'user_management' else ''}">👥 User Management</a>
 <a href="/audit-log" class="menu-item {'active' if active_page == 'audit_log' else ''}">📜 Audit Log</a>
@@ -7591,9 +7588,9 @@ def render_edit_case(case, users):
     </html>
     '''
 
-def render_template_management(templates):
-    """Render template management page"""
-    sidebar_menu = render_sidebar_menu('templates')
+def render_case_management(cases, users):
+    """Render case management page"""
+    sidebar_menu = render_sidebar_menu('case_management')
     
     # Get flash messages
     from flask import get_flashed_messages
@@ -7609,37 +7606,45 @@ def render_template_management(templates):
         </div>
         '''
     
-    # Build template rows
-    import json
-    template_rows = ""
-    for template in templates:
-        status_badge = '<span style="color: #4caf50;">✓ Active</span>' if template.is_active else '<span style="color: #757575;">✗ Inactive</span>'
-        cases_count = len(template.cases) if hasattr(template, 'cases') else 0
+    # Build assignee options for quick assignment
+    assignee_options = '<option value="">-- Unassigned --</option>'
+    for user in users:
+        assignee_options += f'<option value="{user.id}">{user.username}</option>'
+    
+    # Build case rows
+    case_rows = ""
+    for case in cases:
+        status_class = case.status.lower().replace(' ', '-')
+        status_badge = f'<span class="status-{status_class}">{case.status}</span>'
         
-        # Parse checklist
-        try:
-            checklist = json.loads(template.checklist or '[]')
-            checklist_display = f"{len(checklist)} items"
-        except:
-            checklist_display = "0 items"
+        assignee_name = case.assignee.username if case.assignee else 'Unassigned'
+        tags_display = html.escape(case.tags or 'None')
         
-        template_rows += f'''
+        # Action buttons
+        actions = f'<a href="/case/edit/{case.id}" style="text-decoration: none;"><button style="padding: 6px 12px; font-size: 14px;">Edit</button></a>'
+        
+        if case.status == 'Closed' or case.status == 'Archived':
+            actions += f'<button onclick="reopenCase({case.id}, \'{html.escape(case.name)}\')" style="padding: 6px 12px; font-size: 14px; background: linear-gradient(145deg, #4caf50, #388e3c);">Reopen</button>'
+        else:
+            actions += f'<button onclick="closeCase({case.id}, \'{html.escape(case.name)}\')" style="padding: 6px 12px; font-size: 14px; background: linear-gradient(145deg, #ff9800, #f57c00);">Close</button>'
+            actions += f'<button onclick="archiveCase({case.id}, \'{html.escape(case.name)}\')" style="padding: 6px 12px; font-size: 14px; background: linear-gradient(145deg, #757575, #616161);">Archive</button>'
+        
+        case_rows += f'''
         <tr>
-            <td>{html.escape(template.name)}</td>
-            <td>{html.escape(template.description or 'N/A')[:50]}...</td>
-            <td><span class="priority-{template.default_priority.lower()}">{template.default_priority}</span></td>
-            <td>{checklist_display}</td>
-            <td>{cases_count}</td>
+            <td><a href="/case/set/{case.id}" style="color: white; text-decoration: underline;">{html.escape(case.case_number)}</a></td>
+            <td>{html.escape(case.name)}</td>
+            <td><span class="priority-{case.priority.lower()}">{case.priority}</span></td>
             <td>{status_badge}</td>
-            <td>
-                <button onclick="editTemplate({template.id}, '{html.escape(template.name)}', '{html.escape(template.description or '')}', '{template.default_priority}', '{html.escape(template.default_tags or '')}', {json.dumps(template.checklist or '[]')}, {str(template.is_active).lower()})" style="padding: 6px 12px; font-size: 14px;">Edit</button>
-                <button onclick="deleteTemplate({template.id}, '{html.escape(template.name)}')" style="padding: 6px 12px; font-size: 14px; background: linear-gradient(145deg, #f44336, #d32f2f);">Delete</button>
-            </td>
+            <td>{assignee_name}</td>
+            <td>{tags_display}</td>
+            <td>{case.file_count}</td>
+            <td>{case.created_at.strftime('%Y-%m-%d')}</td>
+            <td>{actions}</td>
         </tr>
         '''
     
-    if not template_rows:
-        template_rows = '<tr><td colspan="7" style="text-align: center; padding: 40px;">No templates found. Create your first template to get started.</td></tr>'
+    if not case_rows:
+        case_rows = '<tr><td colspan="9" style="text-align: center; padding: 40px;">No cases found. <a href="/case/create" style="color: white;">Create your first case</a>.</td></tr>'
     
     return f'''
     <!DOCTYPE html>
@@ -7768,6 +7773,10 @@ def render_template_management(templates):
             .priority-medium {{ color: #ffb74d; }}
             .priority-high {{ color: #ff8a65; }}
             .priority-critical {{ color: #e57373; }}
+            .status-open {{ color: #4caf50; }}
+            .status-in-progress {{ color: #2196f3; }}
+            .status-closed {{ color: #9e9e9e; }}
+            .status-archived {{ color: #757575; }}
             button {{
                 background: linear-gradient(145deg, #4caf50, #388e3c);
                 color: white;
@@ -7836,182 +7845,33 @@ def render_template_management(templates):
         </div>
         <div class="main-content">
             {flash_messages_html}
-            <h1>Case Management - Templates</h1>
-            <button onclick="showCreateModal()" style="margin-bottom: 20px;">+ Create New Template</button>
+            <h1>Case Management</h1>
+            <p style="margin-bottom: 20px; opacity: 0.9;">Manage all cases - edit details, assign users, close or archive cases.</p>
             
             <table>
                 <thead>
                     <tr>
-                        <th>Template Name</th>
-                        <th>Description</th>
-                        <th>Default Priority</th>
-                        <th>Checklist</th>
-                        <th>Cases Using</th>
+                        <th>Case Number</th>
+                        <th>Name</th>
+                        <th>Priority</th>
                         <th>Status</th>
+                        <th>Assigned To</th>
+                        <th>Tags</th>
+                        <th>Files</th>
+                        <th>Created</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {template_rows}
+                    {case_rows}
                 </tbody>
             </table>
         </div>
         
-        <!-- Create Template Modal -->
-        <div id="createModal" class="modal">
-            <div class="modal-content">
-                <span class="close" onclick="closeModal('createModal')">&times;</span>
-                <h2>Create New Template</h2>
-                <form id="createForm" onsubmit="createTemplate(event)">
-                    <div class="form-group">
-                        <label>Template Name *</label>
-                        <input type="text" name="name" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Description</label>
-                        <textarea name="description"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Default Priority</label>
-                        <select name="default_priority">
-                            <option value="Low">Low</option>
-                            <option value="Medium" selected>Medium</option>
-                            <option value="High">High</option>
-                            <option value="Critical">Critical</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Default Tags (comma-separated)</label>
-                        <input type="text" name="default_tags">
-                    </div>
-                    <div class="form-group">
-                        <label>Checklist (one item per line)</label>
-                        <textarea name="checklist" rows="6"></textarea>
-                    </div>
-                    <button type="submit">Create Template</button>
-                    <button type="button" onclick="closeModal('createModal')" style="background: linear-gradient(145deg, #757575, #616161);">Cancel</button>
-                </form>
-            </div>
-        </div>
-        
-        <!-- Edit Template Modal -->
-        <div id="editModal" class="modal">
-            <div class="modal-content">
-                <span class="close" onclick="closeModal('editModal')">&times;</span>
-                <h2>Edit Template</h2>
-                <form id="editForm" onsubmit="updateTemplate(event)">
-                    <input type="hidden" name="template_id" id="edit_template_id">
-                    <div class="form-group">
-                        <label>Template Name *</label>
-                        <input type="text" name="name" id="edit_name" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Description</label>
-                        <textarea name="description" id="edit_description"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Default Priority</label>
-                        <select name="default_priority" id="edit_priority">
-                            <option value="Low">Low</option>
-                            <option value="Medium">Medium</option>
-                            <option value="High">High</option>
-                            <option value="Critical">Critical</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Default Tags (comma-separated)</label>
-                        <input type="text" name="default_tags" id="edit_tags">
-                    </div>
-                    <div class="form-group">
-                        <label>Checklist (one item per line)</label>
-                        <textarea name="checklist" id="edit_checklist" rows="6"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" name="is_active" id="edit_is_active" value="true" checked>
-                            Active
-                        </label>
-                    </div>
-                    <button type="submit">Save Changes</button>
-                    <button type="button" onclick="closeModal('editModal')" style="background: linear-gradient(145deg, #757575, #616161);">Cancel</button>
-                </form>
-            </div>
-        </div>
-        
         <script>
-            function showCreateModal() {{
-                document.getElementById('createModal').style.display = 'block';
-            }}
-            
-            function closeModal(modalId) {{
-                document.getElementById(modalId).style.display = 'none';
-            }}
-            
-            function editTemplate(id, name, description, priority, tags, checklist, isActive) {{
-                document.getElementById('edit_template_id').value = id;
-                document.getElementById('edit_name').value = name;
-                document.getElementById('edit_description').value = description;
-                document.getElementById('edit_priority').value = priority;
-                document.getElementById('edit_tags').value = tags;
-                
-                // Parse checklist JSON and convert to newline-separated
-                try {{
-                    const items = JSON.parse(checklist);
-                    document.getElementById('edit_checklist').value = items.join('\\n');
-                }} catch (e) {{
-                    document.getElementById('edit_checklist').value = '';
-                }}
-                
-                document.getElementById('edit_is_active').checked = isActive;
-                document.getElementById('editModal').style.display = 'block';
-            }}
-            
-            function createTemplate(e) {{
-                e.preventDefault();
-                const formData = new FormData(e.target);
-                
-                fetch('/templates/create', {{
-                    method: 'POST',
-                    body: formData
-                }})
-                .then(response => response.json())
-                .then(data => {{
-                    if (data.success) {{
-                        location.reload();
-                    }} else {{
-                        alert('Error: ' + data.message);
-                    }}
-                }})
-                .catch(error => {{
-                    alert('Error creating template: ' + error);
-                }});
-            }}
-            
-            function updateTemplate(e) {{
-                e.preventDefault();
-                const formData = new FormData(e.target);
-                const templateId = formData.get('template_id');
-                
-                fetch('/templates/edit/' + templateId, {{
-                    method: 'POST',
-                    body: formData
-                }})
-                .then(response => response.json())
-                .then(data => {{
-                    if (data.success) {{
-                        location.reload();
-                    }} else {{
-                        alert('Error: ' + data.message);
-                    }}
-                }})
-                .catch(error => {{
-                    alert('Error updating template: ' + error);
-                }});
-            }}
-            
-            function deleteTemplate(id, name) {{
-                if (confirm('Are you sure you want to delete template "' + name + '"? This action cannot be undone.')) {{
-                    fetch('/templates/delete/' + id, {{
+            function closeCase(id, name) {{
+                if (confirm('Close case "' + name + '"?')) {{
+                    fetch('/case/close/' + id, {{
                         method: 'POST'
                     }})
                     .then(response => response.json())
@@ -8023,7 +7883,45 @@ def render_template_management(templates):
                         }}
                     }})
                     .catch(error => {{
-                        alert('Error deleting template: ' + error);
+                        alert('Error: ' + error);
+                    }});
+                }}
+            }}
+            
+            function archiveCase(id, name) {{
+                if (confirm('Archive case "' + name + '"? This will hide it from active cases.')) {{
+                    fetch('/case/archive/' + id, {{
+                        method: 'POST'
+                    }})
+                    .then(response => response.json())
+                    .then(data => {{
+                        if (data.success) {{
+                            location.reload();
+                        }} else {{
+                            alert('Error: ' + data.message);
+                        }}
+                    }})
+                    .catch(error => {{
+                        alert('Error: ' + error);
+                    }});
+                }}
+            }}
+            
+            function reopenCase(id, name) {{
+                if (confirm('Reopen case "' + name + '"?')) {{
+                    fetch('/case/reopen/' + id, {{
+                        method: 'POST'
+                    }})
+                    .then(response => response.json())
+                    .then(data => {{
+                        if (data.success) {{
+                            location.reload();
+                        }} else {{
+                            alert('Error: ' + data.message);
+                        }}
+                    }})
+                    .catch(error => {{
+                        alert('Error: ' + error);
                     }});
                 }}
             }}
