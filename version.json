@@ -1,7 +1,7 @@
 {
-  "version": "7.2.32",
+  "version": "7.2.33",
   "release_date": "2025-10-01",
-  "description": "UI Enhancement - Preserve SIGMA violations checkbox state across pagination; checkbox now stays checked when navigating between pages; added checked attribute based on violations_only variable",
+  "description": "Bugfix - Fixed render_search_page missing violations_only parameter; v7.2.32 added violations_only variable reference but didn't add it to function signature; caused NameError when loading search page; added violations_only parameter with default False to render_search_page and updated call site",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -134,6 +134,7 @@
     "7.2.29": "Critical Bugfix - FINAL FIX for event enrichment; user logs showed continued 0 hits on _casescope_metadata_record_number queries after v7.2.27/7.2.28; root cause: we kept trying different field names but NONE exist in flattened structure; solution: use EXACT SAME hash-based doc ID generation as indexing does; indexing creates doc_id = sha256(f'{file_id}_{record_num}')[:16]; modified enrich_events_with_detections to take file_id parameter and generate identical hash; removed all field-based queries; violations checkbox now works because enrichment succeeds; Event Type search works after re-index populates event_type field",
     "7.2.30": "Critical Bugfix - Fixed duplicate bulk_index_events function and event_type extraction; user logs showed event_type='Unknown Event' and document_missing_exception during enrichment; root cause: tasks.py had TWO bulk_index_events definitions (lines 364 and 1034); Python uses last definition which DIDN'T include hash-based _id generation causing OpenSearch to auto-generate IDs; enrichment failed because it used hash IDs that didn't match; deleted second function; also fixed get_event_description extraction to handle both dot and underscore notation (System.EventID.#text vs System_EventID_#text); event_type now shows correct descriptions like 'Defender History Deleted' and enrichment uses same hash-based IDs as indexing",
     "7.2.31": "Bugfix - Fixed NameError in enrich_events_with_detections; v7.2.30 changed parameter name from detections_by_event to detections_by_record_number but missed updating the success log message; caused enrichment to fail with 'name detections_by_event is not defined' after successful bulk update; fixed variable reference in log statement",
-    "7.2.32": "UI Enhancement - Preserve SIGMA violations checkbox state across pagination; checkbox now stays checked when navigating between pages; added checked attribute based on violations_only variable"
+    "7.2.32": "UI Enhancement - Preserve SIGMA violations checkbox state across pagination; checkbox now stays checked when navigating between pages; added checked attribute based on violations_only variable",
+    "7.2.33": "Bugfix - Fixed render_search_page missing violations_only parameter; v7.2.32 added violations_only variable reference but didn't add it to function signature; caused NameError when loading search page; added violations_only parameter with default False to render_search_page and updated call site"
   }
 }

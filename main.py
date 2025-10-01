@@ -851,7 +851,7 @@ def search():
                 error_message = f"Search error: {str(e)}"
                 print(f"[Search] Error: {e}")
     
-    return render_search_page(case, query_str, results, total_hits, page, per_page, error_message, len(indexed_files))
+    return render_search_page(case, query_str, results, total_hits, page, per_page, error_message, len(indexed_files), violations_only)
 
 @app.route('/sigma-rules/download', methods=['POST'])
 @login_required
@@ -2962,7 +2962,7 @@ def render_file_list(case, files):
     </html>
     '''
 
-def render_search_page(case, query_str, results, total_hits, page, per_page, error_message, indexed_file_count):
+def render_search_page(case, query_str, results, total_hits, page, per_page, error_message, indexed_file_count, violations_only=False):
     """Render search interface with results"""
     from flask import get_flashed_messages
     flash_messages_html = ""
