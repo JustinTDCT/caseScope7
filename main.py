@@ -739,6 +739,7 @@ def search():
     error_message = None
     page = 1
     per_page = 50
+    violations_only = False
     
     if request.method == 'POST':
         query_str = request.form.get('query', '').strip()
