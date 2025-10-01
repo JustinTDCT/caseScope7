@@ -1,7 +1,7 @@
 {
-  "version": "7.7.4",
+  "version": "7.7.5",
   "release_date": "2025-10-01",
-  "description": "UI Consistency Fix - Rewrote render_case_management to match files list page structure; added header section with page title and user/logout; proper sidebar styling matching other pages; consistent table styling with file-table class; all render-based matching codebase pattern",
+  "description": "UI Fix - Exact match to files list: logo uses .case/.scope classes with green/white colors; logout as link not form button; h1 in content section; all CSS copied from files list including text-shadow, inset box-shadow, placeholder hover states",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -157,6 +157,7 @@
     "7.7.1": "Bugfix - Added missing html module import; render_template_management and render_edit_case functions use html.escape() but module wasn't imported causing NameError 500 on /templates route",
     "7.7.2": "UI Fix - Changed menu item from 'Case Templates' to 'Case Management'; changed page title from 'Case Templates' to 'Case Management - Templates'; maintains render-based architecture (no Flask render_template usage)",
     "7.7.3": "Critical Redesign - Removed template functionality; Case Management now lists all cases with edit/close/archive/reopen actions; table shows Case Number, Name, Priority, Status, Assigned To, Tags, Files, Created, Actions; consistent UI matching other pages; route changed from /templates to /case-management",
-    "7.7.4": "UI Consistency Fix - Rewrote render_case_management to match files list page structure; added header section with page title and user/logout; proper sidebar styling matching other pages; consistent table styling with file-table class; all render-based matching codebase pattern"
+    "7.7.4": "UI Consistency Fix - Rewrote render_case_management to match files list page structure; added header section with page title and user/logout; proper sidebar styling matching other pages; consistent table styling with file-table class; all render-based matching codebase pattern",
+    "7.7.5": "UI Fix - Exact match to files list: logo uses .case/.scope classes with green/white colors; logout as link not form button; h1 in content section; all CSS copied from files list including text-shadow, inset box-shadow, placeholder hover states"
   }
 }

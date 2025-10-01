@@ -7704,10 +7704,13 @@ def render_case_management(cases, users):
                 text-align: center;
                 font-size: 2.2em;
                 font-weight: 300;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
                 margin-bottom: 15px;
                 padding: 5px 0 8px 0;
                 border-bottom: 1px solid rgba(76,175,80,0.3);
             }}
+            .sidebar-logo .case {{ color: #4caf50; }}
+            .sidebar-logo .scope {{ color: white; }}
             .version-badge {{
                 font-size: 0.4em;
                 background: linear-gradient(145deg, #4caf50, #388e3c);
@@ -7717,6 +7720,7 @@ def render_case_management(cases, users):
                 margin-top: 5px;
                 display: inline-block;
                 box-shadow: 0 2px 4px rgba(76,175,80,0.3);
+                border: 1px solid rgba(255,255,255,0.1);
             }}
             .content {{ padding: 30px; }}
             .menu-item {{ 
@@ -7727,7 +7731,9 @@ def render_case_management(cases, users):
                 margin: 6px 0; 
                 border-radius: 12px; 
                 background: linear-gradient(145deg, #3949ab, #283593);
-                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
                 transition: all 0.3s ease;
                 border: 1px solid rgba(255,255,255,0.1);
                 font-size: 0.95em;
@@ -7735,7 +7741,9 @@ def render_case_management(cases, users):
             .menu-item:hover {{ 
                 background: linear-gradient(145deg, #5c6bc0, #3949ab);
                 transform: translateX(5px);
-                box-shadow: 0 8px 15px rgba(0,0,0,0.4);
+                box-shadow: 
+                    0 8px 15px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
             }}
             .menu-item.active {{
                 background: linear-gradient(145deg, #4caf50, #388e3c);
@@ -7748,11 +7756,15 @@ def render_case_management(cases, users):
             }}
             .menu-item.placeholder:hover {{
                 transform: none;
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
             }}
             h3.menu-title {{
                 font-size: 1.1em;
                 margin: 15px 0 8px 0;
                 color: #4caf50;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
                 border-bottom: 1px solid rgba(76,175,80,0.3);
                 padding-bottom: 4px;
             }}
@@ -7829,9 +7841,10 @@ def render_case_management(cases, users):
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
-                <span class="case">📁 case</span><span class="scope">Scope</span>
-                <div class="version-badge">7.7.3</div>
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
             </div>
+            
             {sidebar_menu}
         </div>
         <div class="main-content">
@@ -7839,14 +7852,14 @@ def render_case_management(cases, users):
                 <div class="case-title">⚙️ Case Management</div>
                 <div class="user-info">
                     <span>Welcome, {current_user.username} ({current_user.role})</span>
-                    <form method="POST" action="/logout" style="margin: 0;">
-                        <button type="submit" class="logout-btn">Logout</button>
-                    </form>
+                    <a href="/logout" class="logout-btn">Logout</a>
                 </div>
             </div>
             <div class="content">
+                <h1>⚙️ Case Management</h1>
+                <p>Manage all cases - edit details, assign users, close or archive cases.</p>
+                
                 {flash_messages_html}
-                <p style="margin-bottom: 20px; opacity: 0.9; font-size: 1.05em;">Manage all cases - edit details, assign users, close or archive cases.</p>
                 
                 <table class="file-table">
                     <thead>
