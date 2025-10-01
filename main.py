@@ -1671,27 +1671,52 @@ def search():
                         start_time = now - timedelta(days=30)
                     elif time_range == 'custom' and custom_start:
                         from datetime import datetime as dt
-                        # Use the .date subfield for proper date range filtering
-                        start_time = dt.fromisoformat(custom_start.replace('Z', '+00:00') if 'Z' in custom_start else custom_start)
-                        end_time = dt.fromisoformat(custom_end.replace('Z', '+00:00') if 'Z' in custom_end else custom_end) if custom_end else now
+                        # Parse custom times - use wildcard query on text field since .date subfield may not exist on older indexes
+                        # Convert to date prefix format for wildcard matching
+                        start_date = custom_start[:10]  # YYYY-MM-DD
+                        end_date = custom_end[:10] if custom_end else now.strftime('%Y-%m-%d')
+                        
+                        # Build a query that matches timestamps within the date range
+                        # This works on the text field by matching the date prefix
                         filters.append({
-                            "range": {
-                                "System.TimeCreated.@SystemTime.date": {
-                                    "gte": start_time.isoformat(),
-                                    "lte": end_time.isoformat()
-                                }
+                            "bool": {
+                                "should": [
+                                    {"wildcard": {"System_TimeCreated_SystemTime": f"{start_date}*"}},
+                                    {"wildcard": {"System.TimeCreated.@SystemTime": f"{start_date}*"}}
+                                ],
+                                "minimum_should_match": 1
                             }
                         })
+                        
+                        # If it's a date range (not same day), add OR conditions for all dates in between
+                        if start_date != end_date:
+                            from datetime import datetime as dt, timedelta
+                            current = dt.strptime(start_date, '%Y-%m-%d')
+                            end = dt.strptime(end_date, '%Y-%m-%d')
+                            while current <= end:
+                                date_str = current.strftime('%Y-%m-%d')
+                                filters[-1]["bool"]["should"].extend([
+                                    {"wildcard": {"System_TimeCreated_SystemTime": f"{date_str}*"}},
+                                    {"wildcard": {"System.TimeCreated.@SystemTime": f"{date_str}*"}}
+                                ])
+                                current += timedelta(days=1)
+                        
                         start_time = None  # Skip the simple gte below
                     
                     if start_time:
-                        filters.append({
-                            "range": {
-                                "System.TimeCreated.@SystemTime.date": {
-                                    "gte": start_time.isoformat()
-                                }
-                            }
-                        })
+                        # For preset ranges, use similar wildcard approach
+                        from datetime import datetime as dt, timedelta
+                        # Generate list of dates to match
+                        current = start_time
+                        date_filters = {"bool": {"should": [], "minimum_should_match": 1}}
+                        while current <= now:
+                            date_str = current.strftime('%Y-%m-%d')
+                            date_filters["bool"]["should"].extend([
+                                {"wildcard": {"System_TimeCreated_SystemTime": f"{date_str}*"}},
+                                {"wildcard": {"System.TimeCreated.@SystemTime": f"{date_str}*"}}
+                            ])
+                            current += timedelta(days=1)
+                        filters.append(date_filters)
                 
                 # Combine base query with filters
                 if filters:
