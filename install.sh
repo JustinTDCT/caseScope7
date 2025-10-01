@@ -1369,6 +1369,13 @@ except Exception as e:
             MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT2))
         fi
         
+        # Run Case Management migration (v7.7.0)
+        if [ -f "/opt/casescope/app/migrate_case_management.py" ]; then
+            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_case_management.py
+            MIGRATION_RESULT3=$?
+            MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT3))
+        fi
+        
         if [ $MIGRATION_RESULT -eq 0 ]; then
             log "✓ All database migrations completed"
         else

@@ -83,6 +83,23 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
 
+class CaseTemplate(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False, unique=True)
+    description = db.Column(db.Text)
+    default_priority = db.Column(db.String(20), default='Medium')
+    default_tags = db.Column(db.String(500))
+    checklist = db.Column(db.Text)  # JSON array of checklist items
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True)
+    
+    # Relationship
+    creator = db.relationship('User', backref='case_templates')
+    
+    def __repr__(self):
+        return f'<CaseTemplate {self.name}>'
+
 class AuditLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # Null for failed logins
@@ -140,9 +157,17 @@ class Case(db.Model):
     case_number = db.Column(db.String(50), unique=True, nullable=False)
     priority = db.Column(db.String(20), default='Medium')  # Low, Medium, High, Critical
     status = db.Column(db.String(20), default='Open')     # Open, In Progress, Closed, Archived
+    assignee_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    closed_at = db.Column(db.DateTime)
+    closed_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    template_id = db.Column(db.Integer, db.ForeignKey('case_template.id'))
+    tags = db.Column(db.String(500))  # Comma-separated tags
     
     # Relationships
-    creator = db.relationship('User', backref='created_cases')
+    creator = db.relationship('User', foreign_keys=[created_by], backref='created_cases')
+    assignee = db.relationship('User', foreign_keys=[assignee_id], backref='assigned_cases')
+    closer = db.relationship('User', foreign_keys=[closed_by], backref='closed_cases')
+    template = db.relationship('CaseTemplate', backref='cases')
     
     def __repr__(self):
         return f'<Case {self.case_number}: {self.name}>'
@@ -306,6 +331,9 @@ def create_case():
         name = request.form.get('name', '').strip()
         description = request.form.get('description', '').strip()
         priority = request.form.get('priority', 'Medium')
+        tags = request.form.get('tags', '').strip()
+        template_id = request.form.get('template_id')
+        assignee_id = request.form.get('assignee_id')
         
         if not name:
             flash('Case name is required.', 'error')
@@ -315,12 +343,26 @@ def create_case():
             case_number = f"CASE-{int(time.time())}"
             
             try:
+                # Apply template defaults if template selected
+                if template_id and template_id != '':
+                    template = db.session.get(CaseTemplate, int(template_id))
+                    if template:
+                        if not description:
+                            description = template.description
+                        if priority == 'Medium':  # Only override if still default
+                            priority = template.default_priority
+                        if not tags and template.default_tags:
+                            tags = template.default_tags
+                
                 new_case = Case(
                     name=name,
                     description=description,
                     case_number=case_number,
                     priority=priority,
-                    created_by=current_user.id
+                    tags=tags,
+                    created_by=current_user.id,
+                    template_id=int(template_id) if template_id and template_id != '' else None,
+                    assignee_id=int(assignee_id) if assignee_id and assignee_id != '' else None
                 )
                 db.session.add(new_case)
                 db.session.commit()
@@ -333,6 +375,15 @@ def create_case():
                 # Set active case in session
                 session['active_case_id'] = new_case.id
                 
+                # Log the action
+                log_audit(
+                    user_id=session.get('user_id'),
+                    action='create_case',
+                    category='case_management',
+                    details=f'Created case: {name} (ID: {new_case.id})',
+                    success=True
+                )
+                
                 flash(f'Case "{name}" created successfully!', 'success')
                 return redirect(url_for('case_dashboard'))
                 
@@ -340,7 +391,10 @@ def create_case():
                 db.session.rollback()
                 flash(f'Error creating case: {str(e)}', 'error')
     
-    return render_case_form()
+    # GET request - load templates and users for the form
+    templates = CaseTemplate.query.filter_by(is_active=True).order_by(CaseTemplate.name).all()
+    users = User.query.filter_by(is_active=True).order_by(User.username).all()
+    return render_case_form(templates, users)
 
 @app.route('/case/select')
 @login_required
@@ -362,6 +416,159 @@ def set_active_case(case_id):
     session['active_case_id'] = case_id
     flash(f'Active case set to: {case.name}', 'success')
     return redirect(url_for('case_dashboard'))
+
+@app.route('/case/edit/<int:case_id>', methods=['GET', 'POST'])
+@login_required
+def edit_case(case_id):
+    """Edit case details"""
+    case = db.session.get(Case, case_id)
+    if not case:
+        flash('Case not found.', 'error')
+        return redirect(url_for('case_selection'))
+    
+    if request.method == 'POST':
+        try:
+            # Update case details
+            case.name = request.form.get('name', '').strip()
+            case.description = request.form.get('description', '').strip()
+            case.priority = request.form.get('priority', 'Medium')
+            case.status = request.form.get('status', 'Open')
+            case.tags = request.form.get('tags', '').strip()
+            
+            # Handle assignee
+            assignee_id = request.form.get('assignee_id')
+            if assignee_id and assignee_id != '':
+                case.assignee_id = int(assignee_id)
+            else:
+                case.assignee_id = None
+            
+            # Validate required fields
+            if not case.name:
+                flash('Case name is required.', 'error')
+                return redirect(url_for('edit_case', case_id=case_id))
+            
+            case.updated_at = datetime.utcnow()
+            db.session.commit()
+            
+            # Log the action
+            log_audit(
+                user_id=session.get('user_id'),
+                action='edit_case',
+                category='case_management',
+                details=f'Edited case: {case.name} (ID: {case.id})',
+                success=True
+            )
+            
+            flash(f'Case "{case.name}" updated successfully.', 'success')
+            
+            # Redirect to dashboard if this is the active case
+            if session.get('active_case_id') == case_id:
+                return redirect(url_for('case_dashboard'))
+            else:
+                return redirect(url_for('case_selection'))
+                
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error updating case: {str(e)}', 'error')
+            return redirect(url_for('edit_case', case_id=case_id))
+    
+    # GET request - show edit form
+    users = User.query.filter_by(is_active=True).order_by(User.username).all()
+    return render_edit_case(case, users)
+
+@app.route('/case/archive/<int:case_id>', methods=['POST'])
+@login_required
+def archive_case(case_id):
+    """Archive a case"""
+    case = db.session.get(Case, case_id)
+    if not case:
+        return jsonify({'success': False, 'message': 'Case not found'}), 404
+    
+    try:
+        case.status = 'Archived'
+        case.is_active = False
+        case.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        # Log the action
+        log_audit(
+            user_id=session.get('user_id'),
+            action='archive_case',
+            category='case_management',
+            details=f'Archived case: {case.name} (ID: {case.id})',
+            success=True
+        )
+        
+        # Clear active case if this was it
+        if session.get('active_case_id') == case_id:
+            session.pop('active_case_id', None)
+        
+        return jsonify({'success': True, 'message': f'Case "{case.name}" archived successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/case/close/<int:case_id>', methods=['POST'])
+@login_required
+def close_case(case_id):
+    """Close a case"""
+    case = db.session.get(Case, case_id)
+    if not case:
+        return jsonify({'success': False, 'message': 'Case not found'}), 404
+    
+    try:
+        case.status = 'Closed'
+        case.closed_at = datetime.utcnow()
+        case.closed_by = session.get('user_id')
+        case.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        # Log the action
+        log_audit(
+            user_id=session.get('user_id'),
+            action='close_case',
+            category='case_management',
+            details=f'Closed case: {case.name} (ID: {case.id})',
+            success=True
+        )
+        
+        return jsonify({'success': True, 'message': f'Case "{case.name}" closed successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/case/reopen/<int:case_id>', methods=['POST'])
+@login_required
+def reopen_case(case_id):
+    """Reopen a closed/archived case"""
+    case = db.session.get(Case, case_id)
+    if not case:
+        return jsonify({'success': False, 'message': 'Case not found'}), 404
+    
+    try:
+        case.status = 'In Progress'
+        case.is_active = True
+        case.closed_at = None
+        case.closed_by = None
+        case.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        # Log the action
+        log_audit(
+            user_id=session.get('user_id'),
+            action='reopen_case',
+            category='case_management',
+            details=f'Reopened case: {case.name} (ID: {case.id})',
+            success=True
+        )
+        
+        return jsonify({'success': True, 'message': f'Case "{case.name}" reopened successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/case/dashboard')
 @login_required
@@ -814,6 +1021,182 @@ def update_event_ids():
     """Update Event ID database (placeholder for future enhancement)"""
     flash('Event ID database is already up to date with 100+ Windows Event IDs. If you download new Event IDs, re-index all files to apply the new descriptions.', 'success')
     return redirect(url_for('dashboard'))
+
+@app.route('/templates', methods=['GET'])
+@login_required
+def template_management():
+    """Case template management page (admin only)"""
+    if current_user.role != 'administrator':
+        flash('Access denied. Administrator privileges required.', 'error')
+        return redirect(url_for('dashboard'))
+    
+    # Get all templates
+    templates = CaseTemplate.query.order_by(CaseTemplate.created_at.desc()).all()
+    return render_template_management(templates)
+
+@app.route('/templates/create', methods=['POST'])
+@login_required
+def create_template():
+    """Create a new case template"""
+    if current_user.role != 'administrator':
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    try:
+        name = request.form.get('name', '').strip()
+        description = request.form.get('description', '').strip()
+        default_priority = request.form.get('default_priority', 'Medium')
+        default_tags = request.form.get('default_tags', '').strip()
+        checklist = request.form.get('checklist', '').strip()
+        
+        # Validate
+        if not name:
+            return jsonify({'success': False, 'message': 'Template name is required'}), 400
+        
+        # Check for duplicate name
+        existing = CaseTemplate.query.filter_by(name=name).first()
+        if existing:
+            return jsonify({'success': False, 'message': 'A template with this name already exists'}), 400
+        
+        # Convert checklist from newline-separated to JSON array
+        import json
+        if checklist:
+            checklist_items = [item.strip() for item in checklist.split('\n') if item.strip()]
+            checklist_json = json.dumps(checklist_items)
+        else:
+            checklist_json = '[]'
+        
+        new_template = CaseTemplate(
+            name=name,
+            description=description,
+            default_priority=default_priority,
+            default_tags=default_tags,
+            checklist=checklist_json,
+            created_by=current_user.id
+        )
+        
+        db.session.add(new_template)
+        db.session.commit()
+        
+        # Log the action
+        log_audit(
+            user_id=session.get('user_id'),
+            action='create_template',
+            category='case_management',
+            details=f'Created template: {name}',
+            success=True
+        )
+        
+        flash(f'Template "{name}" created successfully.', 'success')
+        return jsonify({'success': True, 'message': 'Template created successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/templates/edit/<int:template_id>', methods=['POST'])
+@login_required
+def edit_template(template_id):
+    """Edit a case template"""
+    if current_user.role != 'administrator':
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    template = db.session.get(CaseTemplate, template_id)
+    if not template:
+        return jsonify({'success': False, 'message': 'Template not found'}), 404
+    
+    try:
+        name = request.form.get('name', '').strip()
+        description = request.form.get('description', '').strip()
+        default_priority = request.form.get('default_priority', 'Medium')
+        default_tags = request.form.get('default_tags', '').strip()
+        checklist = request.form.get('checklist', '').strip()
+        is_active = request.form.get('is_active', 'true') == 'true'
+        
+        # Validate
+        if not name:
+            return jsonify({'success': False, 'message': 'Template name is required'}), 400
+        
+        # Check for duplicate name (excluding current template)
+        existing = CaseTemplate.query.filter(
+            CaseTemplate.name == name,
+            CaseTemplate.id != template_id
+        ).first()
+        if existing:
+            return jsonify({'success': False, 'message': 'A template with this name already exists'}), 400
+        
+        # Convert checklist from newline-separated to JSON array
+        import json
+        if checklist:
+            checklist_items = [item.strip() for item in checklist.split('\n') if item.strip()]
+            checklist_json = json.dumps(checklist_items)
+        else:
+            checklist_json = '[]'
+        
+        # Update template
+        template.name = name
+        template.description = description
+        template.default_priority = default_priority
+        template.default_tags = default_tags
+        template.checklist = checklist_json
+        template.is_active = is_active
+        
+        db.session.commit()
+        
+        # Log the action
+        log_audit(
+            user_id=session.get('user_id'),
+            action='edit_template',
+            category='case_management',
+            details=f'Edited template: {name} (ID: {template_id})',
+            success=True
+        )
+        
+        flash(f'Template "{name}" updated successfully.', 'success')
+        return jsonify({'success': True, 'message': 'Template updated successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/templates/delete/<int:template_id>', methods=['POST'])
+@login_required
+def delete_template(template_id):
+    """Delete a case template"""
+    if current_user.role != 'administrator':
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    template = db.session.get(CaseTemplate, template_id)
+    if not template:
+        return jsonify({'success': False, 'message': 'Template not found'}), 404
+    
+    try:
+        # Check if template is in use
+        cases_using_template = Case.query.filter_by(template_id=template_id).count()
+        if cases_using_template > 0:
+            return jsonify({
+                'success': False,
+                'message': f'Cannot delete template. It is being used by {cases_using_template} case(s). Consider deactivating instead.'
+            }), 400
+        
+        template_name = template.name
+        db.session.delete(template)
+        db.session.commit()
+        
+        # Log the action
+        log_audit(
+            user_id=session.get('user_id'),
+            action='delete_template',
+            category='case_management',
+            details=f'Deleted template: {template_name} (ID: {template_id})',
+            success=True
+        )
+        
+        flash(f'Template "{template_name}" deleted successfully.', 'success')
+        return jsonify({'success': True, 'message': 'Template deleted successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/users', methods=['GET'])
 @login_required
@@ -1955,7 +2338,7 @@ def render_sidebar_menu(active_page=''):
 <a href="/violations" class="menu-item {'active' if active_page == 'violations' else ''}">🚨 SIGMA Violations</a>
 
 <h3 class="menu-title">Management</h3>
-<a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
+<a href="/templates" class="menu-item {'active' if active_page == 'templates' else ''}">📋 Case Templates</a>
 <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
 <a href="/users" class="menu-item {'active' if active_page == 'user_management' else ''}">👥 User Management</a>
 <a href="/audit-log" class="menu-item {'active' if active_page == 'audit_log' else ''}">📜 Audit Log</a>
@@ -5673,9 +6056,24 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
     </html>
     '''
 
-def render_case_form():
+def render_case_form(templates=None, users=None):
     """Render case creation form with sidebar layout"""
+    if templates is None:
+        templates = []
+    if users is None:
+        users = []
+    
     sidebar_menu = render_sidebar_menu('case_select')
+    
+    # Build template options
+    template_options = '<option value="">-- No Template --</option>'
+    for template in templates:
+        template_options += f'<option value="{template.id}">{template.name}</option>'
+    
+    # Build assignee options
+    assignee_options = '<option value="">-- Unassigned --</option>'
+    for user in users:
+        assignee_options += f'<option value="{user.id}">{user.username}</option>'
     
     return f'''
     <!DOCTYPE html>
@@ -5825,6 +6223,12 @@ def render_case_form():
                     <textarea id="description" name="description" placeholder="Enter case description (optional)"></textarea>
                 </div>
                 <div class="form-group">
+                    <label for="template_id">Case Template (optional)</label>
+                    <select id="template_id" name="template_id">
+                        {template_options}
+                    </select>
+                </div>
+                <div class="form-group">
                     <label for="priority">Priority</label>
                     <select id="priority" name="priority">
                         <option value="Low">Low</option>
@@ -5832,6 +6236,16 @@ def render_case_form():
                         <option value="High">High</option>
                         <option value="Critical">Critical</option>
                     </select>
+                </div>
+                <div class="form-group">
+                    <label for="assignee_id">Assign To (optional)</label>
+                    <select id="assignee_id" name="assignee_id">
+                        {assignee_options}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="tags">Tags (comma-separated)</label>
+                    <input type="text" id="tags" name="tags" placeholder="e.g., malware, ransomware, data-breach">
                 </div>
                 <div style="text-align: center; margin-top: 25px;">
                     <button type="submit">Create Case</button>
@@ -6944,6 +7358,678 @@ def healthz():
     status_code = 200 if health_status['status'] == 'healthy' else 503
     
     return jsonify(health_status), status_code
+
+def render_edit_case(case, users):
+    """Render case edit form"""
+    sidebar_menu = render_sidebar_menu('case_dashboard')
+    
+    # Get flash messages
+    from flask import get_flashed_messages
+    flash_messages_html = ""
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        icon = "⚠️" if category == "warning" else "❌" if category == "error" else "✅"
+        flash_messages_html += f'''
+        <div class="flash-message flash-{category}">
+            <span class="flash-icon">{icon}</span>
+            <span class="flash-text">{message}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        '''
+    
+    # Build assignee options
+    assignee_options = '<option value="">-- Unassigned --</option>'
+    for user in users:
+        selected = 'selected' if case.assignee_id == user.id else ''
+        assignee_options += f'<option value="{user.id}" {selected}>{user.username}</option>'
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Edit Case - caseScope {APP_VERSION}</title>
+        <style>
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                display: flex;
+                min-height: 100vh; 
+            }}
+            .sidebar {{ 
+                width: 280px; 
+                background: linear-gradient(145deg, #303f9f, #283593); 
+                padding: 20px; 
+                box-shadow: 
+                    5px 0 20px rgba(0,0,0,0.4),
+                    inset -1px 0 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+            }}
+            .main-content {{ flex: 1; padding: 30px; overflow-y: auto; }}
+            .sidebar-logo {{
+                text-align: center;
+                font-size: 2.2em;
+                font-weight: bold;
+                margin-bottom: 5px;
+                padding: 5px;
+            }}
+            .version-badge {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 4px 12px;
+                border-radius: 12px;
+                font-size: 0.75em;
+                display: inline-block;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                margin-top: 5px;
+            }}
+            .menu-title {{
+                color: rgba(255,255,255,0.6);
+                font-size: 0.85em;
+                font-weight: 600;
+                text-transform: uppercase;
+                margin: 15px 0 8px 0;
+                letter-spacing: 1px;
+            }}
+            .menu-item {{
+                display: block;
+                padding: 10px 15px;
+                margin: 4px 0;
+                background: rgba(255,255,255,0.05);
+                border-radius: 8px;
+                color: white;
+                text-decoration: none;
+                transition: all 0.3s;
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .menu-item:hover {{
+                background: rgba(255,255,255,0.15);
+                transform: translateX(5px);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            }}
+            .menu-item.active {{
+                background: linear-gradient(145deg, #1e88e5, #1976d2);
+                border-color: rgba(255,255,255,0.2);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            }}
+            .menu-item.placeholder {{
+                opacity: 0.5;
+                cursor: not-allowed;
+            }}
+            .flash-message {{
+                padding: 12px 16px;
+                border-radius: 8px;
+                margin-bottom: 15px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            }}
+            .flash-success {{ background: linear-gradient(145deg, #4caf50, #388e3c); }}
+            .flash-error {{ background: linear-gradient(145deg, #f44336, #d32f2f); }}
+            .flash-warning {{ background: linear-gradient(145deg, #ff9800, #f57c00); }}
+            .flash-close {{
+                margin-left: auto;
+                background: none;
+                border: none;
+                color: white;
+                cursor: pointer;
+                font-size: 24px;
+                line-height: 1;
+            }}
+            .form-container {{ 
+                max-width: 800px; 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 30px; 
+                border-radius: 20px; 
+                box-shadow: 
+                    0 20px 40px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .form-group {{ margin-bottom: 18px; }}
+            label {{ display: block; margin-bottom: 5px; color: rgba(255,255,255,0.9); font-weight: 500; }}
+            input, textarea, select {{ 
+                width: 100%; 
+                padding: 12px 16px; 
+                border: none; 
+                border-radius: 8px; 
+                background: rgba(255,255,255,0.1);
+                color: white;
+                font-size: 14px;
+                box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
+                border: 1px solid rgba(255,255,255,0.1);
+                box-sizing: border-box;
+            }}
+            textarea {{ resize: vertical; min-height: 80px; }}
+            button {{ 
+                background: linear-gradient(145deg, #4caf50, #388e3c); 
+                color: white; 
+                padding: 12px 24px; 
+                border: none; 
+                border-radius: 8px; 
+                cursor: pointer; 
+                font-size: 16px;
+                font-weight: 600;
+                box-shadow: 0 4px 8px rgba(76,175,80,0.3);
+                transition: all 0.3s ease;
+                margin-right: 10px;
+            }}
+            button:hover {{ 
+                background: linear-gradient(145deg, #66bb6a, #4caf50);
+                transform: translateY(-1px);
+            }}
+            .cancel-btn {{
+                background: linear-gradient(145deg, #757575, #616161);
+            }}
+            .cancel-btn:hover {{
+                background: linear-gradient(145deg, #9e9e9e, #757575);
+            }}
+            h2 {{ margin-top: 0; font-weight: 300; }}
+        </style>
+    </head>
+    <body>
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                📁 caseScope
+                <div class="version-badge">v{APP_VERSION}</div>
+            </div>
+            {sidebar_menu}
+        </div>
+        <div class="main-content">
+            {flash_messages_html}
+            <div class="form-container">
+                <h2>Edit Case: {html.escape(case.name)}</h2>
+                <form method="POST">
+                    <div class="form-group">
+                        <label for="name">Case Name *</label>
+                        <input type="text" id="name" name="name" required value="{html.escape(case.name)}">
+                    </div>
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <textarea id="description" name="description">{html.escape(case.description or '')}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="priority">Priority</label>
+                        <select id="priority" name="priority">
+                            <option value="Low" {'selected' if case.priority == 'Low' else ''}>Low</option>
+                            <option value="Medium" {'selected' if case.priority == 'Medium' else ''}>Medium</option>
+                            <option value="High" {'selected' if case.priority == 'High' else ''}>High</option>
+                            <option value="Critical" {'selected' if case.priority == 'Critical' else ''}>Critical</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="status">Status</label>
+                        <select id="status" name="status">
+                            <option value="Open" {'selected' if case.status == 'Open' else ''}>Open</option>
+                            <option value="In Progress" {'selected' if case.status == 'In Progress' else ''}>In Progress</option>
+                            <option value="Closed" {'selected' if case.status == 'Closed' else ''}>Closed</option>
+                            <option value="Archived" {'selected' if case.status == 'Archived' else ''}>Archived</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="assignee_id">Assigned To</label>
+                        <select id="assignee_id" name="assignee_id">
+                            {assignee_options}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="tags">Tags (comma-separated)</label>
+                        <input type="text" id="tags" name="tags" value="{html.escape(case.tags or '')}" placeholder="e.g., malware, ransomware, data-breach">
+                    </div>
+                    <div style="margin-top: 25px;">
+                        <button type="submit">Save Changes</button>
+                        <button type="button" class="cancel-btn" onclick="window.history.back()">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
+
+def render_template_management(templates):
+    """Render template management page"""
+    sidebar_menu = render_sidebar_menu('templates')
+    
+    # Get flash messages
+    from flask import get_flashed_messages
+    flash_messages_html = ""
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        icon = "⚠️" if category == "warning" else "❌" if category == "error" else "✅"
+        flash_messages_html += f'''
+        <div class="flash-message flash-{category}">
+            <span class="flash-icon">{icon}</span>
+            <span class="flash-text">{message}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        '''
+    
+    # Build template rows
+    import json
+    template_rows = ""
+    for template in templates:
+        status_badge = '<span style="color: #4caf50;">✓ Active</span>' if template.is_active else '<span style="color: #757575;">✗ Inactive</span>'
+        cases_count = len(template.cases) if hasattr(template, 'cases') else 0
+        
+        # Parse checklist
+        try:
+            checklist = json.loads(template.checklist or '[]')
+            checklist_display = f"{len(checklist)} items"
+        except:
+            checklist_display = "0 items"
+        
+        template_rows += f'''
+        <tr>
+            <td>{html.escape(template.name)}</td>
+            <td>{html.escape(template.description or 'N/A')[:50]}...</td>
+            <td><span class="priority-{template.default_priority.lower()}">{template.default_priority}</span></td>
+            <td>{checklist_display}</td>
+            <td>{cases_count}</td>
+            <td>{status_badge}</td>
+            <td>
+                <button onclick="editTemplate({template.id}, '{html.escape(template.name)}', '{html.escape(template.description or '')}', '{template.default_priority}', '{html.escape(template.default_tags or '')}', {json.dumps(template.checklist or '[]')}, {str(template.is_active).lower()})" style="padding: 6px 12px; font-size: 14px;">Edit</button>
+                <button onclick="deleteTemplate({template.id}, '{html.escape(template.name)}')" style="padding: 6px 12px; font-size: 14px; background: linear-gradient(145deg, #f44336, #d32f2f);">Delete</button>
+            </td>
+        </tr>
+        '''
+    
+    if not template_rows:
+        template_rows = '<tr><td colspan="7" style="text-align: center; padding: 40px;">No templates found. Create your first template to get started.</td></tr>'
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Case Templates - caseScope {APP_VERSION}</title>
+        <style>
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                display: flex;
+                min-height: 100vh; 
+            }}
+            .sidebar {{ 
+                width: 280px; 
+                background: linear-gradient(145deg, #303f9f, #283593); 
+                padding: 20px; 
+                box-shadow: 
+                    5px 0 20px rgba(0,0,0,0.4),
+                    inset -1px 0 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+            }}
+            .main-content {{ flex: 1; padding: 30px; overflow-y: auto; }}
+            .sidebar-logo {{
+                text-align: center;
+                font-size: 2.2em;
+                font-weight: bold;
+                margin-bottom: 5px;
+                padding: 5px;
+            }}
+            .version-badge {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 4px 12px;
+                border-radius: 12px;
+                font-size: 0.75em;
+                display: inline-block;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                margin-top: 5px;
+            }}
+            .menu-title {{
+                color: rgba(255,255,255,0.6);
+                font-size: 0.85em;
+                font-weight: 600;
+                text-transform: uppercase;
+                margin: 15px 0 8px 0;
+                letter-spacing: 1px;
+            }}
+            .menu-item {{
+                display: block;
+                padding: 10px 15px;
+                margin: 4px 0;
+                background: rgba(255,255,255,0.05);
+                border-radius: 8px;
+                color: white;
+                text-decoration: none;
+                transition: all 0.3s;
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .menu-item:hover {{
+                background: rgba(255,255,255,0.15);
+                transform: translateX(5px);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            }}
+            .menu-item.active {{
+                background: linear-gradient(145deg, #1e88e5, #1976d2);
+                border-color: rgba(255,255,255,0.2);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            }}
+            .menu-item.placeholder {{
+                opacity: 0.5;
+                cursor: not-allowed;
+            }}
+            .flash-message {{
+                padding: 12px 16px;
+                border-radius: 8px;
+                margin-bottom: 15px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            }}
+            .flash-success {{ background: linear-gradient(145deg, #4caf50, #388e3c); }}
+            .flash-error {{ background: linear-gradient(145deg, #f44336, #d32f2f); }}
+            .flash-warning {{ background: linear-gradient(145deg, #ff9800, #f57c00); }}
+            .flash-close {{
+                margin-left: auto;
+                background: none;
+                border: none;
+                color: white;
+                cursor: pointer;
+                font-size: 24px;
+                line-height: 1;
+            }}
+            h1 {{ margin-top: 0; font-weight: 300; }}
+            table {{
+                width: 100%;
+                border-collapse: separate;
+                border-spacing: 0;
+                margin-top: 20px;
+                background: rgba(255,255,255,0.05);
+                border-radius: 10px;
+                overflow: hidden;
+            }}
+            thead {{
+                background: linear-gradient(145deg, #1e88e5, #1976d2);
+            }}
+            th {{
+                padding: 12px;
+                text-align: left;
+                font-weight: 600;
+                background: transparent;
+                color: white;
+                border-bottom: 2px solid rgba(255,255,255,0.2);
+            }}
+            td {{
+                padding: 12px;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }}
+            tr:hover {{
+                background: rgba(255,255,255,0.08);
+            }}
+            .priority-low {{ color: #81c784; }}
+            .priority-medium {{ color: #ffb74d; }}
+            .priority-high {{ color: #ff8a65; }}
+            .priority-critical {{ color: #e57373; }}
+            button {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: 500;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+                transition: all 0.2s;
+                margin-right: 5px;
+            }}
+            button:hover {{
+                transform: translateY(-1px);
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            }}
+            .modal {{
+                display: none;
+                position: fixed;
+                z-index: 1000;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0,0,0,0.7);
+            }}
+            .modal-content {{
+                background: linear-gradient(145deg, #283593, #1e88e5);
+                margin: 5% auto;
+                padding: 30px;
+                border-radius: 15px;
+                width: 80%;
+                max-width: 600px;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            }}
+            .close {{
+                color: white;
+                float: right;
+                font-size: 28px;
+                font-weight: bold;
+                cursor: pointer;
+            }}
+            .form-group {{ margin-bottom: 15px; }}
+            label {{ display: block; margin-bottom: 5px; font-weight: 500; }}
+            input, textarea, select {{
+                width: 100%;
+                padding: 10px;
+                border: none;
+                border-radius: 6px;
+                background: rgba(255,255,255,0.1);
+                color: white;
+                font-size: 14px;
+                box-sizing: border-box;
+            }}
+            textarea {{ resize: vertical; min-height: 80px; }}
+        </style>
+    </head>
+    <body>
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                📁 caseScope
+                <div class="version-badge">v{APP_VERSION}</div>
+            </div>
+            {sidebar_menu}
+        </div>
+        <div class="main-content">
+            {flash_messages_html}
+            <h1>Case Templates</h1>
+            <button onclick="showCreateModal()" style="margin-bottom: 20px;">+ Create New Template</button>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Template Name</th>
+                        <th>Description</th>
+                        <th>Default Priority</th>
+                        <th>Checklist</th>
+                        <th>Cases Using</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {template_rows}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Create Template Modal -->
+        <div id="createModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal('createModal')">&times;</span>
+                <h2>Create New Template</h2>
+                <form id="createForm" onsubmit="createTemplate(event)">
+                    <div class="form-group">
+                        <label>Template Name *</label>
+                        <input type="text" name="name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea name="description"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Default Priority</label>
+                        <select name="default_priority">
+                            <option value="Low">Low</option>
+                            <option value="Medium" selected>Medium</option>
+                            <option value="High">High</option>
+                            <option value="Critical">Critical</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Default Tags (comma-separated)</label>
+                        <input type="text" name="default_tags">
+                    </div>
+                    <div class="form-group">
+                        <label>Checklist (one item per line)</label>
+                        <textarea name="checklist" rows="6"></textarea>
+                    </div>
+                    <button type="submit">Create Template</button>
+                    <button type="button" onclick="closeModal('createModal')" style="background: linear-gradient(145deg, #757575, #616161);">Cancel</button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Edit Template Modal -->
+        <div id="editModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal('editModal')">&times;</span>
+                <h2>Edit Template</h2>
+                <form id="editForm" onsubmit="updateTemplate(event)">
+                    <input type="hidden" name="template_id" id="edit_template_id">
+                    <div class="form-group">
+                        <label>Template Name *</label>
+                        <input type="text" name="name" id="edit_name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea name="description" id="edit_description"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Default Priority</label>
+                        <select name="default_priority" id="edit_priority">
+                            <option value="Low">Low</option>
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+                            <option value="Critical">Critical</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Default Tags (comma-separated)</label>
+                        <input type="text" name="default_tags" id="edit_tags">
+                    </div>
+                    <div class="form-group">
+                        <label>Checklist (one item per line)</label>
+                        <textarea name="checklist" id="edit_checklist" rows="6"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" name="is_active" id="edit_is_active" value="true" checked>
+                            Active
+                        </label>
+                    </div>
+                    <button type="submit">Save Changes</button>
+                    <button type="button" onclick="closeModal('editModal')" style="background: linear-gradient(145deg, #757575, #616161);">Cancel</button>
+                </form>
+            </div>
+        </div>
+        
+        <script>
+            function showCreateModal() {{
+                document.getElementById('createModal').style.display = 'block';
+            }}
+            
+            function closeModal(modalId) {{
+                document.getElementById(modalId).style.display = 'none';
+            }}
+            
+            function editTemplate(id, name, description, priority, tags, checklist, isActive) {{
+                document.getElementById('edit_template_id').value = id;
+                document.getElementById('edit_name').value = name;
+                document.getElementById('edit_description').value = description;
+                document.getElementById('edit_priority').value = priority;
+                document.getElementById('edit_tags').value = tags;
+                
+                // Parse checklist JSON and convert to newline-separated
+                try {{
+                    const items = JSON.parse(checklist);
+                    document.getElementById('edit_checklist').value = items.join('\\n');
+                }} catch (e) {{
+                    document.getElementById('edit_checklist').value = '';
+                }}
+                
+                document.getElementById('edit_is_active').checked = isActive;
+                document.getElementById('editModal').style.display = 'block';
+            }}
+            
+            function createTemplate(e) {{
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                
+                fetch('/templates/create', {{
+                    method: 'POST',
+                    body: formData
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) {{
+                        location.reload();
+                    }} else {{
+                        alert('Error: ' + data.message);
+                    }}
+                }})
+                .catch(error => {{
+                    alert('Error creating template: ' + error);
+                }});
+            }}
+            
+            function updateTemplate(e) {{
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const templateId = formData.get('template_id');
+                
+                fetch('/templates/edit/' + templateId, {{
+                    method: 'POST',
+                    body: formData
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) {{
+                        location.reload();
+                    }} else {{
+                        alert('Error: ' + data.message);
+                    }}
+                }})
+                .catch(error => {{
+                    alert('Error updating template: ' + error);
+                }});
+            }}
+            
+            function deleteTemplate(id, name) {{
+                if (confirm('Are you sure you want to delete template "' + name + '"? This action cannot be undone.')) {{
+                    fetch('/templates/delete/' + id, {{
+                        method: 'POST'
+                    }})
+                    .then(response => response.json())
+                    .then(data => {{
+                        if (data.success) {{
+                            location.reload();
+                        }} else {{
+                            alert('Error: ' + data.message);
+                        }}
+                    }})
+                    .catch(error => {{
+                        alert('Error deleting template: ' + error);
+                    }});
+                }}
+            }}
+        </script>
+    </body>
+    </html>
+    '''
 
 if __name__ == '__main__':
     print("Starting caseScope 7.1 application...")
