@@ -1675,7 +1675,7 @@ def search():
                         end_time = dt.fromisoformat(custom_end) if custom_end else now
                         filters.append({
                             "range": {
-                                "System_TimeCreated_@SystemTime": {
+                                "System_TimeCreated_SystemTime": {
                                     "gte": start_time.isoformat(),
                                     "lte": end_time.isoformat()
                                 }
@@ -1686,7 +1686,7 @@ def search():
                     if start_time:
                         filters.append({
                             "range": {
-                                "System_TimeCreated_@SystemTime": {
+                                "System_TimeCreated_SystemTime": {
                                     "gte": start_time.isoformat()
                                 }
                             }
