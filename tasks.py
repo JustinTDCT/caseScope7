@@ -289,7 +289,7 @@ def enrich_events_with_detections(index_name, detections_by_record_number, file_
                         logger.error(f"Update error: {item['update']['error']}")
                 logger.warning(f"Full response: {response}")
             else:
-                logger.info(f"✓ Successfully enriched {len(detections_by_event)} events")
+                logger.info(f"✓ Successfully enriched {len(detections_by_record_number)} events")
         except Exception as e:
             logger.error(f"Failed to enrich events: {e}")
             raise
