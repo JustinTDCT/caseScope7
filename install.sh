@@ -793,14 +793,14 @@ copy_application() {
     elif [ -f "$SCRIPT_DIR/../main.py" ]; then
         APP_SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
         log "Found application files in script parent directory: $APP_SOURCE_DIR"
-    # Priority 5: Check if user has a casescope directory (common git clone location)
-    elif [ -d "/home/jdube/caseScope7" ] && [ -f "/home/jdube/caseScope7/main.py" ]; then
-        APP_SOURCE_DIR="/home/jdube/caseScope7"
-        log "Found application files in user caseScope7 directory: $APP_SOURCE_DIR"
-    # Priority 5.5: Check other common casescope directory names
-    elif [ -d "/home/jdube/casescope" ] && [ -f "/home/jdube/casescope/main.py" ]; then
-        APP_SOURCE_DIR="/home/jdube/casescope"
-        log "Found application files in user casescope directory: $APP_SOURCE_DIR"
+    # Priority 5: Check for caseScope7 directory in any home directory
+    elif [ -d "/home/*/caseScope7" ] && [ -f "/home/*/caseScope7/main.py" ]; then
+        APP_SOURCE_DIR="$(dirname $(ls /home/*/caseScope7/main.py | head -1))"
+        log "Found application files in caseScope7 directory: $APP_SOURCE_DIR"
+    # Priority 5.5: Check for casescope directory in any home directory
+    elif [ -d "/home/*/casescope" ] && [ -f "/home/*/casescope/main.py" ]; then
+        APP_SOURCE_DIR="$(dirname $(ls /home/*/casescope/main.py | head -1))"
+        log "Found application files in casescope directory: $APP_SOURCE_DIR"
     # Priority 6: Search broadly for casescope directories
     elif [ -f "/home/*/casescope*/main.py" ]; then
         APP_SOURCE_DIR="$(dirname $(ls /home/*/casescope*/main.py | head -1))"
@@ -820,7 +820,7 @@ copy_application() {
         ls -la "$SCRIPT_DIR"
         log_error ""
         log_error "SOLUTION:"
-        log_error "Ensure you're running: cd /home/jdube/caseScope7 && sudo ./install.sh"
+        log_error "Ensure you're running: cd caseScope7 && sudo ./install.sh"
         log_error "Current command appears to be running from: $CURRENT_DIR"
         exit 1
     fi
