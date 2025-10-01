@@ -1567,7 +1567,7 @@ def dashboard():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>caseScope 7.1 - Dashboard</title>
+        <title>caseScope 7.2 - Dashboard</title>
         <style>
             body {{ 
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
@@ -1807,9 +1807,10 @@ def dashboard():
                     <div class="tile">
                         <h3>🚀 Active Features</h3>
                         <p><span class="status operational">✓ Case Management</span></p>
-                        <p><span class="status operational">✓ File Upload & Indexing</span></p>
+                        <p><span class="status operational">✓ File Upload & Indexing (EVTX)</span></p>
                         <p><span class="status operational">✓ Event Search (100+ Event IDs)</span></p>
-                        <p><span class="status placeholder">⏳ SIGMA Rule Processing</span></p>
+                        <p><span class="status operational">✓ SIGMA Rule Processing (Chainsaw)</span></p>
+                        <p><span class="status operational">✓ Real-time Progress Tracking</span></p>
                     </div>
                 </div>
                 
@@ -1827,10 +1828,10 @@ def dashboard():
                 </div>
                 
                 <div class="success-banner">
-                    <h3>🎉 caseScope 7.1 Operational!</h3>
-                    <p>✓ All core services running | ✓ {total_cases:,} case(s) | ✓ {total_files:,} file(s) uploaded | ✓ {total_events:,} events indexed</p>
-                    <p><strong>Active Features:</strong> Case Management, Multi-File Upload (5 files × 3GB), EVTX Indexing, Event Search (100+ Event IDs), Real-time Progress Tracking</p>
-                    <p><strong>Quick Actions:</strong> <a href="/case/select" style="color: #4caf50;">→ Select a case</a> | <a href="/upload" style="color: #4caf50;">→ Upload files</a> | <a href="/search" style="color: #4caf50;">→ Search events</a></p>
+                    <h3>🎉 caseScope 7.2 Operational!</h3>
+                    <p>✓ All core services running | ✓ {total_cases:,} case(s) | ✓ {total_files:,} file(s) uploaded | ✓ {total_events:,} events indexed | ✓ {total_violations:,} SIGMA violations detected</p>
+                    <p><strong>Active Features:</strong> Case Management, Multi-File Upload (5 files × 3GB), EVTX Indexing with Event Type Descriptions, Advanced Event Search (100+ Event IDs), SIGMA Rule Processing (3000+ rules via Chainsaw v2.12.2), Real-time Progress Tracking, Violation Detection & Filtering</p>
+                    <p><strong>Quick Actions:</strong> <a href="/case/select" style="color: #4caf50;">→ Select a case</a> | <a href="/upload" style="color: #4caf50;">→ Upload files</a> | <a href="/search" style="color: #4caf50;">→ Search events</a> | <a href="/sigma-rules" style="color: #4caf50;">→ Manage SIGMA rules</a></p>
                 </div>
             </div>
         </div>
