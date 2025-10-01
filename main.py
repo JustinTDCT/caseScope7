@@ -5274,8 +5274,10 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                         <p><strong>Indexed Files:</strong> {indexed_files:,}</p>
                         <p><strong>Searchable:</strong> {'Yes' if indexed_files > 0 else 'No files indexed yet'}</p>
                         <p><strong>Event IDs:</strong> 100+ Mapped</p>
-                        <a href="/search" class="btn btn-secondary">Search Events</a>
-                        <button onclick="reindexAllFiles()" class="btn" style="background: linear-gradient(145deg, #2196f3, #1976d2); margin-top: 10px;">🔄 Re-index All Files</button>
+                        <div style="margin-top: 15px;">
+                            <a href="/search" class="btn btn-secondary" style="margin: 5px;">Search Events</a>
+                            <button onclick="reindexAllFiles()" class="btn" style="background: linear-gradient(145deg, #2196f3, #1976d2); box-shadow: 0 4px 8px rgba(33,150,243,0.3); margin: 5px; border: none; cursor: pointer; font-weight: 600;">🔄 Re-index All Files</button>
+                        </div>
                     </div>
                     <div class="tile">
                         <h3>🛡️ SIGMA Rules</h3>
@@ -5283,7 +5285,9 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                         <p><strong>Files Scanned:</strong> {indexed_files:,}</p>
                         <p><strong>Rule Database:</strong> Coming Soon</p>
                         <p><strong>Auto-Processing:</strong> In Development</p>
-                        <button onclick="rerunAllRules()" class="btn" style="background: linear-gradient(145deg, #ff9800, #f57c00);">⚡ Re-run All Rules</button>
+                        <div style="margin-top: 15px;">
+                            <button onclick="rerunAllRules()" class="btn" style="background: linear-gradient(145deg, #ff9800, #f57c00); box-shadow: 0 4px 8px rgba(255,152,0,0.3); border: none; cursor: pointer; font-weight: 600;">⚡ Re-run All Rules</button>
+                        </div>
                     </div>
                 </div>
                 
