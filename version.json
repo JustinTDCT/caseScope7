@@ -1,7 +1,7 @@
 {
-  "version": "7.8.0",
+  "version": "7.8.1",
   "release_date": "2025-10-01",
-  "description": "Feature - File Management; /file-management route shows all files across all cases; table columns: Select checkbox, Filename, Case (clickable), Uploaded, Size, Uploader, Status, Events, Violations, Actions; client-side filtering by filename/case/status with search box and dropdowns; bulk actions: Re-index Selected, Re-run Rules on Selected, Delete Selected (admin only); Select All checkbox respects active filters; individual file actions match list files page; audit logging; enabled File Management menu item",
+  "description": "Bugfix - Fixed installer SCRIPT_DIR detection failing when run from /tmp; improved path detection with fallback methods; changed home directory search from glob patterns to for loop iteration; added caseScope7_cursor to search paths; fixes 'Cannot locate application files' error on Option 1 installs",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -159,6 +159,7 @@
     "7.7.3": "Critical Redesign - Removed template functionality; Case Management now lists all cases with edit/close/archive/reopen actions; table shows Case Number, Name, Priority, Status, Assigned To, Tags, Files, Created, Actions; consistent UI matching other pages; route changed from /templates to /case-management",
     "7.7.4": "UI Consistency Fix - Rewrote render_case_management to match files list page structure; added header section with page title and user/logout; proper sidebar styling matching other pages; consistent table styling with file-table class; all render-based matching codebase pattern",
     "7.7.5": "UI Fix - Exact match to files list: logo uses .case/.scope classes with green/white colors; logout as link not form button; h1 in content section; all CSS copied from files list including text-shadow, inset box-shadow, placeholder hover states",
-    "7.8.0": "Feature - File Management; /file-management route shows all files across all cases; table columns: Select checkbox, Filename, Case (clickable), Uploaded, Size, Uploader, Status, Events, Violations, Actions; client-side filtering by filename/case/status with search box and dropdowns; bulk actions: Re-index Selected, Re-run Rules on Selected, Delete Selected (admin only); Select All checkbox respects active filters; individual file actions match list files page; audit logging; enabled File Management menu item"
+    "7.8.0": "Feature - File Management; /file-management route shows all files across all cases; table columns: Select checkbox, Filename, Case (clickable), Uploaded, Size, Uploader, Status, Events, Violations, Actions; client-side filtering by filename/case/status with search box and dropdowns; bulk actions: Re-index Selected, Re-run Rules on Selected, Delete Selected (admin only); Select All checkbox respects active filters; individual file actions match list files page; audit logging; enabled File Management menu item",
+    "7.8.1": "Bugfix - Fixed installer SCRIPT_DIR detection failing when run from /tmp; improved path detection with fallback methods; changed home directory search from glob patterns to for loop iteration; added caseScope7_cursor to search paths; fixes 'Cannot locate application files' error on Option 1 installs"
   }
 }

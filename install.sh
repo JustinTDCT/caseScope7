@@ -764,7 +764,7 @@ copy_application() {
     log "Copying application files..."
     
     # Get the directory where the install script is located and current working directory
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || dirname "$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")")"
     CURRENT_DIR="$(pwd)"
     
     log "Script directory: $SCRIPT_DIR"
@@ -793,19 +793,27 @@ copy_application() {
     elif [ -f "$SCRIPT_DIR/../main.py" ]; then
         APP_SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
         log "Found application files in script parent directory: $APP_SOURCE_DIR"
-    # Priority 5: Check for caseScope7 directory in any home directory
-    elif [ -d "/home/*/caseScope7" ] && [ -f "/home/*/caseScope7/main.py" ]; then
-        APP_SOURCE_DIR="$(dirname $(ls /home/*/caseScope7/main.py | head -1))"
-        log "Found application files in caseScope7 directory: $APP_SOURCE_DIR"
-    # Priority 5.5: Check for casescope directory in any home directory
-    elif [ -d "/home/*/casescope" ] && [ -f "/home/*/casescope/main.py" ]; then
-        APP_SOURCE_DIR="$(dirname $(ls /home/*/casescope/main.py | head -1))"
-        log "Found application files in casescope directory: $APP_SOURCE_DIR"
-    # Priority 6: Search broadly for casescope directories
-    elif [ -f "/home/*/casescope*/main.py" ]; then
-        APP_SOURCE_DIR="$(dirname $(ls /home/*/casescope*/main.py | head -1))"
-        log "Found application files in user directory: $APP_SOURCE_DIR"
+    # Priority 5: Search for main.py in common home directories
     else
+        for homedir in /home/*; do
+            if [ -f "$homedir/caseScope7/main.py" ]; then
+                APP_SOURCE_DIR="$homedir/caseScope7"
+                log "Found application files in: $APP_SOURCE_DIR"
+                break
+            elif [ -f "$homedir/casescope/main.py" ]; then
+                APP_SOURCE_DIR="$homedir/casescope"
+                log "Found application files in: $APP_SOURCE_DIR"
+                break
+            elif [ -f "$homedir/caseScope7_cursor/main.py" ]; then
+                APP_SOURCE_DIR="$homedir/caseScope7_cursor"
+                log "Found application files in: $APP_SOURCE_DIR"
+                break
+            fi
+        done
+    fi
+    
+    # If still not found, error out
+    if [ -z "$APP_SOURCE_DIR" ]; then
         log_error "Cannot locate application files (main.py, requirements.txt, etc.)"
         log_error ""
         log_error "DEBUGGING INFORMATION:"
