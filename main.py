@@ -2339,7 +2339,7 @@ def render_sidebar_menu(active_page=''):
 <a href="/violations" class="menu-item {'active' if active_page == 'violations' else ''}">🚨 SIGMA Violations</a>
 
 <h3 class="menu-title">Management</h3>
-<a href="/templates" class="menu-item {'active' if active_page == 'templates' else ''}">📋 Case Templates</a>
+<a href="/templates" class="menu-item {'active' if active_page == 'templates' else ''}">⚙️ Case Management</a>
 <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
 <a href="/users" class="menu-item {'active' if active_page == 'user_management' else ''}">👥 User Management</a>
 <a href="/audit-log" class="menu-item {'active' if active_page == 'audit_log' else ''}">📜 Audit Log</a>
@@ -7645,7 +7645,7 @@ def render_template_management(templates):
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Case Templates - caseScope {APP_VERSION}</title>
+        <title>Case Management - caseScope {APP_VERSION}</title>
         <style>
             body {{ 
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
@@ -7836,7 +7836,7 @@ def render_template_management(templates):
         </div>
         <div class="main-content">
             {flash_messages_html}
-            <h1>Case Templates</h1>
+            <h1>Case Management - Templates</h1>
             <button onclick="showCreateModal()" style="margin-bottom: 20px;">+ Create New Template</button>
             
             <table>
