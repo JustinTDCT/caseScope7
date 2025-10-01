@@ -83,6 +83,20 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
 
+class AuditLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # Null for failed logins
+    username = db.Column(db.String(80))  # Store username even if user deleted
+    action = db.Column(db.String(100), nullable=False)  # login, logout, upload, delete, search, etc.
+    category = db.Column(db.String(50), nullable=False)  # authentication, file_operation, search, admin
+    details = db.Column(db.Text)  # JSON string with additional details
+    ip_address = db.Column(db.String(45))  # IPv4 or IPv6
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    success = db.Column(db.Boolean, default=True)  # For tracking failed operations
+    
+    # Relationship
+    user = db.relationship('User', backref='audit_logs')
+
 class Case(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
@@ -196,6 +210,25 @@ class SigmaViolation(db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
+
+# Audit logging helper
+def log_audit(action, category, details=None, success=True, username=None):
+    """Log an audit event"""
+    try:
+        audit = AuditLog(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            username=username or (current_user.username if current_user.is_authenticated else 'Anonymous'),
+            action=action,
+            category=category,
+            details=details,
+            ip_address=request.remote_addr,
+            success=success
+        )
+        db.session.add(audit)
+        db.session.commit()
+    except Exception as e:
+        print(f"[Audit Log] Error logging {action}: {e}")
+        db.session.rollback()
 
 # Routes
 @app.route('/')
@@ -429,6 +462,7 @@ def upload_files():
         if success_count > 0:
             try:
                 db.session.commit()
+                log_audit('file_upload', 'file_operation', f'Uploaded {success_count} file(s) to case {case.name}')
                 
                 # Trigger background indexing for each uploaded file
                 try:
@@ -810,6 +844,7 @@ def create_user():
         db.session.add(new_user)
         db.session.commit()
         
+        log_audit('user_created', 'admin', f'Created user {username} with role {role}')
         flash(f'User "{username}" created successfully.', 'success')
         print(f"[User Management] Created user: {username} (role: {role}) by {current_user.username}")
         
@@ -867,6 +902,7 @@ def edit_user(user_id):
         
         db.session.commit()
         
+        log_audit('user_updated', 'admin', f'Updated user {user.username}: role={role}, active={is_active}, password_changed={bool(new_password)}')
         flash(f'User "{user.username}" updated successfully.', 'success')
         print(f"[User Management] Updated user: {user.username} by {current_user.username}")
         
@@ -903,9 +939,11 @@ def delete_user(user_id):
     
     try:
         username = user.username
+        user_role = user.role
         db.session.delete(user)
         db.session.commit()
         
+        log_audit('user_deleted', 'admin', f'Deleted user {username} (role: {user_role})')
         flash(f'User "{username}" deleted successfully.', 'success')
         print(f"[User Management] Deleted user: {username} by {current_user.username}")
         
@@ -915,6 +953,46 @@ def delete_user(user_id):
         print(f"[User Management] Error deleting user: {e}")
     
     return redirect(url_for('user_management'))
+
+@app.route('/audit-log', methods=['GET'])
+@login_required
+def audit_log():
+    """View audit log (admin only)"""
+    if current_user.role != 'administrator':
+        flash('Access denied. Administrator privileges required.', 'error')
+        return redirect(url_for('dashboard'))
+    
+    # Get filter parameters
+    category_filter = request.args.get('category', 'all')
+    user_filter = request.args.get('user', 'all')
+    success_filter = request.args.get('success', 'all')
+    page = int(request.args.get('page', 1))
+    per_page = 50
+    
+    # Build query
+    query = AuditLog.query
+    
+    if category_filter != 'all':
+        query = query.filter_by(category=category_filter)
+    
+    if user_filter != 'all':
+        query = query.filter_by(username=user_filter)
+    
+    if success_filter == 'success':
+        query = query.filter_by(success=True)
+    elif success_filter == 'failure':
+        query = query.filter_by(success=False)
+    
+    # Get paginated results
+    logs_paginated = query.order_by(AuditLog.timestamp.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    
+    # Get distinct users for filter
+    all_users = db.session.query(AuditLog.username).distinct().order_by(AuditLog.username).all()
+    all_users = [u[0] for u in all_users if u[0]]
+    
+    return render_audit_log(logs_paginated, category_filter, user_filter, success_filter, all_users, page, per_page)
 
 @app.route('/violations', methods=['GET'])
 @login_required
@@ -1083,6 +1161,7 @@ def search():
                 )
                 
                 total_hits = response['hits']['total']['value']
+                log_audit('search', 'search', f'Searched case {case.name} for "{query_str}" - {total_hits} results')
                 
                 for hit in response['hits']['hits']:
                     source = hit['_source']
@@ -1584,6 +1663,7 @@ def render_sidebar_menu(active_page=''):
 <a href="/case-management" class="menu-item placeholder">⚙️ Case Management (Coming Soon)</a>
 <a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
 <a href="/users" class="menu-item {'active' if active_page == 'user_management' else ''}">👥 User Management</a>
+<a href="/audit-log" class="menu-item {'active' if active_page == 'audit_log' else ''}">📜 Audit Log</a>
 <a href="/sigma-rules" class="menu-item {'active' if active_page == 'sigma_rules' else ''}">📋 SIGMA Rules</a>
 <a href="/update-event-ids" class="menu-item" onclick="return confirm('Updating Event IDs will add new event descriptions. After updating, you should Re-index all files to apply the new descriptions. Continue?')">🔄 Update Event ID Database</a>
     '''
@@ -1669,15 +1749,18 @@ def login():
                 if password_valid and user.is_active:
                     login_user(user)
                     print(f"DEBUG: User logged in successfully")
+                    log_audit('login', 'authentication', f'User {username} logged in successfully')
                     if user.force_password_change:
                         flash('You must change your password before continuing.', 'warning')
                         return redirect(url_for('change_password'))
                     return redirect(url_for('dashboard'))
                 else:
                     print(f"DEBUG: Login failed - Password valid: {password_valid}, User active: {user.is_active}")
+                    log_audit('login_failed', 'authentication', f'Failed login attempt for {username}', success=False, username=username)
                     flash('Invalid username or password.', 'error')
             else:
                 print(f"DEBUG: No user found with username: '{username}'")
+                log_audit('login_failed', 'authentication', f'Failed login attempt for non-existent user {username}', success=False, username=username)
                 # List all users for debugging
                 all_users = User.query.all()
                 print(f"DEBUG: All users in database: {[u.username for u in all_users]}")
@@ -1838,6 +1921,7 @@ def login():
 @app.route('/logout')
 @login_required
 def logout():
+    log_audit('logout', 'authentication', f'User {current_user.username} logged out')
     logout_user()
     flash('You have been logged out.', 'info')
     return redirect(url_for('login'))
@@ -3298,6 +3382,183 @@ def render_file_list(case, files):
                 }});
             }}
         </script>
+    </body>
+    </html>
+    '''
+
+def render_audit_log(logs_paginated, category_filter, user_filter, success_filter, all_users, page, per_page):
+    """Render audit log page"""
+    from flask import get_flashed_messages
+    flash_messages_html = ""
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        icon = "⚠️" if category == "warning" else "❌" if category == "error" else "✅"
+        flash_messages_html += f'''
+        <div class="flash-message flash-{category}">
+            <span class="flash-icon">{icon}</span>
+            <span class="flash-text">{message}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        '''
+    
+    # Build log rows
+    log_rows = ""
+    for log in logs_paginated.items:
+        status_class = "success" if log.success else "failed"
+        status_icon = "✓" if log.success else "✗"
+        category_colors = {
+            'authentication': '#2196f3',
+            'file_operation': '#ff9800',
+            'search': '#9c27b0',
+            'admin': '#f44336'
+        }
+        category_color = category_colors.get(log.category, '#666')
+        
+        log_rows += f'''
+        <tr>
+            <td>{log.timestamp.strftime('%Y-%m-%d %H:%M:%S')}</td>
+            <td>{log.username or 'Anonymous'}</td>
+            <td>{log.ip_address or 'N/A'}</td>
+            <td><span class="role-badge" style="background: {category_color};">{log.category.replace('_', ' ').title()}</span></td>
+            <td>{log.action.replace('_', ' ').title()}</td>
+            <td>{log.details or ''}</td>
+            <td><span class="status-badge status-{status_class}">{status_icon}</span></td>
+        </tr>
+        '''
+    
+    if not log_rows:
+        log_rows = '<tr><td colspan="7" style="text-align: center; padding: 40px;">No audit logs found</td></tr>'
+    
+    # Build user filter options
+    user_options = '<option value="all">All Users</option>'
+    for user in all_users:
+        selected = 'selected' if user == user_filter else ''
+        user_options += f'<option value="{user}" {selected}>{user}</option>'
+    
+    # Pagination
+    has_prev = logs_paginated.has_prev
+    has_next = logs_paginated.has_next
+    prev_url = f"/audit-log?category={category_filter}&user={user_filter}&success={success_filter}&page={page-1}" if has_prev else "#"
+    next_url = f"/audit-log?category={category_filter}&user={user_filter}&success={success_filter}&page={page+1}" if has_next else "#"
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Audit Log - caseScope 7.3</title>
+        <style>
+            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); color: white; margin: 0; display: flex; min-height: 100vh; }}
+            .sidebar {{ width: 280px; background: linear-gradient(145deg, #303f9f, #283593); padding: 20px; box-shadow: 5px 0 20px rgba(0,0,0,0.4), inset -1px 0 0 rgba(255,255,255,0.1); }}
+            .main-content {{ flex: 1; }}
+            .header {{ background: linear-gradient(145deg, #283593, #1e88e5); padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.3); min-height: 60px; }}
+            .sidebar-logo {{ text-align: center; font-size: 2.2em; font-weight: 300; margin-bottom: 15px; padding: 5px 0 8px 0; border-bottom: 1px solid rgba(76,175,80,0.3); }}
+            .sidebar-logo .case {{ color: #4caf50; }}
+            .sidebar-logo .scope {{ color: white; }}
+            .version-badge {{ font-size: 0.4em; background: linear-gradient(145deg, #4caf50, #388e3c); color: white; padding: 3px 6px; border-radius: 6px; margin-top: 5px; display: inline-block; }}
+            .content {{ padding: 30px; }}
+            .menu-item {{ display: block; color: white; text-decoration: none; padding: 12px 16px; margin: 6px 0; border-radius: 12px; background: linear-gradient(145deg, #3949ab, #283593); box-shadow: 0 4px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1); transition: all 0.3s ease; border: 1px solid rgba(255,255,255,0.1); font-size: 0.95em; }}
+            .menu-item:hover {{ background: linear-gradient(145deg, #5c6bc0, #3949ab); transform: translateX(5px); }}
+            .menu-item.active {{ background: linear-gradient(145deg, #4caf50, #388e3c); }}
+            .menu-item.placeholder {{ background: linear-gradient(145deg, #424242, #2e2e2e); color: #aaa; cursor: not-allowed; opacity: 0.7; }}
+            .menu-title {{ font-size: 1.1em; margin: 15px 0 8px 0; color: #4caf50; border-bottom: 1px solid rgba(76,175,80,0.3); padding-bottom: 4px; }}
+            .logout-btn {{ background: linear-gradient(145deg, #f44336, #d32f2f); color: white !important; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 500; box-shadow: 0 4px 8px rgba(244,67,54,0.3); }}
+            .flash-message {{ padding: 15px 20px; margin: 20px 0; border-radius: 12px; display: flex; align-items: center; gap: 12px; animation: slideIn 0.3s ease; }}
+            .flash-success {{ background: linear-gradient(145deg, #4caf50, #388e3c); }}
+            .flash-error {{ background: linear-gradient(145deg, #f44336, #d32f2f); }}
+            .flash-warning {{ background: linear-gradient(145deg, #ff9800, #f57c00); }}
+            .flash-close {{ background: rgba(255,255,255,0.2); border: none; color: white; cursor: pointer; }}
+            @keyframes slideIn {{ from {{ opacity: 0; transform: translateY(-10px); }} to {{ opacity: 1; transform: translateY(0); }} }}
+            
+            table {{ width: 100%; border-collapse: collapse; background: linear-gradient(145deg, #3f51b5, #283593); border-radius: 12px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.3); }}
+            thead {{ background: linear-gradient(145deg, #1e3a8a, #1e40af); }}
+            th {{ background: transparent; padding: 15px; text-align: left; font-weight: 600; color: white; border-bottom: 2px solid rgba(255,255,255,0.2); }}
+            td {{ padding: 15px; border-top: 1px solid rgba(255,255,255,0.1); }}
+            tr:hover {{ background: rgba(255,255,255,0.05); }}
+            
+            .role-badge {{ padding: 4px 12px; border-radius: 6px; font-size: 0.9em; font-weight: 600; display: inline-block; }}
+            .status-badge {{ padding: 4px 12px; border-radius: 6px; font-size: 0.9em; font-weight: 600; }}
+            .status-success {{ background: #4caf50; color: white; }}
+            .status-failed {{ background: #f44336; color: white; }}
+            
+            .filters {{ background: linear-gradient(145deg, #3f51b5, #283593); padding: 20px; border-radius: 12px; margin-bottom: 20px; }}
+            .filters select {{ padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.1); color: white; margin: 0 10px; }}
+            .btn {{ background: linear-gradient(145deg, #4caf50, #388e3c); color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }}
+            .pagination {{ margin-top: 20px; display: flex; justify-content: center; gap: 10px; }}
+            .pagination a {{ background: linear-gradient(145deg, #3949ab, #283593); color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; }}
+            .pagination a:hover {{ background: linear-gradient(145deg, #5c6bc0, #3949ab); }}
+            .pagination a.disabled {{ opacity: 0.5; pointer-events: none; }}
+        </style>
+    </head>
+    <body>
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
+            </div>
+            {render_sidebar_menu('audit_log')}
+        </div>
+        <div class="main-content">
+            <div class="header">
+                <h1>📜 Audit Log</h1>
+                <div>
+                    <span>Welcome, {current_user.username}</span>
+                    <a href="/logout" class="logout-btn">Logout</a>
+                </div>
+            </div>
+            <div class="content">
+                {flash_messages_html}
+                
+                <div class="filters">
+                    <form method="GET">
+                        <label style="margin-right: 10px;">Category:</label>
+                        <select name="category">
+                            <option value="all" {'selected' if category_filter == 'all' else ''}>All Categories</option>
+                            <option value="authentication" {'selected' if category_filter == 'authentication' else ''}>Authentication</option>
+                            <option value="file_operation" {'selected' if category_filter == 'file_operation' else ''}>File Operations</option>
+                            <option value="search" {'selected' if category_filter == 'search' else ''}>Search</option>
+                            <option value="admin" {'selected' if category_filter == 'admin' else ''}>Admin</option>
+                        </select>
+                        
+                        <label style="margin-left: 20px; margin-right: 10px;">User:</label>
+                        <select name="user">
+                            {user_options}
+                        </select>
+                        
+                        <label style="margin-left: 20px; margin-right: 10px;">Status:</label>
+                        <select name="success">
+                            <option value="all" {'selected' if success_filter == 'all' else ''}>All</option>
+                            <option value="success" {'selected' if success_filter == 'success' else ''}>Success</option>
+                            <option value="failure" {'selected' if success_filter == 'failure' else ''}>Failure</option>
+                        </select>
+                        
+                        <button type="submit" class="btn" style="margin-left: 20px;">Filter</button>
+                    </form>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>User</th>
+                            <th>IP Address</th>
+                            <th>Category</th>
+                            <th>Action</th>
+                            <th>Details</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {log_rows}
+                    </tbody>
+                </table>
+                
+                <div class="pagination">
+                    <a href="{prev_url}" class="{'disabled' if not has_prev else ''}">← Previous</a>
+                    <span style="color: white; padding: 10px;">Page {page}</span>
+                    <a href="{next_url}" class="{'disabled' if not has_next else ''}">Next →</a>
+                </div>
+            </div>
+        </div>
     </body>
     </html>
     '''

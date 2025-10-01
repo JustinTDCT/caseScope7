@@ -1354,6 +1354,17 @@ except Exception as e:
         log "Database preservation: Existing database retained"
         log "Using existing user accounts and settings"
         
+        # Run database migration for audit_log table (v7.4.0)
+        log "Running database migrations..."
+        cd /opt/casescope/app
+        sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_audit_log.py
+        MIGRATION_RESULT=$?
+        if [ $MIGRATION_RESULT -eq 0 ]; then
+            log "✓ Database migrations completed"
+        else
+            log_error "Database migration failed (non-fatal, continuing...)"
+        fi
+        
         # Still run a basic check to ensure database is accessible
         sudo -u casescope /opt/casescope/venv/bin/python3 -c "
 import sys
