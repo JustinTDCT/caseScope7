@@ -5275,6 +5275,7 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                         <p><strong>Searchable:</strong> {'Yes' if indexed_files > 0 else 'No files indexed yet'}</p>
                         <p><strong>Event IDs:</strong> 100+ Mapped</p>
                         <a href="/search" class="btn btn-secondary">Search Events</a>
+                        <button onclick="reindexAllFiles()" class="btn" style="background: linear-gradient(145deg, #2196f3, #1976d2); margin-top: 10px;">🔄 Re-index All Files</button>
                     </div>
                     <div class="tile">
                         <h3>🛡️ SIGMA Rules</h3>
@@ -5282,7 +5283,7 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                         <p><strong>Files Scanned:</strong> {indexed_files:,}</p>
                         <p><strong>Rule Database:</strong> Coming Soon</p>
                         <p><strong>Auto-Processing:</strong> In Development</p>
-                        <a href="/sigma-rules" class="btn btn-secondary">Manage Rules</a>
+                        <button onclick="rerunAllRules()" class="btn" style="background: linear-gradient(145deg, #ff9800, #f57c00);">⚡ Re-run All Rules</button>
                     </div>
                 </div>
                 
@@ -5293,6 +5294,60 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                 </div>
             </div>
         </div>
+        
+        <script>
+            function reindexAllFiles() {{
+                if (!confirm('This will re-index ALL files in this case. Existing events will be removed and re-created. This may take several minutes. Continue?')) {{
+                    return;
+                }}
+                
+                fetch('/api/reindex-all-files', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                    }},
+                    body: JSON.stringify({{ case_id: {case.id} }})
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) {{
+                        alert('Successfully queued ' + data.files_queued + ' file(s) for re-indexing.');
+                        location.reload();
+                    }} else {{
+                        alert('Error: ' + (data.message || 'Failed to queue files for re-indexing'));
+                    }}
+                }})
+                .catch(error => {{
+                    alert('Error: ' + error.message);
+                }});
+            }}
+            
+            function rerunAllRules() {{
+                if (!confirm('This will re-run SIGMA rules on ALL indexed files in this case. This may take several minutes. Continue?')) {{
+                    return;
+                }}
+                
+                fetch('/api/rerun-all-rules', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                    }},
+                    body: JSON.stringify({{ case_id: {case.id} }})
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) {{
+                        alert('Successfully queued ' + data.files_queued + ' file(s) for SIGMA rule processing.');
+                        location.reload();
+                    }} else {{
+                        alert('Error: ' + (data.message || 'Failed to queue files for processing'));
+                    }}
+                }})
+                .catch(error => {{
+                    alert('Error: ' + error.message);
+                }});
+            }}
+        </script>
     </body>
     </html>
     '''
