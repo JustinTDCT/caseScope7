@@ -757,7 +757,7 @@ def search():
                         "bool": {
                             "must": [
                                 base_query,
-                                {"term": {"has_violations": True}}
+                                {"term": {"has_violations": "true"}}
                             ]
                         }
                     }
@@ -827,6 +827,10 @@ def search():
                     # Get event description
                     event_description = get_event_description(event_id, channel, provider, source)
                     
+                    # Get SIGMA violations if present
+                    sigma_violations = source.get('sigma_detections', [])
+                    has_violations = source.get('has_violations', False)
+                    
                     results.append({
                         'index': hit['_index'],
                         'id': hit['_id'],
@@ -838,7 +842,9 @@ def search():
                         'computer': computer,
                         'channel': channel,
                         'provider': provider,
-                        'full_data': source
+                        'full_data': source,
+                        'sigma_violations': sigma_violations,
+                        'has_violations': has_violations
                     })
                 
             except Exception as e:
@@ -2873,7 +2879,7 @@ def render_file_list(case, files):
                     }}
                 }});
                 
-                // Also check for Uploaded/Pending/Counting/Preparing/Running Rules status
+                // Also check for Uploaded/Pending/Counting/Preparing/Indexing/Running Rules status
                 const statusElements = document.querySelectorAll('[id^="status-"]');
                 statusElements.forEach(function(elem) {{
                     const fileId = elem.id.split('-')[1];
@@ -2882,6 +2888,7 @@ def render_file_list(case, files):
                          statusText.includes('Pending') || 
                          statusText.includes('Counting') || 
                          statusText.includes('Preparing') ||
+                         statusText.includes('Indexing') ||
                          statusText.includes('Running Rules')) && 
                         !activeFiles.includes(fileId)) {{
                         activeFiles.push(fileId);
