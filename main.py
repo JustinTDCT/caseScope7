@@ -1149,11 +1149,13 @@ def export_search():
             writer.writerow([timestamp, event_id, event_type, computer, source_file, has_violations, violation_count])
         
         output.seek(0)
-        resp = make_response(output.getvalue())
-        resp.headers['Content-Type'] = 'text/csv'
-        resp.headers['Content-Disposition'] = f'attachment; filename=casescope_search_{case.name.replace(" ", "_")}.csv'
+        csv_data = output.getvalue()
         
         log_audit('export_search', 'file_operation', f'Exported {response["hits"]["total"]["value"]} search results from case {case.name}')
+        
+        resp = make_response(csv_data)
+        resp.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        resp.headers['Content-Disposition'] = f'attachment; filename="casescope_search_{case.name.replace(" ", "_")}.csv"'
         
         return resp
         
