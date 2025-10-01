@@ -1,7 +1,7 @@
 {
-  "version": "7.7.5",
+  "version": "7.8.0",
   "release_date": "2025-10-01",
-  "description": "UI Fix - Exact match to files list: logo uses .case/.scope classes with green/white colors; logout as link not form button; h1 in content section; all CSS copied from files list including text-shadow, inset box-shadow, placeholder hover states",
+  "description": "Feature - File Management; /file-management route shows all files across all cases; table columns: Select checkbox, Filename, Case (clickable), Uploaded, Size, Uploader, Status, Events, Violations, Actions; client-side filtering by filename/case/status with search box and dropdowns; bulk actions: Re-index Selected, Re-run Rules on Selected, Delete Selected (admin only); Select All checkbox respects active filters; individual file actions match list files page; audit logging; enabled File Management menu item",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -158,6 +158,7 @@
     "7.7.2": "UI Fix - Changed menu item from 'Case Templates' to 'Case Management'; changed page title from 'Case Templates' to 'Case Management - Templates'; maintains render-based architecture (no Flask render_template usage)",
     "7.7.3": "Critical Redesign - Removed template functionality; Case Management now lists all cases with edit/close/archive/reopen actions; table shows Case Number, Name, Priority, Status, Assigned To, Tags, Files, Created, Actions; consistent UI matching other pages; route changed from /templates to /case-management",
     "7.7.4": "UI Consistency Fix - Rewrote render_case_management to match files list page structure; added header section with page title and user/logout; proper sidebar styling matching other pages; consistent table styling with file-table class; all render-based matching codebase pattern",
-    "7.7.5": "UI Fix - Exact match to files list: logo uses .case/.scope classes with green/white colors; logout as link not form button; h1 in content section; all CSS copied from files list including text-shadow, inset box-shadow, placeholder hover states"
+    "7.7.5": "UI Fix - Exact match to files list: logo uses .case/.scope classes with green/white colors; logout as link not form button; h1 in content section; all CSS copied from files list including text-shadow, inset box-shadow, placeholder hover states",
+    "7.8.0": "Feature - File Management; /file-management route shows all files across all cases; table columns: Select checkbox, Filename, Case (clickable), Uploaded, Size, Uploader, Status, Events, Violations, Actions; client-side filtering by filename/case/status with search box and dropdowns; bulk actions: Re-index Selected, Re-run Rules on Selected, Delete Selected (admin only); Select All checkbox respects active filters; individual file actions match list files page; audit logging; enabled File Management menu item"
   }
 }

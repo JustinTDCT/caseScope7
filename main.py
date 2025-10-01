@@ -761,6 +761,22 @@ def list_files():
     return render_file_list(case, files)
 
 
+@app.route('/file-management')
+@login_required
+def file_management():
+    """File management page - view and manage all files across all cases"""
+    # Get all files across all cases
+    files = CaseFile.query.filter_by(is_deleted=False).order_by(CaseFile.uploaded_at.desc()).all()
+    
+    # Get all cases for case filter dropdown
+    cases = Case.query.order_by(Case.name).all()
+    
+    # Audit log
+    log_audit('file_management', 'view', 'Viewed file management page', True)
+    
+    return render_file_management(files, cases)
+
+
 @app.route('/file/reindex/<int:file_id>', methods=['POST'])
 @login_required
 def reindex_file(file_id):
@@ -2337,7 +2353,7 @@ def render_sidebar_menu(active_page=''):
 
 <h3 class="menu-title">Management</h3>
 <a href="/case-management" class="menu-item {'active' if active_page == 'case_management' else ''}">⚙️ Case Management</a>
-<a href="/file-management" class="menu-item placeholder">🗂️ File Management (Coming Soon)</a>
+<a href="/file-management" class="menu-item {'active' if active_page == 'file_management' else ''}">🗂️ File Management</a>
 <a href="/users" class="menu-item {'active' if active_page == 'user_management' else ''}">👥 User Management</a>
 <a href="/audit-log" class="menu-item {'active' if active_page == 'audit_log' else ''}">📜 Audit Log</a>
 <a href="/sigma-rules" class="menu-item {'active' if active_page == 'sigma_rules' else ''}">📋 SIGMA Rules</a>
@@ -7936,6 +7952,512 @@ def render_case_management(cases, users):
                     }})
                     .catch(error => {{
                         alert('Error: ' + error);
+                    }});
+                }}
+            }}
+        </script>
+    </body>
+    </html>
+    '''
+
+def render_file_management(files, cases):
+    """Render file management page - matches files list structure"""
+    from flask import get_flashed_messages
+    sidebar_menu = render_sidebar_menu('file_management')
+    
+    # Get flash messages
+    flash_messages_html = ""
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        icon = "⚠️" if category == "warning" else "❌" if category == "error" else "✅"
+        flash_messages_html += f'''
+        <div class="flash-message flash-{category}">
+            <span class="flash-icon">{icon}</span>
+            <span class="flash-text">{message}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        '''
+    
+    # Build file rows
+    file_rows = ""
+    for file in files:
+        file_size_mb = file.file_size / (1024 * 1024)
+        status_class = file.indexing_status.lower().replace(' ', '-')
+        
+        # Status display
+        if file.indexing_status == 'Uploaded':
+            status_display = '<div class="status-text">Preparing...</div>'
+            status_class = 'uploaded'
+        elif file.indexing_status == 'Indexing':
+            current_events = file.event_count or 0
+            estimated = file.estimated_event_count or int((file.file_size / 1048576) * 1000)
+            status_display = f'<div class="status-text">Indexing... ({current_events:,} / {estimated:,} events)</div>'
+            status_class = 'indexing'
+        elif file.indexing_status == 'Running Rules':
+            status_display = '<div class="status-text">Running Rules...</div>'
+            status_class = 'running-rules'
+        elif file.indexing_status == 'Completed':
+            status_display = '<div class="status-text">Completed</div>'
+            status_class = 'completed'
+        elif file.indexing_status == 'Failed':
+            status_display = '<div class="status-text">Failed</div>'
+            status_class = 'failed'
+        else:
+            status_display = f'<div class="status-text">{file.indexing_status}</div>'
+        
+        # Event and violation counts
+        events_display = f'{file.event_count:,}' if file.event_count and file.event_count > 0 else '-'
+        violations_display = f'{file.violation_count:,}' if file.violation_count and file.violation_count > 0 else '-'
+        
+        # Action buttons
+        actions_list = []
+        actions_list.append(f'<button class="btn-action" onclick="reindexFile({file.id})" style="background: linear-gradient(145deg, #2196f3, #1976d2);">🔄 Re-index</button>')
+        
+        if file.is_indexed and file.indexing_status in ['Running Rules', 'Completed', 'Failed']:
+            actions_list.append(f'<button class="btn-action" onclick="rerunRules({file.id})" style="background: linear-gradient(145deg, #ff9800, #f57c00);">⚡ Re-run Rules</button>')
+        
+        if current_user.role == 'administrator':
+            actions_list.append(f'<button class="btn-action" onclick="deleteFile({file.id}, \'{html.escape(file.original_filename)}\')" style="background: linear-gradient(145deg, #f44336, #d32f2f);">🗑️ Delete</button>')
+        
+        actions = '<div style="display: flex; flex-wrap: wrap; gap: 4px;">' + ''.join(actions_list) + '</div>'
+        
+        file_rows += f'''
+        <tr data-case-id="{file.case_id}" data-status="{file.indexing_status}" data-filename="{html.escape(file.original_filename).lower()}">
+            <td><input type="checkbox" class="file-checkbox" value="{file.id}"></td>
+            <td>{html.escape(file.original_filename)}</td>
+            <td><a href="/case/set/{file.case_id}" style="color: white; text-decoration: underline;">{html.escape(file.case.name)}</a></td>
+            <td>{file.uploaded_at.strftime('%Y-%m-%d %H:%M')}</td>
+            <td>{file_size_mb:.2f} MB</td>
+            <td>{file.uploader.username}</td>
+            <td><span class="status-{status_class}">{status_display}</span></td>
+            <td>{events_display}</td>
+            <td>{violations_display}</td>
+            <td>{actions}</td>
+        </tr>
+        '''
+    
+    if not file_rows:
+        file_rows = '<tr><td colspan="10" style="text-align: center; padding: 40px;">No files found.</td></tr>'
+    
+    # Build case filter options
+    case_options = '<option value="">All Cases</option>'
+    for case in cases:
+        case_options += f'<option value="{case.id}">{html.escape(case.name)}</option>'
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>File Management - caseScope {APP_VERSION}</title>
+        <style>
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
+                color: white; 
+                margin: 0; 
+                display: flex; 
+                min-height: 100vh; 
+            }}
+            .sidebar {{ 
+                width: 280px; 
+                background: linear-gradient(145deg, #303f9f, #283593); 
+                padding: 20px; 
+                box-shadow: 
+                    5px 0 20px rgba(0,0,0,0.4),
+                    inset -1px 0 0 rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+            }}
+            .main-content {{ flex: 1; }}
+            .header {{ 
+                background: linear-gradient(145deg, #283593, #1e88e5); 
+                padding: 15px 30px; 
+                display: flex; 
+                justify-content: space-between; 
+                align-items: center;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                min-height: 60px;
+            }}
+            .case-title {{
+                font-size: 1.3em;
+                font-weight: 600;
+            }}
+            .user-info {{ 
+                display: flex; 
+                align-items: center; 
+                gap: 20px;
+                font-size: 1em;
+            }}
+            .logout-btn {{
+                background: linear-gradient(145deg, #f44336, #d32f2f);
+                color: white !important;
+                padding: 8px 16px;
+                border-radius: 8px;
+                text-decoration: none;
+                font-size: 0.9em;
+                font-weight: 500;
+                box-shadow: 0 4px 8px rgba(244,67,54,0.3);
+                border: none;
+                cursor: pointer;
+            }}
+            .sidebar-logo {{
+                text-align: center;
+                font-size: 2.2em;
+                font-weight: 300;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                margin-bottom: 15px;
+                padding: 5px 0 8px 0;
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+            }}
+            .sidebar-logo .case {{ color: #4caf50; }}
+            .sidebar-logo .scope {{ color: white; }}
+            .version-badge {{
+                font-size: 0.4em;
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 3px 6px;
+                border-radius: 6px;
+                margin-top: 5px;
+                display: inline-block;
+                box-shadow: 0 2px 4px rgba(76,175,80,0.3);
+                border: 1px solid rgba(255,255,255,0.1);
+            }}
+            .content {{ padding: 30px; }}
+            .menu-item {{ 
+                display: block; 
+                color: white; 
+                text-decoration: none; 
+                padding: 12px 16px; 
+                margin: 6px 0; 
+                border-radius: 12px; 
+                background: linear-gradient(145deg, #3949ab, #283593);
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255,255,255,0.1);
+                font-size: 0.95em;
+            }}
+            .menu-item:hover {{ 
+                background: linear-gradient(145deg, #5c6bc0, #3949ab);
+                transform: translateX(5px);
+                box-shadow: 
+                    0 8px 15px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
+            }}
+            .menu-item.active {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+            }}
+            .menu-item.placeholder {{ 
+                background: linear-gradient(145deg, #424242, #2e2e2e); 
+                color: #aaa; 
+                cursor: not-allowed;
+                opacity: 0.7;
+            }}
+            .menu-item.placeholder:hover {{
+                transform: none;
+                box-shadow: 
+                    0 4px 8px rgba(0,0,0,0.3),
+                    inset 0 1px 0 rgba(255,255,255,0.1);
+            }}
+            h3.menu-title {{
+                font-size: 1.1em;
+                margin: 15px 0 8px 0;
+                color: #4caf50;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+                border-bottom: 1px solid rgba(76,175,80,0.3);
+                padding-bottom: 4px;
+            }}
+            .flash-message {{
+                padding: 15px 20px;
+                border-radius: 10px;
+                margin-bottom: 20px;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                box-shadow: 0 6px 15px rgba(0,0,0,0.3);
+            }}
+            .flash-success {{ background: linear-gradient(145deg, #4caf50, #388e3c); }}
+            .flash-error {{ background: linear-gradient(145deg, #f44336, #d32f2f); }}
+            .flash-warning {{ background: linear-gradient(145deg, #ff9800, #f57c00); }}
+            .flash-close {{
+                margin-left: auto;
+                background: none;
+                border: none;
+                color: white;
+                cursor: pointer;
+                font-size: 24px;
+            }}
+            .filter-box {{
+                background: rgba(255,255,255,0.1);
+                padding: 15px;
+                border-radius: 10px;
+                margin-bottom: 20px;
+                display: flex;
+                gap: 15px;
+                align-items: center;
+                flex-wrap: wrap;
+            }}
+            .filter-box input, .filter-box select {{
+                padding: 8px 12px;
+                border: none;
+                border-radius: 6px;
+                background: rgba(255,255,255,0.15);
+                color: white;
+                font-size: 14px;
+            }}
+            .filter-box input::placeholder {{ color: rgba(255,255,255,0.6); }}
+            .bulk-actions {{
+                display: flex;
+                gap: 10px;
+                margin-bottom: 15px;
+            }}
+            .bulk-btn {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: 500;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+                transition: all 0.2s;
+            }}
+            .bulk-btn:hover {{ transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.3); }}
+            .bulk-btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+            .file-table {{
+                width: 100%;
+                background: linear-gradient(145deg, #3f51b5, #283593);
+                border-radius: 15px;
+                overflow: hidden;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+                margin-top: 20px;
+            }}
+            .file-table th, .file-table td {{
+                padding: 12px 15px;
+                text-align: left;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                vertical-align: middle;
+            }}
+            .file-table th {{
+                background: #283593;
+                font-weight: 600;
+                color: white;
+                border-bottom: 2px solid rgba(255,255,255,0.2);
+            }}
+            .file-table tr:hover {{
+                background: rgba(255,255,255,0.08);
+            }}
+            .status-uploaded {{ color: #ffb74d; }}
+            .status-indexing {{ color: #2196f3; }}
+            .status-running-rules {{ color: #ff9800; }}
+            .status-completed {{ color: #4caf50; }}
+            .status-failed {{ color: #f44336; }}
+            .btn-action {{
+                background: linear-gradient(145deg, #4caf50, #388e3c);
+                color: white;
+                padding: 6px 12px;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: 500;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+                transition: all 0.2s;
+                white-space: nowrap;
+            }}
+            .btn-action:hover {{
+                transform: translateY(-1px);
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
+            </div>
+            
+            {sidebar_menu}
+        </div>
+        <div class="main-content">
+            <div class="header">
+                <div class="case-title">🗂️ File Management</div>
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
+                    <a href="/logout" class="logout-btn">Logout</a>
+                </div>
+            </div>
+            <div class="content">
+                <h1>🗂️ File Management</h1>
+                <p>Manage all files across all cases - filter, search, and perform bulk actions.</p>
+                
+                {flash_messages_html}
+                
+                <div class="filter-box">
+                    <input type="text" id="searchBox" placeholder="Search filename..." onkeyup="filterFiles()">
+                    <select id="caseFilter" onchange="filterFiles()">
+                        {case_options}
+                    </select>
+                    <select id="statusFilter" onchange="filterFiles()">
+                        <option value="">All Statuses</option>
+                        <option value="Uploaded">Uploaded</option>
+                        <option value="Indexing">Indexing</option>
+                        <option value="Running Rules">Running Rules</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Failed">Failed</option>
+                    </select>
+                    <button onclick="clearFilters()" class="bulk-btn" style="background: linear-gradient(145deg, #757575, #616161);">Clear Filters</button>
+                </div>
+                
+                <div class="bulk-actions">
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                        <span>Select All</span>
+                    </label>
+                    <button id="bulkReindex" class="bulk-btn" style="background: linear-gradient(145deg, #2196f3, #1976d2);" onclick="bulkReindex()" disabled>🔄 Re-index Selected</button>
+                    <button id="bulkRerun" class="bulk-btn" style="background: linear-gradient(145deg, #ff9800, #f57c00);" onclick="bulkRerunRules()" disabled>⚡ Re-run Rules on Selected</button>
+                    {"<button id='bulkDelete' class='bulk-btn' style='background: linear-gradient(145deg, #f44336, #d32f2f);' onclick='bulkDelete()' disabled>🗑️ Delete Selected</button>" if current_user.role == 'administrator' else ""}
+                </div>
+                
+                <table class="file-table" id="fileTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">Select</th>
+                            <th>Filename</th>
+                            <th>Case</th>
+                            <th>Uploaded</th>
+                            <th>Size</th>
+                            <th>Uploader</th>
+                            <th>Status</th>
+                            <th>Events</th>
+                            <th>Violations</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {file_rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <script>
+            function filterFiles() {{
+                const searchText = document.getElementById('searchBox').value.toLowerCase();
+                const caseFilter = document.getElementById('caseFilter').value;
+                const statusFilter = document.getElementById('statusFilter').value;
+                const rows = document.querySelectorAll('#fileTable tbody tr');
+                
+                rows.forEach(row => {{
+                    if (row.cells.length === 1) return; // Skip empty message row
+                    
+                    const filename = row.getAttribute('data-filename') || '';
+                    const caseId = row.getAttribute('data-case-id') || '';
+                    const status = row.getAttribute('data-status') || '';
+                    
+                    const matchesSearch = filename.includes(searchText);
+                    const matchesCase = !caseFilter || caseId === caseFilter;
+                    const matchesStatus = !statusFilter || status === statusFilter;
+                    
+                    row.style.display = (matchesSearch && matchesCase && matchesStatus) ? '' : 'none';
+                }});
+            }}
+            
+            function clearFilters() {{
+                document.getElementById('searchBox').value = '';
+                document.getElementById('caseFilter').value = '';
+                document.getElementById('statusFilter').value = '';
+                filterFiles();
+            }}
+            
+            function toggleSelectAll() {{
+                const selectAll = document.getElementById('selectAll').checked;
+                document.querySelectorAll('.file-checkbox').forEach(cb => {{
+                    if (cb.closest('tr').style.display !== 'none') {{
+                        cb.checked = selectAll;
+                    }}
+                }});
+                updateBulkButtons();
+            }}
+            
+            function updateBulkButtons() {{
+                const selected = document.querySelectorAll('.file-checkbox:checked').length;
+                document.getElementById('bulkReindex').disabled = selected === 0;
+                document.getElementById('bulkRerun').disabled = selected === 0;
+                const bulkDelete = document.getElementById('bulkDelete');
+                if (bulkDelete) bulkDelete.disabled = selected === 0;
+            }}
+            
+            document.querySelectorAll('.file-checkbox').forEach(cb => {{
+                cb.addEventListener('change', updateBulkButtons);
+            }});
+            
+            function getSelectedIds() {{
+                return Array.from(document.querySelectorAll('.file-checkbox:checked')).map(cb => cb.value);
+            }}
+            
+            function bulkReindex() {{
+                const ids = getSelectedIds();
+                if (ids.length === 0) return;
+                
+                if (confirm(`Re-index ${{ids.length}} file(s)? This will discard existing indexes.`)) {{
+                    ids.forEach(id => reindexFile(id));
+                }}
+            }}
+            
+            function bulkRerunRules() {{
+                const ids = getSelectedIds();
+                if (ids.length === 0) return;
+                
+                if (confirm(`Re-run SIGMA rules on ${{ids.length}} file(s)?`)) {{
+                    ids.forEach(id => rerunRules(id));
+                }}
+            }}
+            
+            function bulkDelete() {{
+                const ids = getSelectedIds();
+                if (ids.length === 0) return;
+                
+                if (confirm(`DELETE ${{ids.length}} file(s)? This cannot be undone.`)) {{
+                    ids.forEach(id => {{
+                        fetch('/file/delete/' + id, {{ method: 'POST' }})
+                        .then(response => response.json())
+                        .then(data => {{
+                            if (data.success) location.reload();
+                            else alert('Error deleting file: ' + data.message);
+                        }});
+                    }});
+                }}
+            }}
+            
+            function reindexFile(id) {{
+                fetch('/file/reindex/' + id, {{ method: 'POST' }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) location.reload();
+                    else alert('Error: ' + data.message);
+                }});
+            }}
+            
+            function rerunRules(id) {{
+                fetch('/file/rerun-rules/' + id, {{ method: 'POST' }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) location.reload();
+                    else alert('Error: ' + data.message);
+                }});
+            }}
+            
+            function deleteFile(id, filename) {{
+                if (confirm('Delete "' + filename + '"? This cannot be undone.')) {{
+                    fetch('/file/delete/' + id, {{ method: 'POST' }})
+                    .then(response => response.json())
+                    .then(data => {{
+                        if (data.success) location.reload();
+                        else alert('Error: ' + data.message);
                     }});
                 }}
             }}
