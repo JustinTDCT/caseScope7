@@ -233,36 +233,57 @@ def export_events_to_json(index_name, output_path):
     logger.info(f"✓ Exported {export_count:,} events to {output_path}")
     return export_count
 
-def enrich_events_with_detections(index_name, detections_by_event):
+def enrich_events_with_detections(index_name, detections_by_record_number):
     """
-    Enrich indexed events with SIGMA detection metadata
+    Enrich indexed events with SIGMA detection metadata by EventRecordID
     Adds 'sigma_detections' and 'has_violations' fields to matching events
     
     Args:
         index_name: OpenSearch index name
-        detections_by_event: Dict mapping event_id -> list of detections
+        detections_by_record_number: Dict mapping EventRecordID -> list of detections
     """
-    logger.info(f"Enriching {len(detections_by_event)} events with detection metadata...")
+    logger.info(f"Enriching {len(detections_by_record_number)} events with detection metadata...")
     
-    # Bulk update using OpenSearch update API
+    # Search OpenSearch to find actual document IDs by EventRecordID
+    # Then bulk update using those IDs
     bulk_actions = []
-    for event_id, detections in detections_by_event.items():
-        action = {
-            "update": {
-                "_index": index_name,
-                "_id": event_id
-            }
-        }
-        doc = {
-            "doc": {
-                "sigma_detections": detections,
-                "has_violations": True,
-                "violation_count": len(detections)
-            }
-        }
-        
-        bulk_actions.append(json.dumps(action))
-        bulk_actions.append(json.dumps(doc))
+    for record_num, detections in detections_by_record_number.items():
+        # Query OpenSearch to find the document with this EventRecordID
+        try:
+            search_result = opensearch_client.search(
+                index=index_name,
+                body={
+                    "query": {
+                        "term": {"System_EventRecordID": str(record_num)}
+                    },
+                    "size": 1,
+                    "_source": False
+                },
+                timeout=10
+            )
+            
+            if search_result['hits']['total']['value'] > 0:
+                actual_doc_id = search_result['hits']['hits'][0]['_id']
+                
+                action = {
+                    "update": {
+                        "_index": index_name,
+                        "_id": actual_doc_id
+                    }
+                }
+                doc = {
+                    "doc": {
+                        "sigma_detections": detections,
+                        "has_violations": True,
+                        "violation_count": len(detections)
+                    }
+                }
+                
+                bulk_actions.append(json.dumps(action))
+                bulk_actions.append(json.dumps(doc))
+        except Exception as e:
+            logger.warning(f"Could not find document for EventRecordID {record_num}: {e}")
+            continue
     
     if bulk_actions:
         # Send bulk update request
@@ -718,7 +739,7 @@ def process_sigma_rules(self, file_id, index_name):
             logger.info(f"Parsing Chainsaw detections from {chainsaw_output_path}...")
             
             total_violations = 0
-            detections_by_event = {}  # Map event_id -> list of detections
+            detections_by_record_number = {}  # Map EventRecordID -> list of detections
             
             # Parse Chainsaw JSON output
             if os.path.exists(chainsaw_output_path) and os.path.getsize(chainsaw_output_path) > 0:
@@ -805,10 +826,10 @@ def process_sigma_rules(self, file_id, index_name):
                             db.session.add(violation)
                             total_violations += 1
                             
-                            # Track detections for enrichment
-                            if event_id not in detections_by_event:
-                                detections_by_event[event_id] = []
-                            detections_by_event[event_id].append({
+                            # Track detections for enrichment by EventRecordID
+                            if event_record_id not in detections_by_record_number:
+                                detections_by_record_number[event_record_id] = []
+                            detections_by_record_number[event_record_id].append({
                                 'rule_name': rule_name,
                                 'rule_id': matching_rule.id,
                                 'level': rule_level,
@@ -826,9 +847,9 @@ def process_sigma_rules(self, file_id, index_name):
                 logger.info("No detections found by Chainsaw (empty output file)")
             
             # Step 5: Enrich indexed events with detection metadata
-            if detections_by_event:
-                logger.info(f"Enriching {len(detections_by_event)} events with detection metadata...")
-                enrich_events_with_detections(index_name, detections_by_event)
+            if detections_by_record_number:
+                logger.info(f"Enriching {len(detections_by_record_number)} events with detection metadata...")
+                enrich_events_with_detections(index_name, detections_by_record_number)
                 logger.info(f"✓ Events enriched with detection flags")
             
             # Update file record with violation count and mark as completed
