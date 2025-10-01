@@ -1671,13 +1671,15 @@ def search():
                         start_time = now - timedelta(days=30)
                     elif time_range == 'custom' and custom_start:
                         from datetime import datetime as dt
-                        start_time = dt.fromisoformat(custom_start)
-                        end_time = dt.fromisoformat(custom_end) if custom_end else now
+                        # Parse the datetime strings and ensure they're treated as strings for range query
+                        start_str = custom_start.replace('T', ' ')  # Convert to space-separated format
+                        end_str = custom_end.replace('T', ' ') if custom_end else now.strftime('%Y-%m-%d %H:%M:%S')
                         filters.append({
                             "range": {
                                 "System_TimeCreated_SystemTime": {
-                                    "gte": start_time.isoformat(),
-                                    "lte": end_time.isoformat()
+                                    "gte": start_str,
+                                    "lte": end_str,
+                                    "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss'Z'||epoch_millis"
                                 }
                             }
                         })
@@ -1687,7 +1689,8 @@ def search():
                         filters.append({
                             "range": {
                                 "System_TimeCreated_SystemTime": {
-                                    "gte": start_time.isoformat()
+                                    "gte": start_time.strftime('%Y-%m-%d %H:%M:%S'),
+                                    "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss'Z'||epoch_millis"
                                 }
                             }
                         })
