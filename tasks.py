@@ -505,10 +505,14 @@ def index_evtx_file(self, file_id):
                             # Flatten the structure for easier searching
                             flat_event = flatten_event(event_data)
                             
-                            # Get Event ID for description
-                            event_id = flat_event.get('System_EventID_#text', 'N/A')
-                            channel = flat_event.get('System_Channel', '')
-                            provider = flat_event.get('System_Provider_@Name', '')
+                            # Get Event ID for description (handle both dot and underscore notation)
+                            event_id = (flat_event.get('System.EventID.#text') or 
+                                       flat_event.get('System_EventID_#text') or 
+                                       flat_event.get('System.EventID') or 'N/A')
+                            channel = (flat_event.get('System.Channel') or 
+                                      flat_event.get('System_Channel') or '')
+                            provider = (flat_event.get('System.Provider.@Name') or 
+                                       flat_event.get('System_Provider_@Name') or '')
                             
                             # Add Event Type description for searchability
                             from main import get_event_description
@@ -1029,48 +1033,6 @@ def create_index_mapping(index_name):
     except Exception as e:
         logger.warning(f"Could not create index mapping: {e}")
         # Continue anyway - OpenSearch will use dynamic mapping
-
-
-def bulk_index_events(index_name, events):
-    """
-    Bulk index events to OpenSearch
-    
-    Args:
-        index_name: Name of the index
-        events: List of event dictionaries
-    """
-    if not events:
-        return
-    
-    # Ensure index exists with proper mapping
-    create_index_mapping(index_name)
-    
-    # Prepare bulk actions
-    actions = [
-        {
-            '_index': index_name,
-            '_source': event
-        }
-        for event in events
-    ]
-    
-    try:
-        # Bulk index
-        success, failed = helpers.bulk(
-            opensearch_client,
-            actions,
-            raise_on_error=False,
-            raise_on_exception=False
-        )
-        
-        if failed:
-            print(f"[Indexing] Warning: {len(failed)} events failed to index")
-        
-        return success
-    
-    except Exception as e:
-        print(f"[Indexing] Bulk indexing error: {e}")
-        raise
 
 
 @celery_app.task(bind=True, name='tasks.count_evtx_events')
