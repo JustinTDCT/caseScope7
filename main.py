@@ -1671,15 +1671,14 @@ def search():
                         start_time = now - timedelta(days=30)
                     elif time_range == 'custom' and custom_start:
                         from datetime import datetime as dt
-                        # Parse the datetime strings and ensure they're treated as strings for range query
-                        start_str = custom_start.replace('T', ' ')  # Convert to space-separated format
-                        end_str = custom_end.replace('T', ' ') if custom_end else now.strftime('%Y-%m-%d %H:%M:%S')
+                        # Use the .date subfield for proper date range filtering
+                        start_time = dt.fromisoformat(custom_start.replace('Z', '+00:00') if 'Z' in custom_start else custom_start)
+                        end_time = dt.fromisoformat(custom_end.replace('Z', '+00:00') if 'Z' in custom_end else custom_end) if custom_end else now
                         filters.append({
                             "range": {
-                                "System_TimeCreated_SystemTime": {
-                                    "gte": start_str,
-                                    "lte": end_str,
-                                    "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss'Z'||epoch_millis"
+                                "System.TimeCreated.@SystemTime.date": {
+                                    "gte": start_time.isoformat(),
+                                    "lte": end_time.isoformat()
                                 }
                             }
                         })
@@ -1688,9 +1687,8 @@ def search():
                     if start_time:
                         filters.append({
                             "range": {
-                                "System_TimeCreated_SystemTime": {
-                                    "gte": start_time.strftime('%Y-%m-%d %H:%M:%S'),
-                                    "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss'Z'||epoch_millis"
+                                "System.TimeCreated.@SystemTime.date": {
+                                    "gte": start_time.isoformat()
                                 }
                             }
                         })

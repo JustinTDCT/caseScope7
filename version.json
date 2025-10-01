@@ -1,7 +1,7 @@
 {
-  "version": "7.8.5",
+  "version": "7.8.6",
   "release_date": "2025-10-01",
-  "description": "Bugfix - Fixed time range filter date format causing 0 results; added flexible format parameter to range queries supporting multiple timestamp formats (space-separated, T-separated, Z suffix, epoch); changed isoformat to strftime for consistent formatting; range queries now match actual indexed timestamp formats",
+  "description": "Bugfix - Fixed time range filter using wrong field; changed from System_TimeCreated_SystemTime (text field) to System.TimeCreated.@SystemTime.date (date subfield created during multi-field indexing); removed format parameter (only works on date fields); range queries now use proper date-type field matching sort field",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -164,6 +164,7 @@
     "7.8.2": "Bugfix - Fixed flash messages accumulating and appearing all at once on Case Selection page; login and change_password routes now properly consume flash messages using get_flashed_messages() instead of manual session access; messages now display immediately on the page where they're generated",
     "7.8.3": "Bugfix - Fixed case creation log_audit call with incorrect parameters causing 'unexpected keyword argument user_id' error; removed template_id references from case creation (templates removed in 7.7.3); removed template selection dropdown from create case form; simplified render_case_form to only accept users parameter",
     "7.8.4": "Bugfix - Fixed time range filter returning no results; changed timestamp field from System_TimeCreated_@SystemTime to System_TimeCreated_SystemTime to match actual indexed field structure; custom date ranges and preset ranges (24h/7d/30d) now work correctly",
-    "7.8.5": "Bugfix - Fixed time range filter date format causing 0 results; added flexible format parameter to range queries supporting multiple timestamp formats (space-separated, T-separated, Z suffix, epoch); changed isoformat to strftime for consistent formatting; range queries now match actual indexed timestamp formats"
+    "7.8.5": "Bugfix - Fixed time range filter date format causing 0 results; added flexible format parameter to range queries supporting multiple timestamp formats (space-separated, T-separated, Z suffix, epoch); changed isoformat to strftime for consistent formatting; range queries now match actual indexed timestamp formats",
+    "7.8.6": "Bugfix - Fixed time range filter using wrong field; changed from System_TimeCreated_SystemTime (text field) to System.TimeCreated.@SystemTime.date (date subfield created during multi-field indexing); removed format parameter (only works on date fields); range queries now use proper date-type field matching sort field"
   }
 }
