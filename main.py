@@ -1695,55 +1695,51 @@ def search():
                             start_time = None
                             end_time = None
                     
-                    # Use range query on timestamp field (proper date filtering)
-                    # Query the .date subfield which is typed as date in OpenSearch
+                    # Simple date filtering using wildcard/prefix matching
+                    # Since timestamps are text (YYYY-MM-DD HH:MM:SS format), we can use simple prefix queries
                     if start_time:
-                        # Format timestamps for OpenSearch date subfields
-                        # Timestamps indexed as text with .date subfield for proper date range queries
-                        start_str = start_time.strftime('%Y-%m-%d %H:%M:%S')
-                        end_str = end_time.strftime('%Y-%m-%d %H:%M:%S') if end_time else now.strftime('%Y-%m-%d %H:%M:%S')
+                        # For single-day queries, use simple wildcard on date prefix
+                        start_date_str = start_time.strftime('%Y-%m-%d')
+                        end_date_str = end_time.strftime('%Y-%m-%d') if end_time else now.strftime('%Y-%m-%d')
                         
-                        print(f"[Search] Time filter: range={time_range}, start={start_str}, end={end_str}")
+                        print(f"[Search] Time filter: range={time_range}, start={start_date_str}, end={end_date_str}")
                         
-                        # Query the .date subfield which is properly typed as date
-                        # This allows OpenSearch to do proper date math and comparisons
-                        # Text parent field still exists for lexicographic search
-                        time_filter = {
-                            "bool": {
-                                "should": [
-                                    {
-                                        "range": {
-                                            "System.TimeCreated.@SystemTime.date": {
-                                                "gte": start_str,
-                                                "lte": end_str,
-                                                "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd HH:mm:ss.SSSSSS||strict_date_optional_time"
-                                            }
-                                        }
-                                    },
-                                    {
-                                        "range": {
-                                            "System_TimeCreated_SystemTime.date": {
-                                                "gte": start_str,
-                                                "lte": end_str,
-                                                "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd HH:mm:ss.SSSSSS||strict_date_optional_time"
-                                            }
-                                        }
-                                    },
-                                    {
-                                        "range": {
-                                            "@timestamp": {
-                                                "gte": start_str,
-                                                "lte": end_str,
-                                                "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd HH:mm:ss.SSSSSS||strict_date_optional_time"
-                                            }
-                                        }
-                                    }
-                                ],
-                                "minimum_should_match": 1
+                        # If same day, use simple prefix query
+                        if start_date_str == end_date_str:
+                            time_filter = {
+                                "bool": {
+                                    "should": [
+                                        {"wildcard": {"System.TimeCreated.@SystemTime": f"{start_date_str}*"}},
+                                        {"wildcard": {"System_TimeCreated_SystemTime": f"{start_date_str}*"}},
+                                        {"wildcard": {"@timestamp": f"{start_date_str}*"}}
+                                    ],
+                                    "minimum_should_match": 1
+                                }
                             }
-                        }
+                        else:
+                            # Multi-day range: match any date in range using OR of wildcards
+                            # This is simple but works for reasonable ranges (< 30 days)
+                            from datetime import timedelta
+                            date_patterns = []
+                            current = start_time.date()
+                            end = end_time.date() if end_time else now.date()
+                            
+                            while current <= end:
+                                date_str = current.strftime('%Y-%m-%d')
+                                date_patterns.append({"wildcard": {"System.TimeCreated.@SystemTime": f"{date_str}*"}})
+                                date_patterns.append({"wildcard": {"System_TimeCreated_SystemTime": f"{date_str}*"}})
+                                date_patterns.append({"wildcard": {"@timestamp": f"{date_str}*"}})
+                                current += timedelta(days=1)
+                            
+                            time_filter = {
+                                "bool": {
+                                    "should": date_patterns,
+                                    "minimum_should_match": 1
+                                }
+                            }
+                        
                         filters.append(time_filter)
-                        print(f"[Search] Added time filter with {len(time_filter['bool']['should'])} field options (date subfield)")
+                        print(f"[Search] Added simple wildcard time filter for date range")
                 
                 # Combine base query with filters
                 if filters:
@@ -1762,12 +1758,9 @@ def search():
                     "query": os_query,
                     "from": from_offset,
                     "size": per_page,
-                    # Sort by timestamp (newest first) using the .date subfield
-                    # Falls back to relevance score if timestamp unavailable
-                    "sort": [
-                        {"System.TimeCreated.@SystemTime.date": {"order": "desc", "unmapped_type": "date"}},
-                        "_score"
-                    ],
+                    # Sort by relevance score only (no timestamp sorting to avoid mapping issues)
+                    # Timestamp is text field, can't reliably sort on it
+                    "sort": ["_score"],
                     "_source": True
                 }
                 

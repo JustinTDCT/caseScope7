@@ -361,88 +361,8 @@ def flatten_event(event_data, prefix='', max_depth=10, current_depth=0):
     
     return flat
 
-def ensure_index_with_mapping(index_name):
-    """
-    Ensure OpenSearch index exists with proper mapping for timestamp fields
-    Creates multi-field mapping for timestamps: text + date subfield
-    
-    CRITICAL: Mapping must be applied BEFORE any data is indexed.
-    If index exists without proper mapping, it MUST be deleted and recreated.
-    
-    Args:
-        index_name: OpenSearch index name to create
-    """
-    # Check if index exists and has proper mapping
-    if opensearch_client.indices.exists(index=index_name):
-        # Check if .date subfield exists in mapping
-        try:
-            mapping = opensearch_client.indices.get_mapping(index=index_name)
-            index_mapping = mapping[index_name]['mappings']['properties']
-            
-            # Check for our timestamp date subfield
-            timestamp_field = index_mapping.get('System', {}).get('properties', {}).get('TimeCreated', {}).get('properties', {}).get('@SystemTime', {})
-            has_date_subfield = 'date' in timestamp_field.get('fields', {})
-            
-            if has_date_subfield:
-                logger.debug(f"Index '{index_name}' already exists with proper date mapping")
-                return
-            else:
-                logger.warning(f"Index '{index_name}' exists but MISSING .date subfield - deleting and recreating...")
-                opensearch_client.indices.delete(index=index_name)
-                logger.info(f"✓ Deleted index '{index_name}'")
-        except Exception as e:
-            logger.warning(f"Could not check mapping for '{index_name}': {e}. Assuming needs recreation...")
-            opensearch_client.indices.delete(index=index_name)
-            logger.info(f"✓ Deleted index '{index_name}'")
-    
-    logger.info(f"Creating index '{index_name}' with timestamp date mappings...")
-    
-    # Define mapping with multi-field for timestamps
-    # Text field for lexicographic search + .date subfield for range queries
-    mapping = {
-        "mappings": {
-            "properties": {
-                # System timestamp - most common timestamp field
-                "System.TimeCreated.@SystemTime": {
-                    "type": "text",
-                    "fields": {
-                        "date": {
-                            "type": "date",
-                            "format": "yyyy-MM-dd HH:mm:ss.SSSSSS||yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||strict_date_optional_time"
-                        }
-                    }
-                },
-                # Alternative timestamp field names (flattened)
-                "System_TimeCreated_SystemTime": {
-                    "type": "text",
-                    "fields": {
-                        "date": {
-                            "type": "date",
-                            "format": "yyyy-MM-dd HH:mm:ss.SSSSSS||yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||strict_date_optional_time"
-                        }
-                    }
-                },
-                # OpenSearch standard timestamp
-                "@timestamp": {
-                    "type": "date",
-                    "format": "yyyy-MM-dd HH:mm:ss.SSSSSS||yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||strict_date_optional_time"
-                }
-            }
-        },
-        "settings": {
-            "number_of_shards": 1,
-            "number_of_replicas": 0
-        }
-    }
-    
-    try:
-        opensearch_client.indices.create(index=index_name, body=mapping)
-        logger.info(f"✓ Created index '{index_name}' with date mappings for timestamps")
-    except Exception as e:
-        logger.warning(f"Failed to create index with mapping: {e}")
-        # Index might have been created by another process - that's OK
-        if not opensearch_client.indices.exists(index=index_name):
-            raise
+# Removed complex index mapping function - using OpenSearch auto-detection
+# Let OpenSearch automatically detect field types for simplicity
 
 def bulk_index_events(index_name, events):
     """
@@ -561,10 +481,7 @@ def index_evtx_file(self, file_id):
                 db.session.commit()
                 return {'status': 'error', 'message': f'File not found: {case_file.file_path}'}
             
-            # Ensure index exists with proper date mappings for timestamps
-            ensure_index_with_mapping(index_name)
-            
-            # Parse EVTX file
+            # Parse EVTX file (let OpenSearch auto-create index with dynamic mapping)
             logger.info(f"Starting EVTX parsing: {case_file.original_filename}")
             logger.info(f"File path: {case_file.file_path}")
             logger.info(f"Index name: {index_name}")
