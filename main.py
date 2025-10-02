@@ -3998,6 +3998,8 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             function filterFor(field, value) {{
                 // Debug logging
                 console.log('filterFor called with:', {{field: field, value: value}});
+                console.log('Value type:', typeof value);
+                console.log('Value length:', value ? value.length : 'null/undefined');
                 
                 const queryInput = document.querySelector('.search-input');
                 const currentQuery = queryInput.value.trim();
@@ -4012,7 +4014,10 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                     queryInput.value = currentQuery + ' AND ' + newTerm;
                 }}
                 
-                console.log('Final query:', queryInput.value);
+                console.log('Final query before submit:', queryInput.value);
+                
+                // Show alert to confirm what's in the box before submit
+                alert('About to search for: ' + queryInput.value);
                 
                 // Auto-submit the search
                 document.getElementById('searchForm').submit();
