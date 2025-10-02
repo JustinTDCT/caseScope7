@@ -841,8 +841,8 @@ copy_application() {
     log "Copying all files except install.sh..."
     find "$APP_SOURCE_DIR" -maxdepth 1 -type f ! -name "install.sh" -exec cp {} /opt/casescope/app/ \; 2>/dev/null || true
     
-    # Also copy any subdirectories (like templates, static, app)
-    for dir in templates static app; do
+    # Also copy any subdirectories (like templates, static)
+    for dir in templates static; do
         if [ -d "$APP_SOURCE_DIR/$dir" ]; then
             log "Copying directory: $dir"
             cp -r "$APP_SOURCE_DIR/$dir" /opt/casescope/app/ 2>/dev/null || true
