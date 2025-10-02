@@ -1698,43 +1698,41 @@ def search():
                     # Use range query on timestamp field (proper date filtering)
                     # Try multiple possible timestamp field names
                     if start_time:
-                        # Format timestamps for OpenSearch - try multiple formats to match stored data
-                        # Timestamps may be stored as "2025-08-25 14:05:54.201157+00:00" or "2025-08-25T14:05:54"
-                        start_str = start_time.strftime('%Y-%m-%d %H:%M:%S')  # Space format to match stored timestamps
-                        end_str = end_time.strftime('%Y-%m-%d %H:%M:%S') if end_time else now.strftime('%Y-%m-%d %H:%M:%S')
+                        # For text fields that store ISO-like timestamps, use lexicographic range
+                        # Format: YYYY-MM-DD for date-based filtering
+                        start_date = start_time.strftime('%Y-%m-%d')
+                        end_date = end_time.strftime('%Y-%m-%d') if end_time else now.strftime('%Y-%m-%d')
                         
-                        print(f"[Search] Time filter: range={time_range}, start={start_str}, end={end_str}")
+                        print(f"[Search] Time filter: range={time_range}, start_date={start_date}, end_date={end_date}")
                         
-                        # Build a bool query that tries multiple timestamp fields
-                        # Events may have timestamps in different fields depending on how they were indexed
-                        # Use flexible format patterns to match various timestamp formats
+                        # Build date range filter that works with text fields
+                        # Since timestamps are stored as text like "2025-08-25 14:05:54.201157+00:00",
+                        # we can use string range queries which work lexicographically
+                        # This matches any timestamp that starts with dates in the range
                         time_filter = {
                             "bool": {
                                 "should": [
                                     {
                                         "range": {
                                             "System.TimeCreated.@SystemTime": {
-                                                "gte": start_str,
-                                                "lte": end_str,
-                                                "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss.SSSSSSZ||strict_date_optional_time"
+                                                "gte": start_date,
+                                                "lte": end_date + " 23:59:59.999999"
                                             }
                                         }
                                     },
                                     {
                                         "range": {
                                             "System_TimeCreated_SystemTime": {
-                                                "gte": start_str,
-                                                "lte": end_str,
-                                                "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss.SSSSSSZ||strict_date_optional_time"
+                                                "gte": start_date,
+                                                "lte": end_date + " 23:59:59.999999"
                                             }
                                         }
                                     },
                                     {
                                         "range": {
                                             "@timestamp": {
-                                                "gte": start_str,
-                                                "lte": end_str,
-                                                "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss.SSSSSSZ||strict_date_optional_time"
+                                                "gte": start_date,
+                                                "lte": end_date + " 23:59:59.999999"
                                             }
                                         }
                                     }
@@ -1743,7 +1741,7 @@ def search():
                             }
                         }
                         filters.append(time_filter)
-                        print(f"[Search] Added time filter with {len(time_filter['bool']['should'])} field options")
+                        print(f"[Search] Added time filter with {len(time_filter['bool']['should'])} field options (lexicographic range)")
                 
                 # Combine base query with filters
                 if filters:
