@@ -160,20 +160,29 @@ def get_theme_css():
                 background: #ef4444;
                 color: white;
                 padding: 0.5rem 1rem;
-                border-radius: 8px;
+                border-radius: 6px;
                 text-decoration: none;
-                font-size: 0.9rem;
-                transition: all 0.3s ease;
-                border: none;
+                font-size: 0.875rem;
+                font-weight: 500;
+                transition: all 0.2s ease;
+                border: 1px solid #ef4444;
                 cursor: pointer;
                 display: inline-flex;
                 align-items: center;
                 gap: 0.5rem;
+                line-height: 1;
             }
             
             .logout-btn:hover {
                 background: #dc2626;
+                border-color: #dc2626;
                 transform: translateY(-1px);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            }
+            
+            .logout-btn:active {
+                transform: translateY(0);
+                box-shadow: none;
             }
             
             /* === CONTENT === */
@@ -356,68 +365,131 @@ def get_theme_css():
             button,
             .btn,
             input[type="submit"],
-            input[type="button"] {
+            input[type="button"],
+            a.btn {
                 display: inline-flex;
                 align-items: center;
+                justify-content: center;
                 gap: 0.5rem;
-                padding: 0.75rem 1.5rem;
+                padding: 0.5rem 1rem;
                 border: none;
-                border-radius: 8px;
-                font-size: 0.9rem;
+                border-radius: 6px;
+                font-size: 0.875rem;
                 font-weight: 500;
                 cursor: pointer;
                 text-decoration: none;
-                transition: all 0.3s ease;
+                transition: all 0.2s ease;
                 font-family: inherit;
-                background: #3b82f6;
-                color: white;
+                background: #1e293b;
+                color: #f8fafc;
+                border: 1px solid #334155;
+                line-height: 1;
             }
             
             button:hover,
             .btn:hover,
-            input[type="submit"]:hover {
-                background: #2563eb;
+            input[type="submit"]:hover,
+            input[type="button"]:hover,
+            a.btn:hover {
+                background: #334155;
+                border-color: #475569;
                 transform: translateY(-1px);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            }
+            
+            button:active,
+            .btn:active,
+            input[type="submit"]:active,
+            a.btn:active {
+                transform: translateY(0);
+                box-shadow: none;
             }
             
             button:disabled,
-            .btn:disabled {
+            .btn:disabled,
+            a.btn:disabled {
                 opacity: 0.5;
                 cursor: not-allowed;
                 transform: none !important;
             }
             
-            .btn-primary {
+            /* Button variants */
+            .btn-primary,
+            button[type="submit"]:not(.btn-danger):not(.btn-warning):not(.btn-success),
+            input[type="submit"] {
                 background: #3b82f6;
+                border-color: #3b82f6;
+                color: white;
             }
             
-            .btn-primary:hover {
+            .btn-primary:hover,
+            button[type="submit"]:not(.btn-danger):not(.btn-warning):not(.btn-success):hover,
+            input[type="submit"]:hover {
                 background: #2563eb;
+                border-color: #2563eb;
             }
             
             .btn-success {
                 background: #10b981;
+                border-color: #10b981;
+                color: white;
             }
             
             .btn-success:hover {
                 background: #059669;
+                border-color: #059669;
             }
             
             .btn-danger {
                 background: #ef4444;
+                border-color: #ef4444;
+                color: white;
             }
             
             .btn-danger:hover {
                 background: #dc2626;
+                border-color: #dc2626;
             }
             
             .btn-warning {
                 background: #f59e0b;
+                border-color: #f59e0b;
                 color: #1f2937;
             }
             
             .btn-warning:hover {
                 background: #d97706;
+                border-color: #d97706;
+            }
+            
+            .btn-secondary {
+                background: #1e293b;
+                border-color: #334155;
+                color: #cbd5e1;
+            }
+            
+            .btn-secondary:hover {
+                background: #334155;
+                border-color: #475569;
+            }
+            
+            /* Small buttons */
+            .btn-sm,
+            button.btn-sm {
+                padding: 0.375rem 0.75rem;
+                font-size: 0.8rem;
+            }
+            
+            /* Link buttons - styled as links */
+            a:not(.btn):not(.menu-item):not(.logout-btn) {
+                color: #3b82f6;
+                text-decoration: none;
+                transition: color 0.2s;
+            }
+            
+            a:not(.btn):not(.menu-item):not(.logout-btn):hover {
+                color: #2563eb;
+                text-decoration: underline;
             }
             
             /* === TABLES === */
