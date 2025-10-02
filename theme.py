@@ -137,6 +137,9 @@ def get_theme_css():
                 padding: 1rem 2rem;
                 box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -1px 0 rgba(0, 0, 0, 0.4);
                 flex-shrink: 0;
+                display: flex;
+                justify-content: flex-end;
+                align-items: center;
             }
             
             .header h1 {
@@ -154,6 +157,7 @@ def get_theme_css():
                 gap: 1rem;
                 color: #cbd5e1;
                 font-size: 0.9rem;
+                margin-left: auto;
             }
             
             .logout-btn {
@@ -299,7 +303,7 @@ def get_theme_css():
             
             .tile a:hover {
                 color: #059669;
-                text-decoration: underline;
+                text-decoration: none;
             }
             
             /* === STATUS INDICATORS === */
@@ -489,7 +493,7 @@ def get_theme_css():
             
             a:not(.btn):not(.menu-item):not(.logout-btn):hover {
                 color: #2563eb;
-                text-decoration: underline;
+                text-decoration: none;
             }
             
             /* === TABLES === */
