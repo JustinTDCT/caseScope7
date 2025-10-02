@@ -2469,13 +2469,15 @@ def build_opensearch_query(user_query):
         )
     
     # For phase 1, use query_string query which supports most operators
+    # Case-insensitive by default for analyzed text fields
     return {
         "query_string": {
             "query": query_str,
             "default_operator": "AND",
             "analyze_wildcard": True,
             "fields": ["*"],
-            "lenient": True
+            "lenient": True,
+            "case_insensitive": True  # Explicit case-insensitive matching
         }
     }
 
