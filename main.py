@@ -3996,51 +3996,37 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             }}
             
             function filterFor(field, value) {{
-                // Debug logging
-                console.log('filterFor called with:', {{field: field, value: value}});
-                console.log('Value type:', typeof value);
-                console.log('Value length:', value ? value.length : 'null/undefined');
-                
                 const queryInput = document.querySelector('.search-input');
                 const currentQuery = queryInput.value.trim();
-                const newTerm = field + ':"' + value + '"';
                 
-                console.log('Current query:', currentQuery);
-                console.log('New term:', newTerm);
+                // Escape the field name to handle special chars like # in #text
+                // Use backslash escaping for OpenSearch query syntax
+                const escapedField = field.replace(/([#:])/g, '\\\\$1');
+                const newTerm = escapedField + ':"' + value + '"';
                 
                 if (currentQuery === '' || currentQuery === '*') {{
                     queryInput.value = newTerm;
                 }} else {{
                     queryInput.value = currentQuery + ' AND ' + newTerm;
                 }}
-                
-                console.log('Final query before submit:', queryInput.value);
-                
-                // Show alert to confirm what's in the box before submit
-                alert('About to search for: ' + queryInput.value);
                 
                 // Auto-submit the search
                 document.getElementById('searchForm').submit();
             }}
             
             function filterOut(field, value) {{
-                // Debug logging
-                console.log('filterOut called with:', {{field: field, value: value}});
-                
                 const queryInput = document.querySelector('.search-input');
                 const currentQuery = queryInput.value.trim();
-                const newTerm = 'NOT ' + field + ':"' + value + '"';
                 
-                console.log('Current query:', currentQuery);
-                console.log('New term:', newTerm);
+                // Escape the field name to handle special chars like # in #text
+                const escapedField = field.replace(/([#:])/g, '\\\\$1');
+                const newTerm = 'NOT ' + escapedField + ':"' + value + '"';
                 
                 if (currentQuery === '' || currentQuery === '*') {{
                     queryInput.value = newTerm;
                 }} else {{
                     queryInput.value = currentQuery + ' AND ' + newTerm;
                 }}
-                
-                console.log('Final query:', queryInput.value);
                 
                 // Auto-submit the search
                 document.getElementById('searchForm').submit();
