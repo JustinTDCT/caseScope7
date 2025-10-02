@@ -1,7 +1,7 @@
 {
-  "version": "7.10.1",
+  "version": "7.10.2",
   "release_date": "2025-10-02",
-  "description": "Cleanup - Removed empty style blocks; verified no CSS conflicts; static/css/style.css not loaded; templates/ directory orphaned (render-based not template-based); theme.py is sole CSS source",
+  "description": "Cleanup - Archived orphaned v7.0 theme files (style.css, main.js, templates/) to archive/v7.0-orphaned/; eliminated confusion; theme.py is now definitively the sole CSS source; clean directory structure",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -175,6 +175,7 @@
     "7.9.5": "UI Polish - Major styling improvements across all pages: unified button styles (all buttons now consistent with proper hover states); upload page with styled drop zone and limits box; search page with organized controls and query help sections; violations page with proper stats display and filters; user management with separated list/form sections (no more overlap); SIGMA rules with stat cards and sections; severity badges; proper grid layouts for tiles/stats; all forms now properly spaced with form-row grids",
     "7.9.6": "UI Fixes - Footer positioning (bottom right with copyright); button colors changed from bright blue to dark theme grays (#3a3a3a) with subtle borders; button variants (success/danger/warning) use darker shades; search input now full-width (min 400px); improved flexbox layout structure; page-wrapper for proper flex layout; centered content containers; upload page with proper max-width centering; header now space-between for logo placement; fixed h1 left-alignment issue; matching v7.0 aesthetic",
     "7.10.0": "MAJOR - Complete theme rebuild from scratch; removed ALL previous conflicting CSS; built new clean theme based on v7.0 branch design patterns; dark background #1a1a1a; card/sidebar background #252525; proper layout structure (page-container, sidebar, main-content, header, content, footer); buttons #3a3a3a with subtle borders; button variants (primary #1565c0, success #2e7d32, danger #c62828, warning #ef6c00); tables with proper styling; dashboard grid; badges; login page; upload page; search page; all components styled consistently; no more style conflicts; clean professional dark theme matching v7.0 aesthetic",
-    "7.10.1": "Cleanup - Removed 14 empty style blocks from main.py; verified theme.py is sole CSS source; confirmed static/css/style.css NOT loaded (1766 lines unused); confirmed templates/ directory orphaned (render-based system, not template-based); no CSS conflicts exist; verified all pages use get_theme_css() only; 2 legitimate page-specific style blocks remain (Case Selection active highlight, Case Dashboard card styles)"
+    "7.10.1": "Cleanup - Removed 14 empty style blocks from main.py; verified theme.py is sole CSS source; confirmed static/css/style.css NOT loaded (1766 lines unused); confirmed templates/ directory orphaned (render-based system, not template-based); no CSS conflicts exist; verified all pages use get_theme_css() only; 2 legitimate page-specific style blocks remain (Case Selection active highlight, Case Dashboard card styles)",
+    "7.10.2": "Cleanup - Archived orphaned v7.0 theme files to archive/v7.0-orphaned/ directory; moved static/css/style.css (1766 lines, unused); moved static/js/main.js (750 lines, not needed); moved templates/ directory (15 HTML files, not used by render-based system); eliminated confusion; clean directory structure; theme.py is definitively the sole CSS source; static/css/ and static/js/ now empty (no conflicts possible)"
   }
 }
