@@ -1,7 +1,7 @@
 {
-  "version": "7.10.5",
+  "version": "7.10.6",
   "release_date": "2025-10-02",
-  "description": "Theme - Imported v7.0 style.css and adapted for render-based system; converted CSS variables to actual values; matches proven working v7.0 design",
+  "description": "Theme - Fixed to match main.py HTML structure; v7.0 colors + main.py layout; footer outside main-content; tiles grid; proper flexbox",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -179,6 +179,7 @@
     "7.10.2": "Cleanup - Archived orphaned v7.0 theme files to archive/v7.0-orphaned/ directory; moved static/css/style.css (1766 lines, unused); moved static/js/main.js (750 lines, not needed); moved templates/ directory (15 HTML files, not used by render-based system); eliminated confusion; clean directory structure; theme.py is definitively the sole CSS source; static/css/ and static/js/ now empty (no conflicts possible)",
     "7.10.3": "Cleanup - Archived 9 development/testing scripts to archive/dev-tools/; moved test scripts (simple_sigma_test.py, test_one_rule.py, test_rerun_rules.py, test_sigma_direct.py, diagnose_sigma_matching.py); moved debug scripts (check_index_fields.sh, check_sigma_logs.sh, diagnose_celery.sh, commit_changes.sh); kept user-facing utilities (enable_*.py, show_enabled_rules.py, check_enabled_rules.py); kept core app files (main.py, tasks.py, celery_app.py, wsgi.py, theme.py); kept installer and migrations; root directory now contains only production-necessary files; clean, organized structure",
     "7.10.4": "Bugfix - Fixed theme.py CSS to match actual HTML structure used in main.py; v7.10.0 rebuild used wrong class names (page-container instead of sidebar/main-content); HTML structure is <body><div class=sidebar><div class=main-content> not wrapped in page-container; fixed all CSS selectors to match: .sidebar, .main-content, .header, .content, .footer, .menu-item, .menu-title; theme now renders correctly; based on actual HTML not assumed structure",
-    "7.10.5": "Theme - Imported v7.0 style.css (1766 lines) and adapted for render-based system; converted all CSS variables to actual color values (#0f172a, #1e293b, #334155, etc.); removed :root variable definitions; kept all v7.0 styling (sidebar, nav, buttons, tables, cards, badges, forms, alerts); adapted for inline <style> injection; matches proven working v7.0 design exactly; no more guessing - using actual working CSS from v7.0 branch"
+    "7.10.5": "Theme - Imported v7.0 style.css (1766 lines) and adapted for render-based system; converted all CSS variables to actual color values (#0f172a, #1e293b, #334155, etc.); removed :root variable definitions; kept all v7.0 styling (sidebar, nav, buttons, tables, cards, badges, forms, alerts); adapted for inline <style> injection; matches proven working v7.0 design exactly; no more guessing - using actual working CSS from v7.0 branch",
+    "7.10.6": "Theme - Hybrid approach: v7.0 colors + main.py HTML structure; v7.0 used app-container/main-container/nav-item but main.py uses sidebar/main-content/menu-item; created CSS that styles main.py structure with v7.0 colors; body flex wrap for sidebar+main-content+footer; fixed .tiles grid for dashboard cards; footer width 100% outside main-content; proper scrolling; menu-item/menu-title styled; all v7.0 colors preserved (#0f172a bg, #1e293b cards, #10b981 green, #3b82f6 blue); working with actual HTML not assumed structure"
   }
 }
