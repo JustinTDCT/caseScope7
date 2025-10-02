@@ -3675,7 +3675,12 @@ def render_wazuh_style_fields(data, path=""):
                     array_text = ', '.join([html_lib.escape(str(item)) for item in value[:10]])
                     if len(value) > 10:
                         array_text += f' ... ({len(value)} total)'
-                    escaped_path = html_lib.escape(current_path)
+                    
+                    # JavaScript-safe escaping BEFORE HTML escaping
+                    first_val = str(value[0]) if value else ''
+                    js_safe_path = current_path.replace('\\', '\\\\').replace("'", "\\'")
+                    js_safe_value = first_val.replace('\\', '\\\\').replace("'", "\\'").replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r')
+                    
                     html += f'''
                     <tr class="field-row">
                         <td class="field-name">{html_lib.escape(key)}</td>
@@ -3683,10 +3688,10 @@ def render_wazuh_style_fields(data, path=""):
                             <div class="field-value-wrapper">
                                 <span class="field-value">{array_text}</span>
                                 <div class="field-actions">
-                                    <button class="field-action-btn filter-for" onclick="filterFor('{escaped_path}', '{html_lib.escape(str(value[0]) if value else '')}')" title="Filter for this value">
+                                    <button class="field-action-btn filter-for" onclick="filterFor('{js_safe_path}', '{js_safe_value}')" title="Filter for this value">
                                         <span class="action-icon">+</span>
                                     </button>
-                                    <button class="field-action-btn filter-out" onclick="filterOut('{escaped_path}', '{html_lib.escape(str(value[0]) if value else '')}')" title="Exclude this value">
+                                    <button class="field-action-btn filter-out" onclick="filterOut('{js_safe_path}', '{js_safe_value}')" title="Exclude this value">
                                         <span class="action-icon">−</span>
                                     </button>
                                 </div>
@@ -3696,12 +3701,16 @@ def render_wazuh_style_fields(data, path=""):
                     '''
             else:
                 # Leaf value - render as table row with action buttons
-                escaped_value = html_lib.escape(str(value))
+                # FIRST: escape for JavaScript (before HTML escaping which adds &quot; entities)
+                str_value = str(value)
+                str_path = current_path
+                # Escape backslashes first, then single quotes for JavaScript strings
+                js_safe_value = str_value.replace('\\', '\\\\').replace("'", "\\'").replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r')
+                js_safe_path = str_path.replace('\\', '\\\\').replace("'", "\\'")
+                
+                # THEN: escape for HTML display
+                escaped_value = html_lib.escape(str_value)
                 escaped_key = html_lib.escape(key)
-                escaped_path = html_lib.escape(current_path)
-                # Escape quotes for JavaScript
-                js_safe_value = escaped_value.replace("'", "\\'").replace('"', '&quot;')
-                js_safe_path = escaped_path.replace("'", "\\'")
                 
                 html += f'''
                 <tr class="field-row">

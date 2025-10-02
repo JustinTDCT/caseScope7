@@ -1,9 +1,11 @@
 {
-  "version": "7.11.0",
+  "version": "7.11.1",
   "release_date": "2025-10-02",
-  "description": "Major Feature - Wazuh-Style Event Discovery Interface: replaced simple clickable fields with professional Wazuh-inspired field table; each field has filter-for (green +), filter-out (orange −), and copy (blue 📋) action buttons; fields organized in clean table with field name and value columns; collapsible nested sections for organized data; hover-revealed action buttons; auto-submits search when filtering; matches professional SIEM UX for forensic investigation",
+  "description": "Critical Bugfix - Fixed JavaScript escaping in Wazuh-style field viewer: ISSUE: clicking filter/copy buttons would pass field name but not value due to improper HTML entity escaping breaking JavaScript string boundaries; ROOT CAUSE: html.escape() was converting quotes to &quot; entities BEFORE JavaScript escaping, making onclick attributes malformed when values contained special chars; SOLUTION: reverse order - JavaScript escape FIRST (backslash, quotes, newlines), THEN HTML escape for display; now properly escapes \\, ', \", \\n, \\r for JavaScript strings; values with quotes, backslashes, or special chars now work correctly; filter-for/filter-out/copy actions now pass both field AND value properly",
   "build": "production",
   "changelog": {
+    "7.11.1": "Critical Bugfix - Fixed JavaScript escaping in field viewer: reversed escape order (JS first, HTML second) so onclick attributes work with quotes/special chars",
+    "7.11.0": "Major Feature - Wazuh-Style Event Discovery Interface: replaced simple clickable fields with professional Wazuh-inspired field table; each field has filter-for (green +), filter-out (orange −), and copy (blue 📋) action buttons; fields organized in clean table with field name and value columns; collapsible nested sections for organized data; hover-revealed action buttons; auto-submits search when filtering; matches professional SIEM UX for forensic investigation",
     "7.1.1": "Initial release - Core architecture, user management, case framework",
     "7.1.2": "Bugfix - Fixed requirements.txt copying and added fallback dependency installation",
     "7.1.3": "Bugfix - Fixed database path to absolute, improved service status checks, added Nginx troubleshooting",
