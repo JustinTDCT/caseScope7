@@ -1706,11 +1706,13 @@ def search():
                         
                         # If same day, use simple prefix query
                         if start_date_str == end_date_str:
+                            # Single day: simple wildcard
+                            # Use .keyword subfield because wildcard queries only work on keyword fields, not analyzed text
                             time_filter = {
                                 "bool": {
                                     "should": [
-                                        {"wildcard": {"System.TimeCreated.@SystemTime": f"{start_date_str}*"}},
-                                        {"wildcard": {"System_TimeCreated_SystemTime": f"{start_date_str}*"}},
+                                        {"wildcard": {"System.TimeCreated.@SystemTime.keyword": f"{start_date_str}*"}},
+                                        {"wildcard": {"System_TimeCreated_SystemTime.keyword": f"{start_date_str}*"}},
                                         {"wildcard": {"@timestamp": f"{start_date_str}*"}}
                                     ],
                                     "minimum_should_match": 1
@@ -1719,6 +1721,7 @@ def search():
                         else:
                             # Multi-day range: match any date in range using OR of wildcards
                             # This is simple but works for reasonable ranges (< 30 days)
+                            # Use .keyword subfield because wildcard queries only work on keyword fields, not analyzed text
                             from datetime import timedelta
                             date_patterns = []
                             current = start_time.date()
@@ -1726,8 +1729,8 @@ def search():
                             
                             while current <= end:
                                 date_str = current.strftime('%Y-%m-%d')
-                                date_patterns.append({"wildcard": {"System.TimeCreated.@SystemTime": f"{date_str}*"}})
-                                date_patterns.append({"wildcard": {"System_TimeCreated_SystemTime": f"{date_str}*"}})
+                                date_patterns.append({"wildcard": {"System.TimeCreated.@SystemTime.keyword": f"{date_str}*"}})
+                                date_patterns.append({"wildcard": {"System_TimeCreated_SystemTime.keyword": f"{date_str}*"}})
                                 date_patterns.append({"wildcard": {"@timestamp": f"{date_str}*"}})
                                 current += timedelta(days=1)
                             
