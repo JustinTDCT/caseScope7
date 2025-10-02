@@ -962,6 +962,115 @@ def get_theme_css():
                 line-height: 1.5;
             }
             
+            /* Clickable Event Fields */
+            .clickable-fields {
+                padding: 0.5rem 0;
+            }
+            
+            .field-group {
+                margin: 0.5rem 0;
+            }
+            
+            .field-group-header {
+                font-weight: 600;
+                color: #10b981;
+                cursor: pointer;
+                padding: 0.5rem;
+                background: #1e293b;
+                border-radius: 4px;
+                margin-bottom: 0.5rem;
+                transition: background 0.2s;
+            }
+            
+            .field-group-header:hover {
+                background: #334155;
+            }
+            
+            .field-group.collapsed .field-group-content {
+                display: none;
+            }
+            
+            .field-group-content {
+                padding-left: 1rem;
+                border-left: 2px solid #334155;
+                margin-left: 0.5rem;
+            }
+            
+            .field-item {
+                padding: 0.4rem 0.5rem;
+                margin: 0.2rem 0;
+                border-radius: 4px;
+                display: flex;
+                align-items: baseline;
+                gap: 0.5rem;
+            }
+            
+            .field-item.clickable {
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+            
+            .field-item.clickable:hover {
+                background: #1e293b;
+                border-left: 3px solid #10b981;
+                padding-left: 0.7rem;
+            }
+            
+            .field-name {
+                color: #60a5fa;
+                font-weight: 500;
+                min-width: 150px;
+                flex-shrink: 0;
+            }
+            
+            .field-value {
+                color: #f8fafc;
+                word-break: break-word;
+            }
+            
+            /* Search History Sidebar */
+            .search-history-sidebar {
+                background: #1e293b;
+                border: 1px solid #334155;
+                border-radius: 8px;
+                padding: 1rem;
+                margin-bottom: 1.5rem;
+            }
+            
+            .history-section {
+                margin: 0;
+            }
+            
+            .history-list {
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            
+            .history-item {
+                padding: 0.5rem 0.75rem;
+                background: #0f172a;
+                border: 1px solid #334155;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.2s;
+                font-size: 13px;
+                color: #cbd5e1;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            
+            .history-item:hover {
+                background: #334155;
+                border-color: #10b981;
+                color: #f8fafc;
+            }
+            
+            .history-item.saved {
+                border-left: 3px solid #fbbf24;
+            }
+            
             .pagination {
                 display: flex;
                 justify-content: center;

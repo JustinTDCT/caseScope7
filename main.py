@@ -3581,6 +3581,90 @@ def render_user_management(users):
     </html>
     '''
 
+def render_search_history_sidebar(recent_searches, saved_searches):
+    """Render search history and saved searches sidebar"""
+    html = '<div class="search-history-sidebar">'
+    
+    # Recent Searches
+    html += '<div class="history-section">'
+    html += '<h4 style="margin: 0 0 10px 0; font-size: 14px; color: rgba(255,255,255,0.9);">🕐 Recent Searches</h4>'
+    if recent_searches:
+        html += '<div class="history-list">'
+        for search in recent_searches[:5]:  # Show last 5
+            import html as html_lib
+            escaped_query = html_lib.escape(search.query)
+            html += f'<div class="history-item" onclick="loadSearch(\'{escaped_query}\')" title="Click to run this search again">{escaped_query}</div>'
+        html += '</div>'
+    else:
+        html += '<div style="color: rgba(255,255,255,0.5); font-size: 12px;">No recent searches</div>'
+    html += '</div>'
+    
+    # Saved Searches
+    html += '<div class="history-section" style="margin-top: 15px;">'
+    html += '<h4 style="margin: 0 0 10px 0; font-size: 14px; color: rgba(255,255,255,0.9);">⭐ Saved Searches</h4>'
+    if saved_searches:
+        html += '<div class="history-list">'
+        for search in saved_searches:
+            import html as html_lib
+            escaped_query = html_lib.escape(search.query)
+            escaped_name = html_lib.escape(search.name)
+            html += f'<div class="history-item saved" onclick="loadSearch(\'{escaped_query}\')" title="{escaped_name}">{escaped_name}</div>'
+        html += '</div>'
+    else:
+        html += '<div style="color: rgba(255,255,255,0.5); font-size: 12px;">No saved searches</div>'
+    html += '</div>'
+    
+    html += '</div>'
+    return html
+
+def render_clickable_fields(data, path=""):
+    """
+    Recursively render event data as clickable fields
+    Each field can be clicked to add to search query
+    """
+    html = '<div class="clickable-fields">'
+    
+    if isinstance(data, dict):
+        for key, value in data.items():
+            current_path = f"{path}.{key}" if path else key
+            
+            # Skip internal metadata
+            if key == '_casescope_metadata':
+                continue
+            
+            if isinstance(value, dict):
+                # Nested object - render as collapsible section
+                html += f'''
+                <div class="field-group">
+                    <div class="field-group-header" onclick="this.parentElement.classList.toggle('collapsed')">{key} ▼</div>
+                    <div class="field-group-content">
+                        {render_clickable_fields(value, current_path)}
+                    </div>
+                </div>
+                '''
+            elif isinstance(value, list):
+                # Array - show each item
+                html += f'<div class="field-group"><div class="field-group-header">{key} (array)</div><div class="field-group-content">'
+                for idx, item in enumerate(value):
+                    if isinstance(item, (dict, list)):
+                        html += render_clickable_fields(item, f"{current_path}[{idx}]")
+                    else:
+                        import html as html_lib
+                        escaped_value = html_lib.escape(str(item))
+                        escaped_path = html_lib.escape(current_path)
+                        html += f'<div class="field-item clickable" onclick="addFieldToQuery(\'{escaped_path}\', \'{escaped_value}\')"><span class="field-name">[{idx}]:</span> <span class="field-value">{escaped_value}</span></div>'
+                html += '</div></div>'
+            else:
+                # Leaf value - make it clickable
+                import html as html_lib
+                escaped_value = html_lib.escape(str(value))
+                escaped_key = html_lib.escape(key)
+                escaped_path = html_lib.escape(current_path)
+                html += f'<div class="field-item clickable" onclick="addFieldToQuery(\'{escaped_path}\', \'{escaped_value}\')"><span class="field-name">{escaped_key}:</span> <span class="field-value">{escaped_value}</span></div>'
+    
+    html += '</div>'
+    return html
+
 def render_search_page(case, query_str, results, total_hits, page, per_page, error_message, indexed_file_count, violations_only=False, time_range='all', custom_start=None, custom_end=None, recent_searches=[], saved_searches=[]):
     """Render search interface with results"""
     from flask import get_flashed_messages
@@ -3622,8 +3706,8 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             <tr id="{result_id}" class="details-row" style="display: none;">
                 <td colspan="5">
                     <div class="event-details">
-                        <h4>Full Event Data</h4>
-                        <pre>{json.dumps(result['full_data'], indent=2)}</pre>
+                        <h4>Event Details - Click any field to add to search</h4>
+                        {render_clickable_fields(result['full_data'])}
                     </div>
                 </td>
             </tr>
@@ -3681,6 +3765,8 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                 <div class="stats-bar">
                     <strong>📊 Searching across {indexed_file_count} indexed file{"s" if indexed_file_count != 1 else ""}</strong> in this case
                 </div>
+                
+                {render_search_history_sidebar(recent_searches, saved_searches)}
                 
                 <div class="search-box">
                     <form method="POST" id="searchForm">
@@ -3809,6 +3895,25 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                 }} else {{
                     queryInput.value = currentQuery + ' AND ' + newTerm;
                 }}
+                queryInput.focus();
+            }}
+            
+            function addFieldToQuery(field, value) {{
+                const queryInput = document.querySelector('.search-input');
+                const currentQuery = queryInput.value.trim();
+                const newTerm = field + ':"' + value + '"';
+                
+                if (currentQuery === '') {{
+                    queryInput.value = newTerm;
+                }} else {{
+                    queryInput.value = currentQuery + ' AND ' + newTerm;
+                }}
+                queryInput.focus();
+            }}
+            
+            function loadSearch(query) {{
+                const queryInput = document.querySelector('.search-input');
+                queryInput.value = query;
                 queryInput.focus();
             }}
             
