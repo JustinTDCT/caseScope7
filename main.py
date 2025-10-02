@@ -3623,52 +3623,109 @@ def render_search_history_sidebar(recent_searches, saved_searches):
     html += '</div>'
     return html
 
-def render_clickable_fields(data, path=""):
+def render_wazuh_style_fields(data, path=""):
     """
-    Recursively render event data as clickable fields
-    Each field can be clicked to add to search query
+    Render event data in Wazuh-style field table with filter actions
+    Each field has buttons to filter for/against the value
     """
-    html = '<div class="clickable-fields">'
+    import html as html_lib
+    
+    html = '<table class="field-table">'
     
     if isinstance(data, dict):
-        for key, value in data.items():
+        for key, value in sorted(data.items()):
             current_path = f"{path}.{key}" if path else key
             
-            # Skip internal metadata
+            # Skip internal metadata for cleaner view
             if key == '_casescope_metadata':
                 continue
             
             if isinstance(value, dict):
-                # Nested object - render as collapsible section
+                # Nested object - render as collapsible section with nested table
                 html += f'''
-                <div class="field-group">
-                    <div class="field-group-header" onclick="this.parentElement.classList.toggle('collapsed')">{key} ▼</div>
-                    <div class="field-group-content">
-                        {render_clickable_fields(value, current_path)}
-                    </div>
-                </div>
+                <tr class="field-group-row">
+                    <td colspan="2" class="field-group-header" onclick="toggleFieldGroup(this)">
+                        <span class="expand-icon">▶</span> {html_lib.escape(key)}
+                    </td>
+                </tr>
+                <tr class="field-group-content" style="display: none;">
+                    <td colspan="2" style="padding-left: 30px;">
+                        {render_wazuh_style_fields(value, current_path)}
+                    </td>
+                </tr>
                 '''
             elif isinstance(value, list):
-                # Array - show each item
-                html += f'<div class="field-group"><div class="field-group-header">{key} (array)</div><div class="field-group-content">'
-                for idx, item in enumerate(value):
-                    if isinstance(item, (dict, list)):
-                        html += render_clickable_fields(item, f"{current_path}[{idx}]")
-                    else:
-                        import html as html_lib
-                        escaped_value = html_lib.escape(str(item))
-                        escaped_path = html_lib.escape(current_path)
-                        html += f'<div class="field-item clickable" onclick="addFieldToQuery(\'{escaped_path}\', \'{escaped_value}\')"><span class="field-name">[{idx}]:</span> <span class="field-value">{escaped_value}</span></div>'
-                html += '</div></div>'
+                # Array - show as comma-separated if simple types, or nested if complex
+                if value and isinstance(value[0], (dict, list)):
+                    html += f'''
+                    <tr class="field-group-row">
+                        <td colspan="2" class="field-group-header" onclick="toggleFieldGroup(this)">
+                            <span class="expand-icon">▶</span> {html_lib.escape(key)} <span class="field-meta">({len(value)} items)</span>
+                        </td>
+                    </tr>
+                    <tr class="field-group-content" style="display: none;">
+                        <td colspan="2" style="padding-left: 30px;">
+                    '''
+                    for idx, item in enumerate(value):
+                        html += f'<div style="margin-bottom: 10px;"><strong>[{idx}]</strong></div>'
+                        html += render_wazuh_style_fields(item, f"{current_path}[{idx}]")
+                    html += '</td></tr>'
+                else:
+                    # Simple array - show as text
+                    array_text = ', '.join([html_lib.escape(str(item)) for item in value[:10]])
+                    if len(value) > 10:
+                        array_text += f' ... ({len(value)} total)'
+                    escaped_path = html_lib.escape(current_path)
+                    html += f'''
+                    <tr class="field-row">
+                        <td class="field-name">{html_lib.escape(key)}</td>
+                        <td class="field-value-cell">
+                            <div class="field-value-wrapper">
+                                <span class="field-value">{array_text}</span>
+                                <div class="field-actions">
+                                    <button class="field-action-btn filter-for" onclick="filterFor('{escaped_path}', '{html_lib.escape(str(value[0]) if value else '')}')" title="Filter for this value">
+                                        <span class="action-icon">+</span>
+                                    </button>
+                                    <button class="field-action-btn filter-out" onclick="filterOut('{escaped_path}', '{html_lib.escape(str(value[0]) if value else '')}')" title="Exclude this value">
+                                        <span class="action-icon">−</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    '''
             else:
-                # Leaf value - make it clickable
-                import html as html_lib
+                # Leaf value - render as table row with action buttons
                 escaped_value = html_lib.escape(str(value))
                 escaped_key = html_lib.escape(key)
                 escaped_path = html_lib.escape(current_path)
-                html += f'<div class="field-item clickable" onclick="addFieldToQuery(\'{escaped_path}\', \'{escaped_value}\')"><span class="field-name">{escaped_key}:</span> <span class="field-value">{escaped_value}</span></div>'
+                # Escape quotes for JavaScript
+                js_safe_value = escaped_value.replace("'", "\\'").replace('"', '&quot;')
+                js_safe_path = escaped_path.replace("'", "\\'")
+                
+                html += f'''
+                <tr class="field-row">
+                    <td class="field-name">{escaped_key}</td>
+                    <td class="field-value-cell">
+                        <div class="field-value-wrapper">
+                            <span class="field-value">{escaped_value}</span>
+                            <div class="field-actions">
+                                <button class="field-action-btn filter-for" onclick="filterFor('{js_safe_path}', '{js_safe_value}')" title="Filter for this value">
+                                    <span class="action-icon">+</span>
+                                </button>
+                                <button class="field-action-btn filter-out" onclick="filterOut('{js_safe_path}', '{js_safe_value}')" title="Exclude this value">
+                                    <span class="action-icon">−</span>
+                                </button>
+                                <button class="field-action-btn copy-value" onclick="copyToClipboard('{js_safe_value}')" title="Copy value">
+                                    <span class="action-icon">📋</span>
+                                </button>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                '''
     
-    html += '</div>'
+    html += '</table>'
     return html
 
 def render_search_page(case, query_str, results, total_hits, page, per_page, error_message, indexed_file_count, violations_only=False, time_range='all', custom_start=None, custom_end=None, recent_searches=[], saved_searches=[]):
@@ -3712,8 +3769,14 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             <tr id="{result_id}" class="details-row" style="display: none;">
                 <td colspan="5">
                     <div class="event-details">
-                        <h4>Event Details - Click any field to add to search</h4>
-                        {render_clickable_fields(result['full_data'])}
+                        <div class="event-details-header">
+                            <h4>Event Fields</h4>
+                            <div class="event-details-help">
+                                <span class="help-icon" title="Click + to include field in search, − to exclude, 📋 to copy">ℹ️</span>
+                                <span class="help-text">Use + to filter for values, − to exclude them</span>
+                            </div>
+                        </div>
+                        {render_wazuh_style_fields(result['full_data'])}
                     </div>
                 </td>
             </tr>
@@ -3921,6 +3984,72 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                 const queryInput = document.querySelector('.search-input');
                 queryInput.value = query;
                 queryInput.focus();
+            }}
+            
+            function filterFor(field, value) {{
+                const queryInput = document.querySelector('.search-input');
+                const currentQuery = queryInput.value.trim();
+                const newTerm = field + ':"' + value + '"';
+                
+                if (currentQuery === '' || currentQuery === '*') {{
+                    queryInput.value = newTerm;
+                }} else {{
+                    queryInput.value = currentQuery + ' AND ' + newTerm;
+                }}
+                
+                // Auto-submit the search
+                document.getElementById('searchForm').submit();
+            }}
+            
+            function filterOut(field, value) {{
+                const queryInput = document.querySelector('.search-input');
+                const currentQuery = queryInput.value.trim();
+                const newTerm = 'NOT ' + field + ':"' + value + '"';
+                
+                if (currentQuery === '' || currentQuery === '*') {{
+                    queryInput.value = newTerm;
+                }} else {{
+                    queryInput.value = currentQuery + ' AND ' + newTerm;
+                }}
+                
+                // Auto-submit the search
+                document.getElementById('searchForm').submit();
+            }}
+            
+            function copyToClipboard(text) {{
+                // Create temporary textarea for copying
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                
+                try {{
+                    document.execCommand('copy');
+                    // Show brief success message
+                    alert('Copied to clipboard: ' + text.substring(0, 50) + (text.length > 50 ? '...' : ''));
+                }} catch (err) {{
+                    alert('Failed to copy to clipboard');
+                }}
+                
+                document.body.removeChild(textarea);
+            }}
+            
+            function toggleFieldGroup(header) {{
+                const groupRow = header.parentElement;
+                const contentRow = groupRow.nextElementSibling;
+                const icon = header.querySelector('.expand-icon');
+                
+                if (contentRow && contentRow.classList.contains('field-group-content')) {{
+                    if (contentRow.style.display === 'none') {{
+                        contentRow.style.display = 'table-row';
+                        icon.textContent = '▼';
+                    }} else {{
+                        contentRow.style.display = 'none';
+                        icon.textContent = '▶';
+                    }}
+                }}
             }}
             
             function searchPage(pageNum) {{

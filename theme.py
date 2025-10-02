@@ -1071,6 +1071,171 @@ def get_theme_css():
                 border-left: 3px solid #fbbf24;
             }
             
+            /* Wazuh-Style Event Field Table */
+            .event-details-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 15px;
+                padding-bottom: 10px;
+                border-bottom: 2px solid #334155;
+            }
+            
+            .event-details-header h4 {
+                margin: 0;
+                color: #10b981;
+                font-size: 16px;
+            }
+            
+            .event-details-help {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 12px;
+                color: #94a3b8;
+            }
+            
+            .help-icon {
+                cursor: help;
+                font-size: 14px;
+            }
+            
+            .field-table {
+                width: 100%;
+                border-collapse: separate;
+                border-spacing: 0;
+                font-size: 13px;
+            }
+            
+            .field-row {
+                border-bottom: 1px solid #334155;
+                transition: background 0.2s;
+            }
+            
+            .field-row:hover {
+                background: #1e293b;
+            }
+            
+            .field-name {
+                padding: 10px 15px;
+                font-weight: 500;
+                color: #60a5fa;
+                width: 35%;
+                vertical-align: top;
+                word-break: break-word;
+            }
+            
+            .field-value-cell {
+                padding: 10px 15px;
+                width: 65%;
+            }
+            
+            .field-value-wrapper {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .field-value {
+                color: #f8fafc;
+                word-break: break-word;
+                flex: 1;
+                line-height: 1.6;
+            }
+            
+            .field-actions {
+                display: flex;
+                gap: 4px;
+                flex-shrink: 0;
+                opacity: 0;
+                transition: opacity 0.2s;
+            }
+            
+            .field-row:hover .field-actions {
+                opacity: 1;
+            }
+            
+            .field-action-btn {
+                background: #334155;
+                border: 1px solid #475569;
+                border-radius: 4px;
+                padding: 4px 8px;
+                cursor: pointer;
+                transition: all 0.2s;
+                font-size: 12px;
+                color: #f8fafc;
+            }
+            
+            .field-action-btn:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            }
+            
+            .field-action-btn.filter-for {
+                background: linear-gradient(145deg, #10b981, #059669);
+                border-color: #10b981;
+            }
+            
+            .field-action-btn.filter-for:hover {
+                background: linear-gradient(145deg, #059669, #047857);
+            }
+            
+            .field-action-btn.filter-out {
+                background: linear-gradient(145deg, #f59e0b, #d97706);
+                border-color: #f59e0b;
+            }
+            
+            .field-action-btn.filter-out:hover {
+                background: linear-gradient(145deg, #d97706, #b45309);
+            }
+            
+            .field-action-btn.copy-value {
+                background: linear-gradient(145deg, #3b82f6, #2563eb);
+                border-color: #3b82f6;
+            }
+            
+            .field-action-btn.copy-value:hover {
+                background: linear-gradient(145deg, #2563eb, #1d4ed8);
+            }
+            
+            .action-icon {
+                font-weight: bold;
+                font-size: 14px;
+            }
+            
+            .field-group-row .field-group-header {
+                padding: 12px 15px;
+                font-weight: 600;
+                color: #10b981;
+                background: #1e293b;
+                cursor: pointer;
+                user-select: none;
+                transition: background 0.2s;
+            }
+            
+            .field-group-row .field-group-header:hover {
+                background: #334155;
+            }
+            
+            .expand-icon {
+                display: inline-block;
+                margin-right: 8px;
+                transition: transform 0.2s;
+                font-size: 12px;
+            }
+            
+            .field-meta {
+                color: #94a3b8;
+                font-size: 11px;
+                font-weight: normal;
+                margin-left: 8px;
+            }
+            
+            .field-group-content td {
+                background: #0f172a;
+            }
+            
             .pagination {
                 display: flex;
                 justify-content: center;
