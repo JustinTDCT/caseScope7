@@ -16,6 +16,9 @@ from datetime import datetime
 from opensearchpy import OpenSearch
 import re
 
+# Import dark flat theme CSS
+from theme import get_theme_css
+
 # Import the SAME Celery app that the worker uses (no more split-brain!)
 # This ensures web and worker use identical configuration and routing
 try:
@@ -6304,245 +6307,12 @@ def render_case_selection(cases, active_case_id):
     <html>
     <head>
         <title>Case Selection - caseScope 7.1</title>
+        {get_theme_css()}
         <style>
-            body {{ 
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
-                color: white; 
-                margin: 0; 
-                display: flex; 
-                min-height: 100vh; 
-            }}
-            .sidebar {{ 
-                width: 280px; 
-                background: linear-gradient(145deg, #303f9f, #283593); 
-                padding: 20px; 
-                box-shadow: 
-                    5px 0 20px rgba(0,0,0,0.4),
-                    inset -1px 0 0 rgba(255,255,255,0.1);
-                backdrop-filter: blur(10px);
-            }}
-            .main-content {{ flex: 1; }}
-            .header {{ 
-                background: linear-gradient(145deg, #283593, #1e88e5); 
-                padding: 15px 30px; 
-                display: flex; 
-                justify-content: flex-end; 
-                align-items: center;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-                border-bottom: 1px solid rgba(255,255,255,0.1);
-                min-height: 60px;
-            }}
-            .user-info {{ 
-                display: flex; 
-                align-items: center; 
-                gap: 20px;
-                font-size: 1em;
-                line-height: 1.2;
-            }}
-            .sidebar-logo {{
-                text-align: center;
-                font-size: 2.2em;
-                font-weight: 300;
-                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-                margin-bottom: 15px;
-                padding: 5px 0 8px 0;
-                border-bottom: 1px solid rgba(76,175,80,0.3);
-            }}
-            .sidebar-logo .case {{ color: #4caf50; }}
-            .sidebar-logo .scope {{ color: white; }}
-            .version-badge {{
-                font-size: 0.4em;
-                background: linear-gradient(145deg, #4caf50, #388e3c);
-                color: white;
-                padding: 3px 6px;
-                border-radius: 6px;
-                margin-top: 5px;
-                display: inline-block;
-                box-shadow: 0 2px 4px rgba(76,175,80,0.3);
-                border: 1px solid rgba(255,255,255,0.1);
-            }}
-            .content {{ padding: 30px; }}
-            .menu-item {{ 
-                display: block; 
-                color: white; 
-                text-decoration: none; 
-                padding: 12px 16px; 
-                margin: 6px 0; 
-                border-radius: 12px; 
-                background: linear-gradient(145deg, #3949ab, #283593);
-                box-shadow: 
-                    0 4px 8px rgba(0,0,0,0.3),
-                    inset 0 1px 0 rgba(255,255,255,0.1);
-                transition: all 0.3s ease;
-                border: 1px solid rgba(255,255,255,0.1);
-                font-size: 0.95em;
-            }}
-            .menu-item:hover {{ 
-                background: linear-gradient(145deg, #5c6bc0, #3949ab);
-                transform: translateX(5px);
-                box-shadow: 
-                    0 8px 15px rgba(0,0,0,0.4),
-                    inset 0 1px 0 rgba(255,255,255,0.2);
-            }}
-            .menu-item.active {{
-                background: linear-gradient(145deg, #4caf50, #388e3c);
-            }}
-            .menu-item.placeholder {{ 
-                background: linear-gradient(145deg, #424242, #2e2e2e); 
-                color: #aaa; 
-                cursor: not-allowed;
-                opacity: 0.7;
-            }}
-            .menu-item.placeholder:hover {{
-                transform: none;
-                box-shadow: 
-                    0 4px 8px rgba(0,0,0,0.3),
-                    inset 0 1px 0 rgba(255,255,255,0.1);
-            }}
-            h3.menu-title {{
-                font-size: 1.1em;
-                margin: 15px 0 8px 0;
-                color: #4caf50;
-                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
-                border-bottom: 1px solid rgba(76,175,80,0.3);
-                padding-bottom: 4px;
-            }}
-            .logout-btn {{
-                background: linear-gradient(145deg, #f44336, #d32f2f);
-                color: white !important;
-                padding: 8px 16px;
-                border-radius: 8px;
-                text-decoration: none;
-                font-size: 0.9em;
-                font-weight: 500;
-                box-shadow: 0 4px 8px rgba(244,67,54,0.3);
-                transition: all 0.3s ease;
-                border: 1px solid rgba(255,255,255,0.1);
-            }}
-            .logout-btn:hover {{
-                background: linear-gradient(145deg, #ef5350, #f44336);
-                box-shadow: 0 6px 12px rgba(244,67,54,0.4);
-                transform: translateY(-1px);
-                color: white !important;
-            }}
-            .search-container {{
-                margin-bottom: 20px;
-                display: flex;
-                gap: 15px;
-                align-items: center;
-            }}
-            .search-input {{
-                flex: 1;
-                padding: 12px 16px;
-                border: none;
-                border-radius: 8px;
-                background: rgba(255,255,255,0.1);
-                color: white;
-                font-size: 14px;
-                box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
-                border: 1px solid rgba(255,255,255,0.1);
-            }}
-            .search-input::placeholder {{ color: rgba(255,255,255,0.7); }}
-            .create-btn {{
-                background: linear-gradient(145deg, #4caf50, #388e3c);
-                color: white;
-                padding: 12px 20px;
-                border: none;
-                border-radius: 8px;
-                cursor: pointer;
-                font-weight: 600;
-                text-decoration: none;
-                transition: all 0.3s ease;
-                box-shadow: 0 4px 8px rgba(76,175,80,0.3);
-            }}
-            .create-btn:hover {{
-                background: linear-gradient(145deg, #66bb6a, #4caf50);
-                transform: translateY(-1px);
-            }}
-            .case-table {{
-                width: 100%;
-                background: linear-gradient(145deg, #3f51b5, #283593);
-                border-radius: 15px;
-                overflow: hidden;
-                box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-            }}
-            .case-table th, .case-table td {{
-                padding: 15px;
-                text-align: left;
-                border-bottom: 1px solid rgba(255,255,255,0.1);
-            }}
-            .case-table th {{
-                background: #283593;
-                font-weight: 600;
-                color: white;
-            }}
-            .case-row {{
-                cursor: pointer;
-                transition: all 0.3s ease;
-            }}
-            .case-row:hover {{
-                background: rgba(255,255,255,0.1);
-            }}
+            /* Page-specific overrides for Case Selection */
             .case-row.active-case {{
-                background: rgba(76,175,80,0.2);
-                border-left: 4px solid #4caf50;
-            }}
-            .priority-low {{ color: #81c784; }}
-            .priority-medium {{ color: #ffb74d; }}
-            .priority-high {{ color: #ff8a65; }}
-            .priority-critical {{ color: #e57373; }}
-            .status-open {{ color: #4caf50; }}
-            .status-in-progress {{ color: #2196f3; }}
-            .status-closed {{ color: #9e9e9e; }}
-            .status-archived {{ color: #757575; }}
-            .flash-message {{
-                padding: 15px 20px;
-                margin: 20px 0;
-                border-radius: 12px;
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                animation: slideIn 0.3s ease;
-            }}
-            .flash-success {{
-                background: linear-gradient(145deg, #4caf50, #388e3c);
-                border: 1px solid rgba(255,255,255,0.2);
-            }}
-            .flash-warning {{
-                background: linear-gradient(145deg, #ff9800, #f57c00);
-                border: 1px solid rgba(255,255,255,0.2);
-            }}
-            .flash-error {{
-                background: linear-gradient(145deg, #f44336, #d32f2f);
-                border: 1px solid rgba(255,255,255,0.2);
-            }}
-            .flash-icon {{ font-size: 1.5em; flex-shrink: 0; }}
-            .flash-text {{ flex: 1; font-size: 1em; line-height: 1.4; }}
-            .flash-close {{
-                background: rgba(255,255,255,0.2);
-                border: none;
-                color: white;
-                font-size: 24px;
-                font-weight: bold;
-                cursor: pointer;
-                width: 32px;
-                height: 32px;
-                border-radius: 6px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: all 0.2s ease;
-                flex-shrink: 0;
-            }}
-            .flash-close:hover {{
-                background: rgba(255,255,255,0.3);
-                transform: scale(1.1);
-            }}
-            @keyframes slideIn {{
-                from {{ opacity: 0; transform: translateY(-10px); }}
-                to {{ opacity: 1; transform: translateY(0); }}
+                background: rgba(76,175,80,0.15);
+                border-left: 4px solid var(--accent-green);
             }}
         </style>
     </head>
@@ -6638,197 +6408,55 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
     <html>
     <head>
         <title>Case Dashboard - {case.name} - caseScope 7.1</title>
+        {get_theme_css()}
         <style>
-            body {{ 
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-                background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); 
-                color: white; 
-                margin: 0; 
-                display: flex; 
-                min-height: 100vh; 
-            }}
-            .sidebar {{ 
-                width: 280px; 
-                background: linear-gradient(145deg, #303f9f, #283593); 
-                padding: 20px; 
-                box-shadow: 
-                    5px 0 20px rgba(0,0,0,0.4),
-                    inset -1px 0 0 rgba(255,255,255,0.1);
-                backdrop-filter: blur(10px);
-            }}
-            .main-content {{ flex: 1; }}
-            .header {{ 
-                background: linear-gradient(145deg, #283593, #1e88e5); 
-                padding: 15px 30px; 
-                display: flex; 
-                justify-content: space-between; 
-                align-items: center;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-                border-bottom: 1px solid rgba(255,255,255,0.1);
-                min-height: 60px;
-            }}
+            /* Page-specific styles for Case Dashboard */
             .case-title {{
                 font-size: 1.3em;
                 font-weight: 600;
+                color: var(--text-primary);
             }}
-            .user-info {{ 
-                display: flex; 
-                align-items: center; 
-                gap: 20px;
-                font-size: 1em;
-                line-height: 1.2;
-            }}
-            .sidebar-logo {{
-                text-align: center;
-                font-size: 2.2em;
-                font-weight: 300;
-                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-                margin-bottom: 15px;
-                padding: 5px 0 8px 0;
-                border-bottom: 1px solid rgba(76,175,80,0.3);
-            }}
-            .sidebar-logo .case {{ color: #4caf50; }}
-            .sidebar-logo .scope {{ color: white; }}
-            .version-badge {{
-                font-size: 0.4em;
-                background: linear-gradient(145deg, #4caf50, #388e3c);
-                color: white;
-                padding: 3px 6px;
-                border-radius: 6px;
-                margin-top: 5px;
-                display: inline-block;
-                box-shadow: 0 2px 4px rgba(76,175,80,0.3);
-                border: 1px solid rgba(255,255,255,0.1);
-            }}
-            .content {{ padding: 30px; }}
-            .menu-item {{ 
-                display: block; 
-                color: white; 
-                text-decoration: none; 
-                padding: 12px 16px; 
-                margin: 6px 0; 
-                border-radius: 12px; 
-                background: linear-gradient(145deg, #3949ab, #283593);
-                box-shadow: 
-                    0 4px 8px rgba(0,0,0,0.3),
-                    inset 0 1px 0 rgba(255,255,255,0.1);
-                transition: all 0.3s ease;
-                border: 1px solid rgba(255,255,255,0.1);
-                font-size: 0.95em;
-            }}
-            .menu-item:hover {{ 
-                background: linear-gradient(145deg, #5c6bc0, #3949ab);
-                transform: translateX(5px);
-                box-shadow: 
-                    0 8px 15px rgba(0,0,0,0.4),
-                    inset 0 1px 0 rgba(255,255,255,0.2);
-            }}
-            .menu-item.placeholder {{ 
-                background: linear-gradient(145deg, #424242, #2e2e2e); 
-                color: #aaa; 
-                cursor: not-allowed;
-                opacity: 0.7;
-            }}
-            .menu-item.placeholder:hover {{
-                transform: none;
-                box-shadow: 
-                    0 4px 8px rgba(0,0,0,0.3),
-                    inset 0 1px 0 rgba(255,255,255,0.1);
-            }}
-            h3.menu-title {{
-                font-size: 1.1em;
-                margin: 15px 0 8px 0;
-                color: #4caf50;
-                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
-                border-bottom: 1px solid rgba(76,175,80,0.3);
-                padding-bottom: 4px;
-            }}
-            .logout-btn {{
-                background: linear-gradient(145deg, #f44336, #d32f2f);
-                color: white !important;
-                padding: 8px 16px;
-                border-radius: 8px;
-                text-decoration: none;
-                font-size: 0.9em;
-                font-weight: 500;
-                box-shadow: 0 4px 8px rgba(244,67,54,0.3);
-                transition: all 0.3s ease;
-                border: 1px solid rgba(255,255,255,0.1);
-            }}
-            .logout-btn:hover {{
-                background: linear-gradient(145deg, #ef5350, #f44336);
-                box-shadow: 0 6px 12px rgba(244,67,54,0.4);
-                transform: translateY(-1px);
-                color: white !important;
-            }}
-            .flash-message {{
-                padding: 15px 20px;
-                margin: 20px 0;
-                border-radius: 12px;
+            .header {{
                 display: flex;
-                align-items: center;
-                gap: 12px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                animation: slideIn 0.3s ease;
+                justify-content: space-between;
             }}
-            .flash-success {{ background: linear-gradient(145deg, #4caf50, #388e3c); border: 1px solid rgba(255,255,255,0.2); }}
-            .flash-warning {{ background: linear-gradient(145deg, #ff9800, #f57c00); border: 1px solid rgba(255,255,255,0.2); }}
-            .flash-error {{ background: linear-gradient(145deg, #f44336, #d32f2f); border: 1px solid rgba(255,255,255,0.2); }}
-            .flash-icon {{ font-size: 1.5em; flex-shrink: 0; }}
-            .flash-text {{ flex: 1; font-size: 1em; line-height: 1.4; }}
-            .flash-close {{ background: rgba(255,255,255,0.2); border: none; color: white; font-size: 24px; font-weight: bold; cursor: pointer; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; flex-shrink: 0; }}
-            .flash-close:hover {{ background: rgba(255,255,255,0.3); transform: scale(1.1); }}
-            @keyframes slideIn {{ from {{ opacity: 0; transform: translateY(-10px); }} to {{ opacity: 1; transform: translateY(0); }} }}
             .case-info {{
-                background: linear-gradient(145deg, #283593, #1e88e5);
+                background: var(--bg-card);
                 padding: 20px;
-                border-radius: 15px;
+                border-radius: 8px;
                 margin-bottom: 25px;
-                box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+                box-shadow: var(--shadow-sm);
+                border: 1px solid var(--border-default);
             }}
-            .tiles {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; }}
-            .tile {{ 
-                background: linear-gradient(145deg, #3f51b5, #283593); 
-                padding: 25px; 
-                border-radius: 15px; 
-                box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-                transition: all 0.3s ease;
+            .tiles {{ 
+                display: grid; 
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
+                gap: 25px; 
             }}
-            .tile:hover {{
-                transform: translateY(-3px);
-                box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+            .actions {{ 
+                margin-top: 25px; 
+                text-align: center; 
             }}
-            .tile h3 {{
-                margin-top: 0;
-                margin-bottom: 15px;
-                font-size: 1.3em;
-                text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
-            }}
-            .actions {{ margin-top: 25px; text-align: center; }}
             .btn {{ 
-                background: linear-gradient(145deg, #4caf50, #388e3c); 
+                background: var(--accent-green);
                 color: white; 
                 padding: 12px 24px; 
                 text-decoration: none; 
-                border-radius: 8px; 
+                border-radius: 6px; 
                 margin: 0 10px 10px 10px;
                 display: inline-block;
-                transition: all 0.3s ease;
-                font-weight: 600;
-                box-shadow: 0 4px 8px rgba(76,175,80,0.3);
+                transition: all 0.2s ease;
+                font-weight: 500;
+                border: none;
             }}
             .btn:hover {{ 
-                background: linear-gradient(145deg, #66bb6a, #4caf50); 
-                transform: translateY(-1px);
-                box-shadow: 0 6px 12px rgba(76,175,80,0.4);
+                background: #43a047;
             }}
             .btn-secondary {{ 
-                background: linear-gradient(145deg, #2196f3, #1976d2);
-                box-shadow: 0 4px 8px rgba(33,150,243,0.3);
+                background: var(--accent-blue);
             }}
             .btn-secondary:hover {{ 
-                background: linear-gradient(145deg, #42a5f5, #2196f3);
-                box-shadow: 0 6px 12px rgba(33,150,243,0.4);
+                background: #1976d2;
             }}
         </style>
     </head>
