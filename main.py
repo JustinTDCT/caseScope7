@@ -2404,17 +2404,17 @@ def build_opensearch_query(user_query):
     
     # Map common field names to actual indexed field names
     # This makes queries more user-friendly
-    # EventID is indexed as both text (System_EventID_#text) and keyword (System_EventID_#text.keyword)
+    # Fields use DOT notation as stored by flatten_event() in tasks.py
     field_mappings = {
-        'EventID': 'System_EventID_#text',
-        'Computer': 'System_Computer',
-        'Channel': 'System_Channel',
-        'Provider': 'System_Provider_@Name',
-        'Level': 'System_Level',
-        'Task': 'System_Task',
-        'TimeCreated': 'System_TimeCreated_@SystemTime',
-        'source_filename': '_casescope_metadata_filename',
-        'filename': '_casescope_metadata_filename'  # Alternative field name
+        'EventID': 'System.EventID.#text',
+        'Computer': 'System.Computer',
+        'Channel': 'System.Channel',
+        'Provider': 'System.Provider.@Name',
+        'Level': 'System.Level',
+        'Task': 'System.Task',
+        'TimeCreated': 'System.TimeCreated.@SystemTime',
+        'source_filename': '_casescope_metadata.filename',
+        'filename': '_casescope_metadata.filename'  # Alternative field name
     }
     
     # Replace field names in query (simple string replacement)
