@@ -638,152 +638,209 @@ def get_theme_css():
             }
             
             /* === UPLOAD PAGE === */
-            .upload-container {
-                max-width: 900px;
+            .upload-page-container {
+                max-width: 1000px;
                 margin: 0 auto;
             }
             
-            .upload-info {
+            .upload-info-card {
                 background: #1e293b;
                 border: 1px solid #334155;
-                border-radius: 8px;
+                border-radius: 12px;
                 padding: 1.5rem;
                 margin-bottom: 2rem;
             }
             
-            .upload-info h3 {
+            .upload-info-card h3 {
                 color: #f8fafc;
                 margin-top: 0;
                 margin-bottom: 1rem;
                 font-size: 1.1rem;
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
             }
             
-            .upload-info ul {
+            .upload-info-card ul {
                 list-style: none;
                 padding: 0;
                 margin: 0;
             }
             
-            .upload-info li {
+            .upload-info-card li {
                 padding: 0.5rem 0;
                 color: #cbd5e1;
                 font-size: 0.95rem;
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
             }
             
-            .upload-info li:before {
-                content: "• ";
+            .upload-info-card li:before {
+                content: "✓";
                 color: #10b981;
                 font-weight: bold;
-                margin-right: 0.5rem;
+                font-size: 1.1rem;
             }
             
-            .upload-area {
+            .upload-dropzone {
                 background: #1e293b;
-                border: 2px dashed #334155;
+                border: 3px dashed #475569;
                 border-radius: 12px;
                 padding: 4rem 2rem;
                 text-align: center;
                 cursor: pointer;
                 transition: all 0.3s ease;
                 margin-bottom: 2rem;
+                min-height: 300px;
                 display: flex;
-                flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                min-height: 300px;
-                -webkit-user-select: none;
-                -moz-user-select: none;
-                -ms-user-select: none;
-                user-select: none;
             }
             
-            .upload-area:hover {
+            .upload-dropzone:hover {
                 border-color: #3b82f6;
                 background: rgba(59, 130, 246, 0.05);
             }
             
-            .upload-area.dragover {
+            .upload-dropzone.dragover {
                 border-color: #10b981;
-                background: rgba(16, 185, 129, 0.1);
                 border-style: solid;
+                background: rgba(16, 185, 129, 0.1);
+                transform: scale(1.02);
+            }
+            
+            .upload-dropzone-content {
+                pointer-events: none;
             }
             
             .upload-icon {
-                font-size: 4rem;
-                color: #475569;
+                font-size: 5rem;
                 margin-bottom: 1.5rem;
-                display: block;
+                opacity: 0.7;
             }
             
-            .upload-text {
-                font-size: 1.2rem;
+            .upload-primary-text {
+                font-size: 1.3rem;
                 color: #f8fafc;
-                margin-bottom: 0.75rem;
                 font-weight: 500;
+                margin-bottom: 0.75rem;
             }
             
-            .upload-subtext {
-                font-size: 0.95rem;
+            .upload-secondary-text {
+                font-size: 1rem;
                 color: #94a3b8;
-                margin-top: 0.5rem;
             }
             
-            /* File input - hidden but functional */
-            input[type="file"] {
-                display: none;
-            }
-            
-            /* Selected files display */
-            .selected-files {
+            .file-list {
                 background: #1e293b;
                 border: 1px solid #334155;
-                border-radius: 8px;
+                border-radius: 12px;
                 padding: 1.5rem;
-                margin-bottom: 1.5rem;
+                margin-bottom: 2rem;
             }
             
-            .selected-files h4 {
-                margin: 0 0 1rem 0;
+            .file-list h3 {
                 color: #f8fafc;
-                font-size: 1rem;
+                margin-top: 0;
+                margin-bottom: 1.5rem;
+                font-size: 1.1rem;
             }
             
-            .selected-file-item {
+            .file-item {
                 display: flex;
                 align-items: center;
-                gap: 0.75rem;
-                padding: 0.75rem;
-                margin-bottom: 0.5rem;
+                gap: 1rem;
+                padding: 1rem;
                 background: #0f172a;
-                border-radius: 6px;
                 border: 1px solid #334155;
+                border-radius: 8px;
+                margin-bottom: 0.75rem;
+                transition: all 0.2s ease;
             }
             
-            .selected-file-item:last-child {
-                margin-bottom: 0;
+            .file-item:hover {
+                border-color: #475569;
+                background: #1e293b;
             }
             
-            .selected-file-item i {
-                color: #3b82f6;
-                font-size: 1.2rem;
+            .file-item-error {
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+                padding: 1rem;
+                background: rgba(239, 68, 68, 0.1);
+                border: 1px solid #ef4444;
+                border-radius: 8px;
+                margin-bottom: 0.75rem;
             }
             
-            .selected-file-item .file-name {
+            .file-item-icon {
+                font-size: 2rem;
+                opacity: 0.7;
+            }
+            
+            .file-item-details {
                 flex: 1;
+                min-width: 0;
+            }
+            
+            .file-item-name {
                 color: #f8fafc;
                 font-weight: 500;
+                font-size: 1rem;
+                margin-bottom: 0.25rem;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
             }
             
-            .selected-file-item .file-size {
+            .file-item-size {
                 color: #94a3b8;
                 font-size: 0.9rem;
             }
             
-            /* Upload actions */
+            .file-item-remove {
+                width: 32px;
+                height: 32px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: #334155;
+                border-radius: 6px;
+                color: #f8fafc;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                font-size: 1.2rem;
+                font-weight: bold;
+            }
+            
+            .file-item-remove:hover {
+                background: #ef4444;
+                transform: scale(1.1);
+            }
+            
+            .file-list-total {
+                padding: 1rem;
+                background: rgba(59, 130, 246, 0.1);
+                border: 1px solid #3b82f6;
+                border-radius: 8px;
+                color: #3b82f6;
+                font-weight: 500;
+                text-align: center;
+                margin-top: 1rem;
+            }
+            
             .upload-actions {
                 display: flex;
                 gap: 1rem;
-                justify-content: flex-end;
+                justify-content: center;
+                align-items: center;
+                flex-wrap: wrap;
+            }
+            
+            .upload-actions .btn {
+                min-width: 150px;
             }
             
             /* === SEARCH PAGE === */

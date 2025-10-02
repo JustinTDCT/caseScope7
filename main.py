@@ -2660,7 +2660,7 @@ def change_password():
 
 # UI Rendering Functions
 def render_upload_form(case):
-    """Render file upload form"""
+    """Render professional file upload form with drag-and-drop"""
     # Get flash messages
     from flask import get_flashed_messages
     flash_messages_html = ""
@@ -2679,53 +2679,66 @@ def render_upload_form(case):
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Upload Files - {case.name} - caseScope 7.1</title>
-        {get_theme_css()}    </head>
+        <title>Upload Files - {case.name} - caseScope {APP_VERSION}</title>
+        {get_theme_css()}
+    </head>
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
                 <span class="case">case</span><span class="scope">Scope</span>
                 <div class="version-badge">{APP_VERSION}</div>
             </div>
-            
             {render_sidebar_menu('upload')}
-            <a href="/settings" class="menu-item placeholder">⚙️ System Settings (Coming Soon)</a>
         </div>
+        
         <div class="main-content">
             <div class="header">
-                <div class="case-title">📁 {case.name}</div>
+                <h1>📤 Upload Files</h1>
                 <div class="user-info">
                     <span>Welcome, {current_user.username} ({current_user.role})</span>
                     <a href="/logout" class="logout-btn">Logout</a>
                 </div>
             </div>
+            
             <div class="content">
-                <h1>📤 Upload Files</h1>
-                
-                {flash_messages_html}
-                
-                <div class="info-box">
-                    <strong>Upload Limits:</strong><br>
-                    • Maximum 5 files per upload<br>
-                    • Maximum 3GB per file<br>
-                    • Duplicate detection via SHA256 hash<br>
-                    • Supported formats: .evtx, .json, .csv, .log, .txt, .xml
-                </div>
-                
-                <div class="upload-container">
-                    <form method="POST" enctype="multipart/form-data">
-                        <div class="file-input" onclick="document.getElementById('fileInput').click()">
-                            <p style="font-size: 3em; margin: 0;">📁</p>
-                            <p>Click to select files or drag and drop</p>
-                            <p style="font-size: 0.9em; color: rgba(255,255,255,0.7);">Up to 5 files, 3GB each</p>
+                <div class="upload-page-container">
+                    {flash_messages_html}
+                    
+                    <div class="upload-info-card">
+                        <h3>📋 Upload Limits</h3>
+                        <ul>
+                            <li>Maximum 5 files per upload</li>
+                            <li>Maximum 3GB per file</li>
+                            <li>Duplicate detection via SHA256 hash</li>
+                            <li>Supported formats: .evtx, .json, .csv, .log, .txt, .xml</li>
+                        </ul>
+                    </div>
+                    
+                    <form method="POST" enctype="multipart/form-data" id="uploadForm">
+                        <div class="upload-dropzone" id="dropzone">
+                            <div class="upload-dropzone-content">
+                                <div class="upload-icon">📁</div>
+                                <div class="upload-primary-text">Click to select files or drag and drop</div>
+                                <div class="upload-secondary-text">Up to 5 files, 3GB each</div>
+                                <input type="file" id="fileInput" name="files" multiple accept=".evtx,.json,.csv,.log,.txt,.xml" style="display: none;">
+                            </div>
                         </div>
-                        <input type="file" id="fileInput" name="files" multiple style="display: none;" onchange="showSelectedFiles(this)">
                         
-                        <div id="selectedFiles" style="margin: 20px 0;"></div>
+                        <div id="fileList" class="file-list" style="display: none;">
+                            <h3>Selected Files (<span id="fileCount">0</span>)</h3>
+                            <div id="fileItems"></div>
+                        </div>
                         
-                        <div style="text-align: center; margin-top: 25px;">
-                            <button type="submit" class="btn">Upload Files</button>
-                            <button type="button" class="btn btn-secondary" onclick="window.location.href='/files'">Cancel</button>
+                        <div class="upload-actions" id="uploadActions" style="display: none;">
+                            <button type="submit" class="btn btn-primary">
+                                <span>📤 Upload Files</span>
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="clearFiles()">
+                                <span>🗑️ Clear All</span>
+                            </button>
+                            <a href="/files" class="btn">
+                                <span>← Back to Files</span>
+                            </a>
                         </div>
                     </form>
                 </div>
@@ -2733,30 +2746,148 @@ def render_upload_form(case):
         </div>
         
         <script>
-            function showSelectedFiles(input) {{
-                const container = document.getElementById('selectedFiles');
-                container.innerHTML = '';
+            const dropzone = document.getElementById('dropzone');
+            const fileInput = document.getElementById('fileInput');
+            const fileList = document.getElementById('fileList');
+            const fileItems = document.getElementById('fileItems');
+            const fileCount = document.getElementById('fileCount');
+            const uploadActions = document.getElementById('uploadActions');
+            
+            // Click to select files
+            dropzone.addEventListener('click', () => {{
+                fileInput.click();
+            }});
+            
+            // Drag and drop handlers
+            dropzone.addEventListener('dragover', (e) => {{
+                e.preventDefault();
+                dropzone.classList.add('dragover');
+            }});
+            
+            dropzone.addEventListener('dragleave', () => {{
+                dropzone.classList.remove('dragover');
+            }});
+            
+            dropzone.addEventListener('drop', (e) => {{
+                e.preventDefault();
+                dropzone.classList.remove('dragover');
                 
-                if (input.files.length > 0) {{
-                    const fileList = document.createElement('div');
-                    fileList.style.cssText = 'background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;';
-                    
-                    const title = document.createElement('h4');
-                    title.textContent = 'Selected Files:';
-                    title.style.marginTop = '0';
-                    fileList.appendChild(title);
-                    
-                    for (let i = 0; i < input.files.length; i++) {{
-                        const file = input.files[i];
-                        const fileInfo = document.createElement('p');
-                        fileInfo.textContent = `${{i+1}}. ${{file.name}} (${{(file.size / 1024 / 1024).toFixed(2)}} MB)`;
-                        fileInfo.style.margin = '5px 0';
-                        fileList.appendChild(fileInfo);
-                    }}
-                    
-                    container.appendChild(fileList);
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {{
+                    fileInput.files = files;
+                    displayFiles(files);
                 }}
+            }});
+            
+            // File input change handler
+            fileInput.addEventListener('change', (e) => {{
+                displayFiles(e.target.files);
+            }});
+            
+            function displayFiles(files) {{
+                if (files.length === 0) {{
+                    fileList.style.display = 'none';
+                    uploadActions.style.display = 'none';
+                    return;
+                }}
+                
+                // Check file count limit
+                if (files.length > 5) {{
+                    alert('Maximum 5 files allowed per upload. Please select fewer files.');
+                    fileInput.value = '';
+                    return;
+                }}
+                
+                fileItems.innerHTML = '';
+                fileCount.textContent = files.length;
+                
+                let totalSize = 0;
+                const maxSize = 3221225472; // 3GB in bytes
+                
+                for (let i = 0; i < files.length; i++) {{
+                    const file = files[i];
+                    totalSize += file.size;
+                    
+                    // Check individual file size
+                    const sizeGB = (file.size / 1073741824).toFixed(2);
+                    const sizeMB = (file.size / 1048576).toFixed(2);
+                    const sizeDisplay = file.size > 1073741824 ? sizeGB + ' GB' : sizeMB + ' MB';
+                    
+                    const isOverSize = file.size > maxSize;
+                    const fileClass = isOverSize ? 'file-item-error' : 'file-item';
+                    
+                    const fileItem = document.createElement('div');
+                    fileItem.className = fileClass;
+                    fileItem.innerHTML = `
+                        <div class="file-item-icon">📄</div>
+                        <div class="file-item-details">
+                            <div class="file-item-name">${{file.name}}</div>
+                            <div class="file-item-size">${{sizeDisplay}}${{isOverSize ? ' - ⚠️ Exceeds 3GB limit' : ''}}</div>
+                        </div>
+                        <div class="file-item-remove" onclick="removeFile(${{i}})">✕</div>
+                    `;
+                    fileItems.appendChild(fileItem);
+                }}
+                
+                fileList.style.display = 'block';
+                uploadActions.style.display = 'flex';
+                
+                // Show total size
+                const totalSizeGB = (totalSize / 1073741824).toFixed(2);
+                const totalSizeMB = (totalSize / 1048576).toFixed(2);
+                const totalDisplay = totalSize > 1073741824 ? totalSizeGB + ' GB' : totalSizeMB + ' MB';
+                
+                const totalInfo = document.createElement('div');
+                totalInfo.className = 'file-list-total';
+                totalInfo.textContent = `Total size: ${{totalDisplay}}`;
+                fileItems.appendChild(totalInfo);
             }}
+            
+            function removeFile(index) {{
+                const dt = new DataTransfer();
+                const files = fileInput.files;
+                
+                for (let i = 0; i < files.length; i++) {{
+                    if (i !== index) {{
+                        dt.items.add(files[i]);
+                    }}
+                }}
+                
+                fileInput.files = dt.files;
+                displayFiles(fileInput.files);
+            }}
+            
+            function clearFiles() {{
+                fileInput.value = '';
+                fileItems.innerHTML = '';
+                fileList.style.display = 'none';
+                uploadActions.style.display = 'none';
+            }}
+            
+            // Form validation on submit
+            document.getElementById('uploadForm').addEventListener('submit', (e) => {{
+                if (fileInput.files.length === 0) {{
+                    e.preventDefault();
+                    alert('Please select at least one file to upload.');
+                    return false;
+                }}
+                
+                // Check for oversized files
+                for (let i = 0; i < fileInput.files.length; i++) {{
+                    if (fileInput.files[i].size > 3221225472) {{
+                        e.preventDefault();
+                        alert(`File "${{fileInput.files[i].name}}" exceeds the 3GB limit. Please remove it and try again.`);
+                        return false;
+                    }}
+                }}
+                
+                // Show loading state
+                const submitBtn = e.target.querySelector('button[type="submit"]');
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span>⏳ Uploading...</span>';
+                
+                return true;
+            }});
         </script>
     </body>
     </html>
