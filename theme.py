@@ -637,6 +637,155 @@ def get_theme_css():
                 font-size: 16px;
             }
             
+            /* === UPLOAD PAGE === */
+            .upload-container {
+                max-width: 900px;
+                margin: 0 auto;
+            }
+            
+            .upload-info {
+                background: #1e293b;
+                border: 1px solid #334155;
+                border-radius: 8px;
+                padding: 1.5rem;
+                margin-bottom: 2rem;
+            }
+            
+            .upload-info h3 {
+                color: #f8fafc;
+                margin-top: 0;
+                margin-bottom: 1rem;
+                font-size: 1.1rem;
+            }
+            
+            .upload-info ul {
+                list-style: none;
+                padding: 0;
+                margin: 0;
+            }
+            
+            .upload-info li {
+                padding: 0.5rem 0;
+                color: #cbd5e1;
+                font-size: 0.95rem;
+            }
+            
+            .upload-info li:before {
+                content: "• ";
+                color: #10b981;
+                font-weight: bold;
+                margin-right: 0.5rem;
+            }
+            
+            .upload-area {
+                background: #1e293b;
+                border: 2px dashed #334155;
+                border-radius: 12px;
+                padding: 4rem 2rem;
+                text-align: center;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                margin-bottom: 2rem;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-height: 300px;
+                -webkit-user-select: none;
+                -moz-user-select: none;
+                -ms-user-select: none;
+                user-select: none;
+            }
+            
+            .upload-area:hover {
+                border-color: #3b82f6;
+                background: rgba(59, 130, 246, 0.05);
+            }
+            
+            .upload-area.dragover {
+                border-color: #10b981;
+                background: rgba(16, 185, 129, 0.1);
+                border-style: solid;
+            }
+            
+            .upload-icon {
+                font-size: 4rem;
+                color: #475569;
+                margin-bottom: 1.5rem;
+                display: block;
+            }
+            
+            .upload-text {
+                font-size: 1.2rem;
+                color: #f8fafc;
+                margin-bottom: 0.75rem;
+                font-weight: 500;
+            }
+            
+            .upload-subtext {
+                font-size: 0.95rem;
+                color: #94a3b8;
+                margin-top: 0.5rem;
+            }
+            
+            /* File input - hidden but functional */
+            input[type="file"] {
+                display: none;
+            }
+            
+            /* Selected files display */
+            .selected-files {
+                background: #1e293b;
+                border: 1px solid #334155;
+                border-radius: 8px;
+                padding: 1.5rem;
+                margin-bottom: 1.5rem;
+            }
+            
+            .selected-files h4 {
+                margin: 0 0 1rem 0;
+                color: #f8fafc;
+                font-size: 1rem;
+            }
+            
+            .selected-file-item {
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                padding: 0.75rem;
+                margin-bottom: 0.5rem;
+                background: #0f172a;
+                border-radius: 6px;
+                border: 1px solid #334155;
+            }
+            
+            .selected-file-item:last-child {
+                margin-bottom: 0;
+            }
+            
+            .selected-file-item i {
+                color: #3b82f6;
+                font-size: 1.2rem;
+            }
+            
+            .selected-file-item .file-name {
+                flex: 1;
+                color: #f8fafc;
+                font-weight: 500;
+            }
+            
+            .selected-file-item .file-size {
+                color: #94a3b8;
+                font-size: 0.9rem;
+            }
+            
+            /* Upload actions */
+            .upload-actions {
+                display: flex;
+                gap: 1rem;
+                justify-content: flex-end;
+            }
+            
             /* === UTILITY CLASSES === */
             .text-center { text-align: center; }
             .text-right { text-align: right; }
