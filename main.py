@@ -2486,11 +2486,7 @@ def login():
     <html>
     <head>
         <title>caseScope 7.1 - Login</title>
-        {get_theme_css()}
-        <style>
-            /* Page-specific styles */
-        </style>
-    </head>
+        {get_theme_css()}    </head>
     <body>
         <div class="login-container">
             <div class="logo"><span class="case">case</span><span class="scope">Scope</span></div>
@@ -2541,11 +2537,7 @@ def dashboard():
     <html>
     <head>
         <title>caseScope 7.2 - Dashboard</title>
-        {get_theme_css()}
-        <style>
-            /* Page-specific styles */
-        </style>
-    </head>
+        {get_theme_css()}    </head>
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
@@ -2642,11 +2634,7 @@ def change_password():
     <html>
     <head>
         <title>Change Password - caseScope 7.1</title>
-        {get_theme_css()}
-        <style>
-            /* Page-specific styles */
-        </style>
-    </head>
+        {get_theme_css()}    </head>
     <body>
         <div class="container">
             <div class="logo"><span class="case">case</span><span class="scope">Scope</span></div>
@@ -2692,11 +2680,7 @@ def render_upload_form(case):
     <html>
     <head>
         <title>Upload Files - {case.name} - caseScope 7.1</title>
-        {get_theme_css()}
-        <style>
-            /* Page-specific styles */
-        </style>
-    </head>
+        {get_theme_css()}    </head>
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
@@ -2882,11 +2866,7 @@ def render_file_list(case, files):
     <html>
     <head>
         <title>Files - {case.name} - caseScope 7.1</title>
-        {get_theme_css()}
-        <style>
-            /* Page-specific styles */
-        </style>
-    </head>
+        {get_theme_css()}    </head>
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
@@ -3180,11 +3160,7 @@ def render_audit_log(logs_paginated, category_filter, user_filter, success_filte
     <html>
     <head>
         <title>Audit Log - caseScope 7.3</title>
-        {get_theme_css()}
-        <style>
-            /* Page-specific styles */
-        </style>
-    </head>
+        {get_theme_css()}    </head>
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
@@ -3303,11 +3279,7 @@ def render_user_management(users):
     <html>
     <head>
         <title>User Management - caseScope 7.2</title>
-        {get_theme_css()}
-        <style>
-            /* Page-specific styles */
-        </style>
-    </head>
+        {get_theme_css()}    </head>
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
@@ -3535,11 +3507,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
     <html>
     <head>
         <title>Search Events - {case.name} - caseScope 7.1</title>
-        {get_theme_css()}
-        <style>
-            /* Page-specific styles */
-        </style>
-    </head>
+        {get_theme_css()}    </head>
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
@@ -3810,11 +3778,7 @@ def render_sigma_rules_page(all_rules, enabled_count, total_count, total_violati
     <html>
     <head>
         <title>SIGMA Rules - caseScope 7.1</title>
-        {get_theme_css()}
-        <style>
-            /* Page-specific styles */
-        </style>
-    </head>
+        {get_theme_css()}    </head>
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
@@ -4047,11 +4011,7 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
     <html>
     <head>
         <title>SIGMA Violations - caseScope 7.1</title>
-        {get_theme_css()}
-        <style>
-            /* Page-specific styles */
-        </style>
-    </head>
+        {get_theme_css()}    </head>
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
@@ -4192,11 +4152,7 @@ def render_case_form(users=None):
     <html>
     <head>
         <title>Create New Case - caseScope 7.1</title>
-        {get_theme_css()}
-        <style>
-            /* Page-specific styles */
-        </style>
-    </head>
+        {get_theme_css()}    </head>
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
@@ -5002,11 +4958,7 @@ def render_edit_case(case, users):
     <html>
     <head>
         <title>Edit Case - caseScope {APP_VERSION}</title>
-        {get_theme_css()}
-        <style>
-            /* Page-specific styles */
-        </style>
-    </head>
+        {get_theme_css()}    </head>
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
@@ -5128,11 +5080,7 @@ def render_case_management(cases, users):
     <html>
     <head>
         <title>Case Management - caseScope {APP_VERSION}</title>
-        {get_theme_css()}
-        <style>
-            /* Page-specific styles */
-        </style>
-    </head>
+        {get_theme_css()}    </head>
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
@@ -5328,11 +5276,7 @@ def render_file_management(files, cases):
     <html>
     <head>
         <title>File Management - caseScope {APP_VERSION}</title>
-        {get_theme_css()}
-        <style>
-            /* Page-specific styles */
-        </style>
-    </head>
+        {get_theme_css()}    </head>
     <body>
         <div class="sidebar">
             <div class="sidebar-logo">
