@@ -1171,7 +1171,7 @@ def index_ndjson_file(self, file_id):
             # Update status to Indexing
             logger.info(f"Updating status to 'Indexing' for file: {case_file.original_filename}")
             case_file.indexing_status = 'Indexing'
-            case_file.indexed_event_count = 0
+            case_file.event_count = 0
             db.session.commit()
             
             # Check if file exists
@@ -1244,7 +1244,7 @@ def index_ndjson_file(self, file_id):
                                 logger.warning(f"Failed to index {len(failed)} events from batch")
                             
                             # Update progress in database
-                            case_file.indexed_event_count = indexed_events
+                            case_file.event_count = indexed_events
                             db.session.commit()
                             
                             logger.info(f"Indexed {indexed_events:,} / {total_events:,} events...")
@@ -1273,7 +1273,7 @@ def index_ndjson_file(self, file_id):
                     logger.warning(f"Failed to index {len(failed)} events from final batch")
             
             # Update final counts
-            case_file.indexed_event_count = indexed_events
+            case_file.event_count = indexed_events
             case_file.estimated_event_count = total_events
             case_file.indexing_status = 'Completed'
             case_file.is_indexed = True

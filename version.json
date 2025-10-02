@@ -1,9 +1,10 @@
 {
-  "version": "7.12.0",
+  "version": "7.12.1",
   "release_date": "2025-10-02",
-  "description": "Major Feature - NDJSON/EDR Telemetry Ingestion: USER REQUEST: ability to upload and search EDR telemetry (Huntress, Crowdstrike, etc.) alongside Windows Event Logs for unified investigation; IMPLEMENTATION: added full NDJSON (Newline Delimited JSON) support; upload UI now accepts .ndjson files; automatic file type detection routes to appropriate parser; created index_ndjson_file() Celery task for parsing EDR telemetry; JSON events indexed with source_type='ndjson' metadata tag; UNIFIED SEARCH: can now search across EVTX + NDJSON indices simultaneously (e.g., search 'administrator' finds both Event Log entries AND process telemetry); BENEFITS: correlate Windows logs with endpoint process execution; timeline analysis across multiple data sources; unified forensic investigation platform; no SIGMA rules for NDJSON (EDR has own detections); maintains all existing EVTX functionality",
+  "description": "Bugfix & Enhancement - Fixed NDJSON progress display + added EDR field mappings: ISSUE 1: NDJSON files showed '-' for event count during indexing instead of progress; ROOT CAUSE: tasks.py used indexed_event_count but model uses event_count; FIXED: corrected field name in 3 places; ISSUE 2: Large file uploads (230MB) had no progress indicator; FIXED: replaced form POST with AJAX XMLHttpRequest; added animated progress bar with percentage display; smooth gradient animation; ISSUE 3: EDR field searches required full field paths (process.command_line); SOLUTION: added 12 EDR field mappings (CommandLine→process.command_line, ProcessName→process.name, Username→process.user.name, Hostname→host.hostname, Hash→process.hash.sha256, etc.); now search 'CommandLine:powershell' works naturally; BENEFITS: better UX for large uploads; visible progress tracking for all files; easier EDR searches with friendly field names",
   "build": "production",
   "changelog": {
+    "7.12.1": "Bugfix - Fixed NDJSON progress display + upload progress bar + EDR field mappings",
     "7.12.0": "Major Feature - NDJSON/EDR telemetry ingestion for unified EVTX + endpoint telemetry search",
     "7.11.4": "Critical Bugfix - Fixed # character in field names breaking queries (# interpreted as URL fragment, escaped with backslash)",
     "7.11.3": "Debug - Enhanced debugging with alert to show final query before form submit (value IS in HTML onclick, mystery why it's lost)",

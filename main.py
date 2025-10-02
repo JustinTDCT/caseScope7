@@ -2412,6 +2412,7 @@ def build_opensearch_query(user_query):
     # This makes queries more user-friendly
     # Fields use DOT notation as stored by flatten_event() in tasks.py
     field_mappings = {
+        # EVTX Windows Event Log fields
         'EventID': 'System.EventID.#text',
         'Computer': 'System.Computer',
         'Channel': 'System.Channel',
@@ -2420,7 +2421,20 @@ def build_opensearch_query(user_query):
         'Task': 'System.Task',
         'TimeCreated': 'System.TimeCreated.@SystemTime',
         'source_filename': '_casescope_metadata.filename',
-        'filename': '_casescope_metadata.filename'  # Alternative field name
+        'filename': '_casescope_metadata.filename',  # Alternative field name
+        
+        # EDR/NDJSON Process fields (Huntress, Crowdstrike, etc.)
+        'CommandLine': 'process.command_line',
+        'ProcessName': 'process.name',
+        'ProcessPath': 'process.executable',
+        'ProcessPID': 'process.pid',
+        'ParentProcess': 'process.parent.name',
+        'ParentPID': 'process.parent.pid',
+        'Username': 'process.user.name',
+        'UserDomain': 'process.user.domain',
+        'Hostname': 'host.hostname',
+        'HostIP': 'host.ip',
+        'Hash': 'process.hash.sha256'
     }
     
     # Replace field names in query (simple string replacement)
@@ -2887,10 +2901,11 @@ def render_upload_form(case):
                 uploadActions.style.display = 'none';
             }}
             
-            // Form validation on submit
+            // AJAX upload with progress bar
             document.getElementById('uploadForm').addEventListener('submit', (e) => {{
+                e.preventDefault();
+                
                 if (fileInput.files.length === 0) {{
-                    e.preventDefault();
                     alert('Please select at least one file to upload.');
                     return false;
                 }}
@@ -2898,18 +2913,59 @@ def render_upload_form(case):
                 // Check for oversized files
                 for (let i = 0; i < fileInput.files.length; i++) {{
                     if (fileInput.files[i].size > 3221225472) {{
-                        e.preventDefault();
                         alert(`File "${{fileInput.files[i].name}}" exceeds the 3GB limit. Please remove it and try again.`);
                         return false;
                     }}
                 }}
                 
-                // Show loading state
+                // Create progress display
                 const submitBtn = e.target.querySelector('button[type="submit"]');
                 submitBtn.disabled = true;
-                submitBtn.innerHTML = '<span>⏳ Uploading...</span>';
                 
-                return true;
+                const progressHTML = '<div id="uploadProgress" style="margin-top: 20px; padding: 20px; background: #2a2a2a; border-radius: 8px;"><div style="margin-bottom: 10px; font-weight: bold;">Uploading files...</div><div style="background: #1a1a1a; border-radius: 4px; height: 30px; position: relative; overflow: hidden;"><div id="progressBar" style="height: 100%; background: linear-gradient(90deg, #1565c0, #42a5f5); width: 0%; transition: width 0.3s;"></div><div id="progressText" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-weight: bold;">0%</div></div></div>';
+                submitBtn.insertAdjacentHTML('afterend', progressHTML);
+                submitBtn.style.display = 'none';
+                
+                // Prepare form data
+                const formData = new FormData(e.target);
+                
+                // Create AJAX request
+                const xhr = new XMLHttpRequest();
+                
+                // Upload progress handler
+                xhr.upload.addEventListener('progress', (event) => {{
+                    if (event.lengthComputable) {{
+                        const percentComplete = Math.round((event.loaded / event.total) * 100);
+                        document.getElementById('progressBar').style.width = percentComplete + '%';
+                        document.getElementById('progressText').textContent = percentComplete + '%';
+                    }}
+                }});
+                
+                // Upload complete handler
+                xhr.addEventListener('load', () => {{
+                    if (xhr.status === 200) {{
+                        window.location.reload();
+                    }} else {{
+                        alert('Upload failed: ' + xhr.statusText);
+                        submitBtn.style.display = 'block';
+                        submitBtn.disabled = false;
+                        document.getElementById('uploadProgress').remove();
+                    }}
+                }});
+                
+                // Error handler
+                xhr.addEventListener('error', () => {{
+                    alert('Upload error occurred');
+                    submitBtn.style.display = 'block';
+                    submitBtn.disabled = false;
+                    document.getElementById('uploadProgress').remove();
+                }});
+                
+                // Send request
+                xhr.open('POST', window.location.href, true);
+                xhr.send(formData);
+                
+                return false;
             }});
         </script>
     </body>
