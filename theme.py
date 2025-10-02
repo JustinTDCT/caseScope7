@@ -1,12 +1,12 @@
 """
-Dark Theme for caseScope 7 - Based on v7.0 styling
+Dark Theme for caseScope 7 - Matching actual HTML structure
 Clean, professional dark interface
 """
 
 def get_theme_css():
     """
     Returns the complete CSS for the dark theme.
-    Built from scratch based on v7.0 design patterns.
+    Matches the actual HTML structure used in main.py render functions.
     """
     return '''
         <style>
@@ -26,64 +26,19 @@ def get_theme_css():
                 background: #1a1a1a;
                 color: #e0e0e0;
                 display: flex;
-                flex-direction: column;
                 min-height: 100vh;
             }
             
-            /* === LAYOUT STRUCTURE === */
-            .page-container {
-                display: flex;
-                flex: 1;
-            }
-            
+            /* === SIDEBAR === */
             .sidebar {
                 width: 260px;
                 background: #252525;
                 padding: 20px;
                 border-right: 1px solid #333;
                 flex-shrink: 0;
-            }
-            
-            .main-content {
-                flex: 1;
-                display: flex;
-                flex-direction: column;
-            }
-            
-            .header {
-                background: #252525;
-                padding: 15px 30px;
-                border-bottom: 1px solid #333;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }
-            
-            .content {
-                flex: 1;
-                padding: 30px;
                 overflow-y: auto;
             }
             
-            .footer {
-                background: #252525;
-                padding: 12px 30px;
-                border-top: 1px solid #333;
-                text-align: right;
-                font-size: 0.85em;
-                color: #888;
-            }
-            
-            .footer a {
-                color: #4a90e2;
-                text-decoration: none;
-            }
-            
-            .footer a:hover {
-                text-decoration: underline;
-            }
-            
-            /* === SIDEBAR === */
             .sidebar-logo {
                 text-align: center;
                 font-size: 2em;
@@ -143,7 +98,36 @@ def get_theme_css():
                 color: white;
             }
             
-            /* === HEADER === */
+            .menu-item.placeholder {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+            
+            /* === MAIN CONTENT AREA === */
+            .main-content {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+            }
+            
+            .header {
+                background: #252525;
+                padding: 15px 30px;
+                border-bottom: 1px solid #333;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            
+            .header h1 {
+                font-size: 1.8em;
+                font-weight: 300;
+                color: #e0e0e0;
+                margin: 0;
+                padding: 0;
+                border: none;
+            }
+            
             .user-info {
                 display: flex;
                 align-items: center;
@@ -160,10 +144,36 @@ def get_theme_css():
                 text-decoration: none;
                 font-size: 0.9em;
                 transition: background 0.2s;
+                border: none;
+                cursor: pointer;
             }
             
             .logout-btn:hover {
                 background: #b71c1c;
+            }
+            
+            .content {
+                flex: 1;
+                padding: 30px;
+                overflow-y: auto;
+            }
+            
+            .footer {
+                background: #252525;
+                padding: 12px 30px;
+                border-top: 1px solid #333;
+                text-align: right;
+                font-size: 0.85em;
+                color: #888;
+            }
+            
+            .footer a {
+                color: #4a90e2;
+                text-decoration: none;
+            }
+            
+            .footer a:hover {
+                text-decoration: underline;
             }
             
             /* === TYPOGRAPHY === */
@@ -200,6 +210,9 @@ def get_theme_css():
             input[type="text"],
             input[type="password"],
             input[type="email"],
+            input[type="number"],
+            input[type="date"],
+            input[type="datetime-local"],
             textarea,
             select {
                 width: 100%;
@@ -231,6 +244,23 @@ def get_theme_css():
                 font-size: 0.9em;
                 margin-bottom: 5px;
                 font-weight: 500;
+            }
+            
+            .form-group {
+                margin-bottom: 15px;
+            }
+            
+            .form-row {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+                margin-bottom: 15px;
+            }
+            
+            .form-actions {
+                display: flex;
+                gap: 10px;
+                margin-top: 20px;
             }
             
             /* === BUTTONS === */
@@ -382,6 +412,36 @@ def get_theme_css():
                 margin-bottom: 30px;
             }
             
+            /* === STAT CARDS === */
+            .stat-card {
+                background: #252525;
+                border: 1px solid #333;
+                border-radius: 4px;
+                padding: 20px;
+                margin-bottom: 15px;
+            }
+            
+            .stat-card h3 {
+                margin: 0 0 10px 0;
+                color: #888;
+                font-size: 0.85em;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            
+            .stat-value {
+                font-size: 2em;
+                font-weight: 300;
+                color: #e0e0e0;
+                margin: 5px 0;
+            }
+            
+            .stat-label {
+                color: #888;
+                font-size: 0.85em;
+            }
+            
             /* === BADGES === */
             .badge {
                 display: inline-block;
@@ -515,6 +575,29 @@ def get_theme_css():
                 margin-top: 20px;
                 font-size: 0.85em;
                 color: #666;
+            }
+            
+            .container {
+                max-width: 500px;
+                margin: 100px auto;
+                padding: 40px;
+                background: #252525;
+                border: 1px solid #333;
+                border-radius: 4px;
+            }
+            
+            .container .logo {
+                text-align: center;
+                font-size: 2.5em;
+                margin-bottom: 30px;
+            }
+            
+            .container .logo .case {
+                color: #4caf50;
+            }
+            
+            .container .logo .scope {
+                color: #e0e0e0;
             }
             
             /* === UPLOAD PAGE === */
@@ -665,6 +748,26 @@ def get_theme_css():
             
             .gap-1 { gap: 10px; }
             .gap-2 { gap: 20px; }
+            
+            /* === FILE LIST === */
+            .file-item {
+                background: #252525;
+                border: 1px solid #333;
+                border-radius: 4px;
+                padding: 15px;
+                margin-bottom: 10px;
+            }
+            
+            .file-name {
+                color: #e0e0e0;
+                font-weight: 500;
+                margin-bottom: 5px;
+            }
+            
+            .file-meta {
+                color: #888;
+                font-size: 0.85em;
+            }
             
             /* === SCROLLBAR === */
             ::-webkit-scrollbar {
