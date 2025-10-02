@@ -1666,60 +1666,68 @@ def search():
                     from datetime import timedelta
                     now = datetime.utcnow()
                     
+                    start_time = None
+                    end_time = None
+                    
                     if time_range == '24h':
                         start_time = now - timedelta(hours=24)
+                        end_time = now
                     elif time_range == '7d':
                         start_time = now - timedelta(days=7)
+                        end_time = now
                     elif time_range == '30d':
                         start_time = now - timedelta(days=30)
+                        end_time = now
                     elif time_range == 'custom' and custom_start:
                         from datetime import datetime as dt
-                        # Parse custom times - use wildcard query on text field since .date subfield may not exist on older indexes
-                        # Convert to date prefix format for wildcard matching
-                        start_date = custom_start[:10]  # YYYY-MM-DD
-                        end_date = custom_end[:10] if custom_end else now.strftime('%Y-%m-%d')
+                        # Parse custom datetime strings
+                        start_time = dt.fromisoformat(custom_start.replace('T', ' ')) if custom_start else None
+                        end_time = dt.fromisoformat(custom_end.replace('T', ' ')) if custom_end else now
+                    
+                    # Use range query on timestamp field (proper date filtering)
+                    # Try multiple possible timestamp field names
+                    if start_time:
+                        # Format timestamps for OpenSearch (ISO 8601)
+                        start_str = start_time.strftime('%Y-%m-%dT%H:%M:%S')
+                        end_str = end_time.strftime('%Y-%m-%dT%H:%M:%S') if end_time else now.strftime('%Y-%m-%dT%H:%M:%S')
                         
-                        # Build a query that matches timestamps within the date range
-                        # This works on the text field by matching the date prefix
-                        filters.append({
+                        # Build a bool query that tries multiple timestamp fields
+                        # Events may have timestamps in different fields depending on how they were indexed
+                        time_filter = {
                             "bool": {
                                 "should": [
-                                    {"wildcard": {"System_TimeCreated_SystemTime": f"{start_date}*"}},
-                                    {"wildcard": {"System.TimeCreated.@SystemTime": f"{start_date}*"}}
+                                    {
+                                        "range": {
+                                            "System.TimeCreated.@SystemTime": {
+                                                "gte": start_str,
+                                                "lte": end_str,
+                                                "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss.SSS'Z'||strict_date_optional_time"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "range": {
+                                            "System_TimeCreated_SystemTime": {
+                                                "gte": start_str,
+                                                "lte": end_str,
+                                                "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss.SSS'Z'||strict_date_optional_time"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "range": {
+                                            "@timestamp": {
+                                                "gte": start_str,
+                                                "lte": end_str,
+                                                "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss.SSS'Z'||strict_date_optional_time"
+                                            }
+                                        }
+                                    }
                                 ],
                                 "minimum_should_match": 1
                             }
-                        })
-                        
-                        # If it's a date range (not same day), add OR conditions for all dates in between
-                        if start_date != end_date:
-                            from datetime import datetime as dt, timedelta
-                            current = dt.strptime(start_date, '%Y-%m-%d')
-                            end = dt.strptime(end_date, '%Y-%m-%d')
-                            while current <= end:
-                                date_str = current.strftime('%Y-%m-%d')
-                                filters[-1]["bool"]["should"].extend([
-                                    {"wildcard": {"System_TimeCreated_SystemTime": f"{date_str}*"}},
-                                    {"wildcard": {"System.TimeCreated.@SystemTime": f"{date_str}*"}}
-                                ])
-                                current += timedelta(days=1)
-                        
-                        start_time = None  # Skip the simple gte below
-                    
-                    if start_time:
-                        # For preset ranges, use similar wildcard approach
-                        from datetime import datetime as dt, timedelta
-                        # Generate list of dates to match
-                        current = start_time
-                        date_filters = {"bool": {"should": [], "minimum_should_match": 1}}
-                        while current <= now:
-                            date_str = current.strftime('%Y-%m-%d')
-                            date_filters["bool"]["should"].extend([
-                                {"wildcard": {"System_TimeCreated_SystemTime": f"{date_str}*"}},
-                                {"wildcard": {"System.TimeCreated.@SystemTime": f"{date_str}*"}}
-                            ])
-                            current += timedelta(days=1)
-                        filters.append(date_filters)
+                        }
+                        filters.append(time_filter)
                 
                 # Combine base query with filters
                 if filters:
