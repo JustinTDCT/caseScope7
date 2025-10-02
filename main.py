@@ -1740,6 +1740,9 @@ def search():
                         
                         filters.append(time_filter)
                         print(f"[Search] Added simple wildcard time filter for date range")
+                        print(f"[Search] Time filter patterns: {len(date_patterns) if 'date_patterns' in locals() else 1} patterns")
+                        import json
+                        print(f"[Search] Time filter JSON: {json.dumps(time_filter, indent=2)}")
                 
                 # Combine base query with filters
                 if filters:
