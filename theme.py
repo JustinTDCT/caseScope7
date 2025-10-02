@@ -559,6 +559,129 @@ def get_theme_css():
                 background: var(--border-light);
             }
             
+            /* === LOGIN & AUTH PAGES === */
+            .login-container, .container {
+                max-width: 420px;
+                margin: 100px auto;
+                padding: 40px;
+                background: var(--bg-card);
+                border-radius: 8px;
+                box-shadow: var(--shadow-lg);
+                border: 1px solid var(--border-default);
+            }
+            
+            .login-container .logo, .container .logo {
+                text-align: center;
+                font-size: 2.5em;
+                font-weight: 300;
+                margin-bottom: 30px;
+            }
+            
+            .login-container .logo .case, .container .logo .case {
+                color: var(--accent-green);
+            }
+            
+            .login-container .logo .scope, .container .logo .scope {
+                color: var(--text-primary);
+            }
+            
+            .login-container form, .container form {
+                margin-top: 25px;
+            }
+            
+            .login-container .form-group, .container .form-group {
+                margin-bottom: 20px;
+            }
+            
+            .login-container input[type="text"],
+            .login-container input[type="password"],
+            .container input[type="text"],
+            .container input[type="password"] {
+                width: 100%;
+                padding: 12px 16px;
+                background: var(--bg-input);
+                border: 1px solid var(--border-default);
+                border-radius: 6px;
+                color: var(--text-primary);
+                font-size: 14px;
+                box-sizing: border-box;
+            }
+            
+            .login-container input:focus,
+            .container input:focus {
+                outline: none;
+                border-color: var(--accent-blue);
+            }
+            
+            .login-container button[type="submit"],
+            .container button[type="submit"] {
+                width: 100%;
+                padding: 12px;
+                background: var(--accent-green);
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 16px;
+                font-weight: 500;
+                cursor: pointer;
+                transition: all 0.2s ease;
+            }
+            
+            .login-container button[type="submit"]:hover,
+            .container button[type="submit"]:hover {
+                background: #43a047;
+            }
+            
+            .login-container .version, .container .version {
+                text-align: center;
+                margin-top: 25px;
+                color: var(--text-muted);
+                font-size: 0.85em;
+            }
+            
+            .login-container .alert, .container .alert {
+                padding: 12px;
+                margin-bottom: 20px;
+                border-radius: 6px;
+                font-size: 0.9em;
+            }
+            
+            .alert-error {
+                background: rgba(244, 67, 54, 0.15);
+                border: 1px solid var(--accent-red);
+                color: var(--accent-red);
+            }
+            
+            .alert-warning {
+                background: rgba(255, 152, 0, 0.15);
+                border: 1px solid var(--accent-orange);
+                color: var(--accent-orange);
+            }
+            
+            .alert-success {
+                background: rgba(76, 175, 80, 0.15);
+                border: 1px solid var(--accent-green);
+                color: var(--accent-green);
+            }
+            
+            .alert-info {
+                background: rgba(33, 150, 243, 0.15);
+                border: 1px solid var(--accent-blue);
+                color: var(--accent-blue);
+            }
+            
+            .container h2 {
+                text-align: center;
+                margin: 0 0 10px 0;
+                color: var(--text-primary);
+            }
+            
+            .container p {
+                text-align: center;
+                color: var(--text-secondary);
+                margin-bottom: 20px;
+            }
+            
             /* === UTILITY CLASSES === */
             .text-center { text-align: center; }
             .text-right { text-align: right; }
