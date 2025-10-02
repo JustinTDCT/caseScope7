@@ -1,7 +1,7 @@
 {
-  "version": "7.9.6",
+  "version": "7.10.0",
   "release_date": "2025-10-02",
-  "description": "UI Fixes - Added footer at bottom right, fixed button colors to match dark theme (no more bright blue), fixed search input to be full-width, improved layout with proper flexbox structure, centered content, fixed upload page layout, matching v7.0 design patterns",
+  "description": "MAJOR - Complete theme rebuild from scratch based on v7.0 design; removed all conflicting styles; clean, consistent dark theme (#1a1a1a bg, #252525 cards); proper layout structure; v7.0 aesthetic maintained",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -173,6 +173,7 @@
     "7.9.3": "UI Redesign - Applied dark flat theme to ALL 14 pages; automated replacement of all gradient-based style blocks with centralized theme.py; consistent modern flat design across System Dashboard, Case Dashboard, Case Selection, Upload, Files, Search, Violations, SIGMA Rules, User Management, Audit Log, Case Management, File Management, Case Form, Edit Case; complete UI modernization",
     "7.9.4": "UI Redesign - Added login and authentication page styles to theme.py; .login-container and .container classes for centered auth forms; alert styling for error/warning/success/info messages; login and change password pages now match dark flat theme",
     "7.9.5": "UI Polish - Major styling improvements across all pages: unified button styles (all buttons now consistent with proper hover states); upload page with styled drop zone and limits box; search page with organized controls and query help sections; violations page with proper stats display and filters; user management with separated list/form sections (no more overlap); SIGMA rules with stat cards and sections; severity badges; proper grid layouts for tiles/stats; all forms now properly spaced with form-row grids",
-    "7.9.6": "UI Fixes - Footer positioning (bottom right with copyright); button colors changed from bright blue to dark theme grays (#3a3a3a) with subtle borders; button variants (success/danger/warning) use darker shades; search input now full-width (min 400px); improved flexbox layout structure; page-wrapper for proper flex layout; centered content containers; upload page with proper max-width centering; header now space-between for logo placement; fixed h1 left-alignment issue; matching v7.0 aesthetic"
+    "7.9.6": "UI Fixes - Footer positioning (bottom right with copyright); button colors changed from bright blue to dark theme grays (#3a3a3a) with subtle borders; button variants (success/danger/warning) use darker shades; search input now full-width (min 400px); improved flexbox layout structure; page-wrapper for proper flex layout; centered content containers; upload page with proper max-width centering; header now space-between for logo placement; fixed h1 left-alignment issue; matching v7.0 aesthetic",
+    "7.10.0": "MAJOR - Complete theme rebuild from scratch; removed ALL previous conflicting CSS; built new clean theme based on v7.0 branch design patterns; dark background #1a1a1a; card/sidebar background #252525; proper layout structure (page-container, sidebar, main-content, header, content, footer); buttons #3a3a3a with subtle borders; button variants (primary #1565c0, success #2e7d32, danger #c62828, warning #ef6c00); tables with proper styling; dashboard grid; badges; login page; upload page; search page; all components styled consistently; no more style conflicts; clean professional dark theme matching v7.0 aesthetic"
   }
 }
