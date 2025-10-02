@@ -1,7 +1,7 @@
 {
-  "version": "7.9.4",
+  "version": "7.9.5",
   "release_date": "2025-10-02",
-  "description": "UI Redesign - Added login page styles to centralized theme; login and change password pages now use dark flat theme; centered auth containers with proper styling for forms, alerts, and buttons",
+  "description": "UI Polish - Comprehensive styling fixes for all pages; fixed button inconsistencies, improved upload page layout, restructured search/violations/rules pages, fixed user management overlapping forms, added proper spacing and alignment throughout",
   "build": "production",
   "changelog": {
     "7.1.1": "Initial release - Core architecture, user management, case framework",
@@ -171,6 +171,7 @@
     "7.9.1": "Bugfix - Fixed installer to copy app/ subdirectory; added 'app' to list of directories copied by install.sh (was only copying templates and static); resolves 'ModuleNotFoundError: No module named theme' on fresh installs",
     "7.9.2": "Bugfix - Moved theme.py from app/ to root directory; installer was creating /opt/casescope/app/app/theme.py but import expected /opt/casescope/app/theme.py; theme.py now copied as top-level file alongside main.py; reverted installer change from 7.9.1",
     "7.9.3": "UI Redesign - Applied dark flat theme to ALL 14 pages; automated replacement of all gradient-based style blocks with centralized theme.py; consistent modern flat design across System Dashboard, Case Dashboard, Case Selection, Upload, Files, Search, Violations, SIGMA Rules, User Management, Audit Log, Case Management, File Management, Case Form, Edit Case; complete UI modernization",
-    "7.9.4": "UI Redesign - Added login and authentication page styles to theme.py; .login-container and .container classes for centered auth forms; alert styling for error/warning/success/info messages; login and change password pages now match dark flat theme"
+    "7.9.4": "UI Redesign - Added login and authentication page styles to theme.py; .login-container and .container classes for centered auth forms; alert styling for error/warning/success/info messages; login and change password pages now match dark flat theme",
+    "7.9.5": "UI Polish - Major styling improvements across all pages: unified button styles (all buttons now consistent with proper hover states); upload page with styled drop zone and limits box; search page with organized controls and query help sections; violations page with proper stats display and filters; user management with separated list/form sections (no more overlap); SIGMA rules with stat cards and sections; severity badges; proper grid layouts for tiles/stats; all forms now properly spaced with form-row grids"
   }
 }
