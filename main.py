@@ -1814,25 +1814,38 @@ def search():
                     metadata = source.get('_casescope_metadata', {})
                     source_file = metadata.get('filename', 'Unknown')
                     
-                    # Get computer name
+                    # Get computer name (EVTX or EDR)
                     computer = source.get('System.Computer') or \
                               source.get('System_Computer') or \
                               source.get('Computer') or \
+                              source.get('host', {}).get('hostname') or \
+                              source.get('host', {}).get('name') or \
                               'N/A'
                     
-                    # Get channel
+                    # Get channel (EVTX only)
                     channel = source.get('System.Channel') or \
                              source.get('System_Channel') or \
                              'N/A'
                     
-                    # Get provider (XML attribute notation)
+                    # Get provider (EVTX XML attribute notation)
                     provider = source.get('System.Provider.@Name') or \
                               source.get('System.Provider.Name') or \
                               source.get('System_Provider_Name') or \
                               'N/A'
                     
-                    # Get event description
-                    event_description = get_event_description(event_id, channel, provider, source)
+                    # Determine source type and get appropriate event description
+                    source_type = metadata.get('source_type', 'evtx')
+                    
+                    if source_type == 'ndjson':
+                        # EDR telemetry - build description from process data
+                        process_data = source.get('process', {})
+                        process_name = process_data.get('name', 'unknown')
+                        process_user = process_data.get('user', {}).get('name', 'unknown')
+                        event_description = f"Process: {process_name} (User: {process_user})"
+                        event_id = 'EDR'  # Tag EDR events
+                    else:
+                        # EVTX - use traditional event description
+                        event_description = get_event_description(event_id, channel, provider, source)
                     
                     # Get SIGMA violations if present
                     sigma_violations = source.get('sigma_detections', [])
