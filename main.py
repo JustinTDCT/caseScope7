@@ -2733,7 +2733,7 @@ def render_upload_form(case):
                             <li>Maximum 5 files per upload</li>
                             <li>Maximum 3GB per file</li>
                             <li>Duplicate detection via SHA256 hash</li>
-                            <li>Supported formats: .evtx, .json, .csv, .log, .txt, .xml</li>
+                            <li>Supported formats: .evtx (Windows Event Logs), .ndjson (EDR telemetry), .json, .csv, .log, .txt, .xml</li>
                         </ul>
                     </div>
                     
@@ -2743,7 +2743,7 @@ def render_upload_form(case):
                                 <div class="upload-icon">📁</div>
                                 <div class="upload-primary-text">Click to select files or drag and drop</div>
                                 <div class="upload-secondary-text">Up to 5 files, 3GB each</div>
-                                <input type="file" id="fileInput" name="files" multiple accept=".evtx,.json,.csv,.log,.txt,.xml" style="display: none;">
+                                <input type="file" id="fileInput" name="files" multiple accept=".evtx,.ndjson,.json,.csv,.log,.txt,.xml" style="display: none;">
                             </div>
                         </div>
                         

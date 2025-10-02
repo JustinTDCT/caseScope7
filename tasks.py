@@ -1113,6 +1113,198 @@ def start_file_indexing(file_id):
     """
     Trigger to start indexing a file
     This is called immediately after file upload
-    First counts events, then indexes
+    Routes to appropriate handler based on file type
     """
-    return count_evtx_events.delay(file_id)
+    with app.app_context():
+        case_file = db.session.get(CaseFile, file_id)
+        if not case_file:
+            logger.error(f"File ID {file_id} not found")
+            return {'status': 'error', 'message': 'File not found'}
+        
+        # Detect file type from extension
+        filename_lower = case_file.original_filename.lower()
+        
+        if filename_lower.endswith('.ndjson'):
+            logger.info(f"Detected NDJSON file: {case_file.original_filename}")
+            return index_ndjson_file.delay(file_id)
+        elif filename_lower.endswith('.evtx'):
+            logger.info(f"Detected EVTX file: {case_file.original_filename}")
+            return count_evtx_events.delay(file_id)
+        else:
+            # Default to EVTX for backwards compatibility
+            logger.info(f"Unknown file type, attempting EVTX parsing: {case_file.original_filename}")
+            return count_evtx_events.delay(file_id)
+
+
+@celery_app.task(name='tasks.index_ndjson_file', bind=True)
+def index_ndjson_file(self, file_id):
+    """
+    Parse and index an NDJSON file to OpenSearch
+    NDJSON = Newline Delimited JSON (EDR telemetry, process events, etc.)
+    
+    Args:
+        file_id: Database ID of the CaseFile to process
+    """
+    import time
+    task_start_time = time.time()
+    
+    logger.info("="*80)
+    logger.info(f"NDJSON INDEXING TASK RECEIVED")
+    logger.info(f"Task ID: {self.request.id}")
+    logger.info(f"File ID: {file_id}")
+    logger.info(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("="*80)
+    
+    with app.app_context():
+        try:
+            # Get file record
+            logger.info(f"Querying database for file ID {file_id}...")
+            case_file = db.session.get(CaseFile, file_id)
+            if not case_file:
+                logger.error(f"File ID {file_id} not found in database")
+                return {'status': 'error', 'message': f'File ID {file_id} not found'}
+            
+            case = db.session.get(Case, case_file.case_id)
+            if not case:
+                return {'status': 'error', 'message': f'Case ID {case_file.case_id} not found'}
+            
+            # Update status to Indexing
+            logger.info(f"Updating status to 'Indexing' for file: {case_file.original_filename}")
+            case_file.indexing_status = 'Indexing'
+            case_file.indexed_event_count = 0
+            db.session.commit()
+            
+            # Check if file exists
+            if not os.path.exists(case_file.file_path):
+                error_msg = f"File not found: {case_file.file_path}"
+                logger.error(error_msg)
+                case_file.indexing_status = 'Failed'
+                db.session.commit()
+                return {'status': 'error', 'message': error_msg}
+            
+            logger.info(f"File path: {case_file.file_path}")
+            logger.info(f"File size: {case_file.file_size:,} bytes")
+            
+            # Create OpenSearch index name
+            index_name = make_index_name(case.id, case_file.original_filename)
+            logger.info(f"OpenSearch index: {index_name}")
+            
+            # Parse and index NDJSON
+            total_events = 0
+            indexed_events = 0
+            batch_size = 500
+            events_batch = []
+            
+            logger.info("Starting NDJSON parsing and indexing...")
+            
+            with open(case_file.file_path, 'r', encoding='utf-8') as ndjson_file:
+                for line_num, line in enumerate(ndjson_file, 1):
+                    # Skip empty lines
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    try:
+                        # Parse JSON line
+                        event = json.loads(line)
+                        total_events += 1
+                        
+                        # Add caseScope metadata
+                        event['_casescope_metadata'] = {
+                            'case_id': case.id,
+                            'case_name': case.name,
+                            'file_id': case_file.id,
+                            'filename': case_file.original_filename,
+                            'line_number': line_num,
+                            'indexed_at': datetime.utcnow().isoformat(),
+                            'source_type': 'ndjson'  # Tag as NDJSON/EDR data
+                        }
+                        
+                        # Generate document ID (use line number + file hash for uniqueness)
+                        doc_id = f"{case_file.file_hash}_{line_num}"
+                        
+                        # Add to batch
+                        events_batch.append({
+                            '_index': index_name,
+                            '_id': doc_id,
+                            '_source': event
+                        })
+                        
+                        # Bulk index when batch is full
+                        if len(events_batch) >= batch_size:
+                            success, failed = helpers.bulk(
+                                opensearch_client,
+                                events_batch,
+                                raise_on_error=False,
+                                raise_on_exception=False
+                            )
+                            indexed_events += success
+                            
+                            if failed:
+                                logger.warning(f"Failed to index {len(failed)} events from batch")
+                            
+                            # Update progress in database
+                            case_file.indexed_event_count = indexed_events
+                            db.session.commit()
+                            
+                            logger.info(f"Indexed {indexed_events:,} / {total_events:,} events...")
+                            
+                            # Clear batch
+                            events_batch = []
+                        
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Skipping invalid JSON at line {line_num}: {e}")
+                        continue
+                    except Exception as e:
+                        logger.error(f"Error processing line {line_num}: {e}")
+                        continue
+            
+            # Index remaining events in batch
+            if events_batch:
+                success, failed = helpers.bulk(
+                    opensearch_client,
+                    events_batch,
+                    raise_on_error=False,
+                    raise_on_exception=False
+                )
+                indexed_events += success
+                
+                if failed:
+                    logger.warning(f"Failed to index {len(failed)} events from final batch")
+            
+            # Update final counts
+            case_file.indexed_event_count = indexed_events
+            case_file.estimated_event_count = total_events
+            case_file.indexing_status = 'Completed'
+            case_file.is_indexed = True
+            db.session.commit()
+            
+            elapsed_time = time.time() - task_start_time
+            logger.info("="*80)
+            logger.info(f"NDJSON INDEXING COMPLETE")
+            logger.info(f"Total events parsed: {total_events:,}")
+            logger.info(f"Successfully indexed: {indexed_events:,}")
+            logger.info(f"Elapsed time: {elapsed_time:.2f} seconds")
+            logger.info("="*80)
+            
+            return {
+                'status': 'success',
+                'total_events': total_events,
+                'indexed_events': indexed_events,
+                'elapsed_time': elapsed_time
+            }
+        
+        except Exception as e:
+            logger.error("="*80)
+            logger.error(f"NDJSON INDEXING FAILED: {e}")
+            logger.error("="*80)
+            import traceback
+            logger.error(traceback.format_exc())
+            
+            # Update file status to failed
+            case_file = db.session.get(CaseFile, file_id)
+            if case_file:
+                case_file.indexing_status = 'Failed'
+                db.session.commit()
+            
+            return {'status': 'error', 'message': str(e)}
