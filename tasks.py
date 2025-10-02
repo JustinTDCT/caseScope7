@@ -361,6 +361,67 @@ def flatten_event(event_data, prefix='', max_depth=10, current_depth=0):
     
     return flat
 
+def ensure_index_with_mapping(index_name):
+    """
+    Ensure OpenSearch index exists with proper mapping for timestamp fields
+    Creates multi-field mapping for timestamps: text + date subfield
+    
+    Args:
+        index_name: OpenSearch index name to create
+    """
+    if opensearch_client.indices.exists(index=index_name):
+        logger.debug(f"Index '{index_name}' already exists")
+        return
+    
+    logger.info(f"Creating index '{index_name}' with timestamp date mappings...")
+    
+    # Define mapping with multi-field for timestamps
+    # Text field for lexicographic search + .date subfield for range queries
+    mapping = {
+        "mappings": {
+            "properties": {
+                # System timestamp - most common timestamp field
+                "System.TimeCreated.@SystemTime": {
+                    "type": "text",
+                    "fields": {
+                        "date": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd HH:mm:ss.SSSSSS||yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||strict_date_optional_time"
+                        }
+                    }
+                },
+                # Alternative timestamp field names (flattened)
+                "System_TimeCreated_SystemTime": {
+                    "type": "text",
+                    "fields": {
+                        "date": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd HH:mm:ss.SSSSSS||yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||strict_date_optional_time"
+                        }
+                    }
+                },
+                # OpenSearch standard timestamp
+                "@timestamp": {
+                    "type": "date",
+                    "format": "yyyy-MM-dd HH:mm:ss.SSSSSS||yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||strict_date_optional_time"
+                }
+            }
+        },
+        "settings": {
+            "number_of_shards": 1,
+            "number_of_replicas": 0
+        }
+    }
+    
+    try:
+        opensearch_client.indices.create(index=index_name, body=mapping)
+        logger.info(f"✓ Created index '{index_name}' with date mappings for timestamps")
+    except Exception as e:
+        logger.warning(f"Failed to create index with mapping: {e}")
+        # Index might have been created by another process - that's OK
+        if not opensearch_client.indices.exists(index=index_name):
+            raise
+
 def bulk_index_events(index_name, events):
     """
     Bulk index events to OpenSearch with retry logic and idempotency
@@ -477,6 +538,9 @@ def index_evtx_file(self, file_id):
                 case_file.indexing_status = 'Failed'
                 db.session.commit()
                 return {'status': 'error', 'message': f'File not found: {case_file.file_path}'}
+            
+            # Ensure index exists with proper date mappings for timestamps
+            ensure_index_with_mapping(index_name)
             
             # Parse EVTX file
             logger.info(f"Starting EVTX parsing: {case_file.original_filename}")
