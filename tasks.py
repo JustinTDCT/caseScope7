@@ -366,12 +366,34 @@ def ensure_index_with_mapping(index_name):
     Ensure OpenSearch index exists with proper mapping for timestamp fields
     Creates multi-field mapping for timestamps: text + date subfield
     
+    CRITICAL: Mapping must be applied BEFORE any data is indexed.
+    If index exists without proper mapping, it MUST be deleted and recreated.
+    
     Args:
         index_name: OpenSearch index name to create
     """
+    # Check if index exists and has proper mapping
     if opensearch_client.indices.exists(index=index_name):
-        logger.debug(f"Index '{index_name}' already exists")
-        return
+        # Check if .date subfield exists in mapping
+        try:
+            mapping = opensearch_client.indices.get_mapping(index=index_name)
+            index_mapping = mapping[index_name]['mappings']['properties']
+            
+            # Check for our timestamp date subfield
+            timestamp_field = index_mapping.get('System', {}).get('properties', {}).get('TimeCreated', {}).get('properties', {}).get('@SystemTime', {})
+            has_date_subfield = 'date' in timestamp_field.get('fields', {})
+            
+            if has_date_subfield:
+                logger.debug(f"Index '{index_name}' already exists with proper date mapping")
+                return
+            else:
+                logger.warning(f"Index '{index_name}' exists but MISSING .date subfield - deleting and recreating...")
+                opensearch_client.indices.delete(index=index_name)
+                logger.info(f"✓ Deleted index '{index_name}'")
+        except Exception as e:
+            logger.warning(f"Could not check mapping for '{index_name}': {e}. Assuming needs recreation...")
+            opensearch_client.indices.delete(index=index_name)
+            logger.info(f"✓ Deleted index '{index_name}'")
     
     logger.info(f"Creating index '{index_name}' with timestamp date mappings...")
     
