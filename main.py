@@ -1698,14 +1698,16 @@ def search():
                     # Use range query on timestamp field (proper date filtering)
                     # Try multiple possible timestamp field names
                     if start_time:
-                        # Format timestamps for OpenSearch (ISO 8601)
-                        start_str = start_time.strftime('%Y-%m-%dT%H:%M:%S')
-                        end_str = end_time.strftime('%Y-%m-%dT%H:%M:%S') if end_time else now.strftime('%Y-%m-%dT%H:%M:%S')
+                        # Format timestamps for OpenSearch - try multiple formats to match stored data
+                        # Timestamps may be stored as "2025-08-25 14:05:54.201157+00:00" or "2025-08-25T14:05:54"
+                        start_str = start_time.strftime('%Y-%m-%d %H:%M:%S')  # Space format to match stored timestamps
+                        end_str = end_time.strftime('%Y-%m-%d %H:%M:%S') if end_time else now.strftime('%Y-%m-%d %H:%M:%S')
                         
                         print(f"[Search] Time filter: range={time_range}, start={start_str}, end={end_str}")
                         
                         # Build a bool query that tries multiple timestamp fields
                         # Events may have timestamps in different fields depending on how they were indexed
+                        # Use flexible format patterns to match various timestamp formats
                         time_filter = {
                             "bool": {
                                 "should": [
@@ -1714,7 +1716,7 @@ def search():
                                             "System.TimeCreated.@SystemTime": {
                                                 "gte": start_str,
                                                 "lte": end_str,
-                                                "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss.SSS'Z'||strict_date_optional_time"
+                                                "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss.SSSSSSZ||strict_date_optional_time"
                                             }
                                         }
                                     },
@@ -1723,7 +1725,7 @@ def search():
                                             "System_TimeCreated_SystemTime": {
                                                 "gte": start_str,
                                                 "lte": end_str,
-                                                "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss.SSS'Z'||strict_date_optional_time"
+                                                "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss.SSSSSSZ||strict_date_optional_time"
                                             }
                                         }
                                     },
@@ -1732,7 +1734,7 @@ def search():
                                             "@timestamp": {
                                                 "gte": start_str,
                                                 "lte": end_str,
-                                                "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss.SSS'Z'||strict_date_optional_time"
+                                                "format": "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss.SSSSSSZ||strict_date_optional_time"
                                             }
                                         }
                                     }
