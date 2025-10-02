@@ -3996,30 +3996,46 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             }}
             
             function filterFor(field, value) {{
+                // Debug logging
+                console.log('filterFor called with:', {{field: field, value: value}});
+                
                 const queryInput = document.querySelector('.search-input');
                 const currentQuery = queryInput.value.trim();
                 const newTerm = field + ':"' + value + '"';
+                
+                console.log('Current query:', currentQuery);
+                console.log('New term:', newTerm);
                 
                 if (currentQuery === '' || currentQuery === '*') {{
                     queryInput.value = newTerm;
                 }} else {{
                     queryInput.value = currentQuery + ' AND ' + newTerm;
                 }}
+                
+                console.log('Final query:', queryInput.value);
                 
                 // Auto-submit the search
                 document.getElementById('searchForm').submit();
             }}
             
             function filterOut(field, value) {{
+                // Debug logging
+                console.log('filterOut called with:', {{field: field, value: value}});
+                
                 const queryInput = document.querySelector('.search-input');
                 const currentQuery = queryInput.value.trim();
                 const newTerm = 'NOT ' + field + ':"' + value + '"';
+                
+                console.log('Current query:', currentQuery);
+                console.log('New term:', newTerm);
                 
                 if (currentQuery === '' || currentQuery === '*') {{
                     queryInput.value = newTerm;
                 }} else {{
                     queryInput.value = currentQuery + ' AND ' + newTerm;
                 }}
+                
+                console.log('Final query:', queryInput.value);
                 
                 // Auto-submit the search
                 document.getElementById('searchForm').submit();

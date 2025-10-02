@@ -1,9 +1,10 @@
 {
-  "version": "7.11.1",
+  "version": "7.11.2",
   "release_date": "2025-10-02",
-  "description": "Critical Bugfix - Fixed JavaScript escaping in Wazuh-style field viewer: ISSUE: clicking filter/copy buttons would pass field name but not value due to improper HTML entity escaping breaking JavaScript string boundaries; ROOT CAUSE: html.escape() was converting quotes to &quot; entities BEFORE JavaScript escaping, making onclick attributes malformed when values contained special chars; SOLUTION: reverse order - JavaScript escape FIRST (backslash, quotes, newlines), THEN HTML escape for display; now properly escapes \\, ', \", \\n, \\r for JavaScript strings; values with quotes, backslashes, or special chars now work correctly; filter-for/filter-out/copy actions now pass both field AND value properly",
+  "description": "Debug - Added console logging to filter functions: USER REPORT: value still not being passed (shows 'EventData.Data_5.#text:' without value); DEBUGGING: added console.log statements to filterFor/filterOut functions to trace: field parameter, value parameter, current query, new term being built, final query before submit; will help identify if value is lost during: onclick attribute generation, JavaScript function call, or form submission; logs visible in browser developer console (F12); temporary debug code to diagnose root cause",
   "build": "production",
   "changelog": {
+    "7.11.2": "Debug - Added console logging to filter functions to diagnose value parameter loss",
     "7.11.1": "Critical Bugfix - Fixed JavaScript escaping in field viewer: reversed escape order (JS first, HTML second) so onclick attributes work with quotes/special chars",
     "7.11.0": "Major Feature - Wazuh-Style Event Discovery Interface: replaced simple clickable fields with professional Wazuh-inspired field table; each field has filter-for (green +), filter-out (orange −), and copy (blue 📋) action buttons; fields organized in clean table with field name and value columns; collapsible nested sections for organized data; hover-revealed action buttons; auto-submits search when filtering; matches professional SIEM UX for forensic investigation",
     "7.1.1": "Initial release - Core architecture, user management, case framework",
