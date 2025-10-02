@@ -38,13 +38,24 @@ def get_theme_css():
             }
             
             /* === BASE LAYOUT === */
+            html, body {
+                height: 100%;
+                margin: 0;
+            }
+            
             body { 
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
                 background: var(--bg-primary);
                 color: var(--text-primary);
-                margin: 0; 
                 display: flex; 
+                flex-direction: column;
                 min-height: 100vh; 
+            }
+            
+            .page-wrapper {
+                display: flex;
+                flex: 1;
+                min-height: calc(100vh - 40px); /* Account for footer */
             }
             
             .sidebar { 
@@ -53,26 +64,38 @@ def get_theme_css():
                 padding: 20px; 
                 box-shadow: 2px 0 8px rgba(0,0,0,0.4);
                 border-right: 1px solid var(--border-default);
+                flex-shrink: 0;
             }
             
-            .main-content { flex: 1; }
+            .main-content { 
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+            }
             
             .header { 
                 background: var(--bg-secondary);
                 padding: 15px 30px; 
                 display: flex; 
-                justify-content: flex-end; 
+                justify-content: space-between;
                 align-items: center;
                 box-shadow: var(--shadow-md);
                 border-bottom: 1px solid var(--border-default);
                 min-height: 60px;
+                flex-shrink: 0;
+            }
+            
+            .header-left {
+                display: flex;
+                align-items: center;
+                gap: 20px;
             }
             
             .user-info { 
                 display: flex; 
                 align-items: center; 
                 gap: 20px;
-                font-size: 1em;
+                font-size: 0.9em;
                 line-height: 1.2;
                 color: var(--text-secondary);
             }
@@ -80,6 +103,27 @@ def get_theme_css():
             .content { 
                 padding: 30px;
                 background: var(--bg-primary);
+                flex: 1;
+            }
+            
+            /* === FOOTER === */
+            .footer {
+                background: var(--bg-secondary);
+                border-top: 1px solid var(--border-default);
+                padding: 10px 30px;
+                text-align: right;
+                font-size: 0.85em;
+                color: var(--text-muted);
+                flex-shrink: 0;
+            }
+            
+            .footer a {
+                color: var(--accent-blue);
+                text-decoration: none;
+            }
+            
+            .footer a:hover {
+                text-decoration: underline;
             }
             
             /* === SIDEBAR LOGO === */
@@ -436,13 +480,14 @@ def get_theme_css():
             }
             
             /* === HEADINGS === */
-            h1 {
+            .content h1 {
                 font-size: 2em;
                 font-weight: 300;
                 color: var(--text-primary);
                 margin: 0 0 25px 0;
-                border-bottom: 1px solid var(--border-default);
-                padding-bottom: 15px;
+                border-bottom: none;
+                padding-bottom: 0;
+                text-align: left;
             }
             
             h2 {
@@ -514,12 +559,33 @@ def get_theme_css():
                 background: var(--border-light);
             }
             
+            /* === PAGE CENTERING === */
+            .centered-content {
+                max-width: 1400px;
+                margin: 0 auto;
+            }
+            
+            h1 {
+                text-align: center;
+                font-size: 2.5em;
+                font-weight: 300;
+                color: var(--text-primary);
+                margin: 0 0 40px 0;
+                padding-bottom: 20px;
+                border-bottom: 1px solid var(--border-default);
+            }
+            
             /* === UPLOAD FILES PAGE === */
+            .upload-container {
+                max-width: 900px;
+                margin: 0 auto;
+            }
+            
             .upload-zone {
                 background: var(--bg-card);
                 border: 2px dashed var(--border-default);
                 border-radius: 8px;
-                padding: 60px 40px;
+                padding: 80px 60px;
                 text-align: center;
                 margin: 30px 0;
                 transition: all 0.3s ease;
@@ -585,12 +651,12 @@ def get_theme_css():
                 margin-right: 8px;
             }
             
-            /* === BUTTONS - CONSISTENT STYLING === */
+            /* === BUTTONS - DARK THEME STYLING === */
             button, .btn, input[type="submit"], input[type="button"] {
-                background: var(--accent-blue);
-                color: white;
+                background: var(--bg-tertiary);
+                color: var(--text-primary);
                 padding: 10px 20px;
-                border: none;
+                border: 1px solid var(--border-light);
                 border-radius: 6px;
                 font-size: 14px;
                 font-weight: 500;
@@ -602,38 +668,60 @@ def get_theme_css():
             }
             
             button:hover, .btn:hover, input[type="submit"]:hover, input[type="button"]:hover {
-                background: #1976d2;
+                background: var(--border-default);
+                border-color: var(--text-muted);
             }
             
             button:disabled, .btn:disabled {
-                background: var(--bg-tertiary);
+                background: var(--bg-card);
                 color: var(--text-muted);
                 cursor: not-allowed;
+                opacity: 0.5;
             }
             
-            /* Button variants */
+            /* Button variants - with subtle colors matching dark theme */
+            .btn-primary {
+                background: #1565c0;
+                border-color: #1565c0;
+                color: white;
+            }
+            
+            .btn-primary:hover {
+                background: #0d47a1;
+                border-color: #0d47a1;
+            }
+            
             .btn-success, button.success {
-                background: var(--accent-green);
+                background: #2e7d32;
+                border-color: #2e7d32;
+                color: white;
             }
             
             .btn-success:hover, button.success:hover {
-                background: #43a047;
+                background: #1b5e20;
+                border-color: #1b5e20;
             }
             
             .btn-danger, button.danger {
-                background: var(--accent-red);
+                background: #c62828;
+                border-color: #c62828;
+                color: white;
             }
             
             .btn-danger:hover, button.danger:hover {
-                background: #e53935;
+                background: #b71c1c;
+                border-color: #b71c1c;
             }
             
             .btn-warning {
-                background: var(--accent-orange);
+                background: #ef6c00;
+                border-color: #ef6c00;
+                color: white;
             }
             
             .btn-warning:hover {
-                background: #fb8c00;
+                background: #e65100;
+                border-color: #e65100;
             }
             
             /* === SEARCH PAGE IMPROVEMENTS === */
@@ -659,16 +747,28 @@ def get_theme_css():
             }
             
             .search-controls {
-                display: flex;
+                display: grid;
+                grid-template-columns: 1fr auto;
                 gap: 15px;
-                flex-wrap: wrap;
-                align-items: center;
+                align-items: start;
                 margin-bottom: 20px;
             }
             
             .search-controls input[type="text"] {
+                width: 100%;
+                min-width: 400px;
+            }
+            
+            .search-row {
+                display: flex;
+                gap: 15px;
+                align-items: center;
+                flex-wrap: wrap;
+            }
+            
+            .search-row input[type="text"] {
                 flex: 1;
-                min-width: 300px;
+                min-width: 400px;
             }
             
             .search-controls select {
