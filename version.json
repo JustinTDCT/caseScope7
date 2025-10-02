@@ -1,9 +1,10 @@
 {
-  "version": "7.12.2",
+  "version": "7.12.3",
   "release_date": "2025-10-02",
-  "description": "Critical Bugfix - Fixed NDJSON/EDR result display in search results: ISSUE: NDJSON search results showed Event Type='Unknown Event' and Computer='N/A' even though data existed (host.hostname=Engineering5 visible in field viewer); ROOT CAUSE: result extraction only checked EVTX fields (System.Computer, System.EventID) but not EDR fields (host.hostname, process.name); SOLUTION: added fallback field checks for EDR data; Computer now checks host.hostname and host.name; Event Type for EDR shows 'Process: dwm.exe (User: DWM-1)' instead of Unknown Event; Event ID shows 'EDR' tag for telemetry events; added source_type detection from metadata; BENEFITS: EDR events now display properly in search results; analysts can see process name, username, and hostname directly in results table; unified EVTX + EDR display",
+  "description": "Bugfix - Corrected EDR Event Type to show command_line: USER FEEDBACK: Event Type should display the actual command executed (process.command_line) not generic 'Process: name'; CORRECTED: Event Type now shows full command line (e.g., '\\??\\C:\\Windows\\system32\\conhost.exe 0xffffffff -ForceV1'); Computer correctly shows hostname (Engineering5); Event ID shows 'EDR' tag; BENEFITS: analysts see actual commands executed in Event Type column; can quickly identify suspicious commands (powershell -enc, cmd /c, etc.); hostname properly displayed; matches analyst expectations for EDR data display",
   "build": "production",
   "changelog": {
+    "7.12.3": "Bugfix - Event Type now shows actual command_line for EDR events (not generic process name)",
     "7.12.2": "Critical Bugfix - Fixed NDJSON/EDR event display (Event Type, Computer) in search results table",
     "7.12.1": "Bugfix - Fixed NDJSON progress display + upload progress bar + EDR field mappings",
     "7.12.0": "Major Feature - NDJSON/EDR telemetry ingestion for unified EVTX + endpoint telemetry search",

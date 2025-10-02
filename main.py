@@ -1837,11 +1837,18 @@ def search():
                     source_type = metadata.get('source_type', 'evtx')
                     
                     if source_type == 'ndjson':
-                        # EDR telemetry - build description from process data
+                        # EDR telemetry - use command_line as Event Type
                         process_data = source.get('process', {})
-                        process_name = process_data.get('name', 'unknown')
-                        process_user = process_data.get('user', {}).get('name', 'unknown')
-                        event_description = f"Process: {process_name} (User: {process_user})"
+                        command_line = process_data.get('command_line', '')
+                        
+                        # Use command_line as the event description/type
+                        if command_line:
+                            event_description = command_line
+                        else:
+                            # Fallback to process name if no command line
+                            process_name = process_data.get('name', 'Unknown Process')
+                            event_description = f"Process: {process_name}"
+                        
                         event_id = 'EDR'  # Tag EDR events
                     else:
                         # EVTX - use traditional event description
