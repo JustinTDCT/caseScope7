@@ -1680,9 +1680,20 @@ def search():
                         end_time = now
                     elif time_range == 'custom' and custom_start:
                         from datetime import datetime as dt
-                        # Parse custom datetime strings
-                        start_time = dt.fromisoformat(custom_start.replace('T', ' ')) if custom_start else None
-                        end_time = dt.fromisoformat(custom_end.replace('T', ' ')) if custom_end else now
+                        # Parse custom datetime strings from HTML datetime-local input (YYYY-MM-DDTHH:MM format)
+                        try:
+                            if 'T' in custom_start:
+                                # Format: 2025-08-25T12:00
+                                start_time = dt.strptime(custom_start, '%Y-%m-%dT%H:%M') if custom_start else None
+                                end_time = dt.strptime(custom_end, '%Y-%m-%dT%H:%M') if custom_end else now
+                            else:
+                                # Fallback: try ISO format
+                                start_time = dt.fromisoformat(custom_start) if custom_start else None
+                                end_time = dt.fromisoformat(custom_end) if custom_end else now
+                        except Exception as e:
+                            print(f"[Search] Error parsing custom datetime: {e}, start='{custom_start}', end='{custom_end}'")
+                            start_time = None
+                            end_time = None
                     
                     # Use range query on timestamp field (proper date filtering)
                     # Try multiple possible timestamp field names
@@ -1690,6 +1701,8 @@ def search():
                         # Format timestamps for OpenSearch (ISO 8601)
                         start_str = start_time.strftime('%Y-%m-%dT%H:%M:%S')
                         end_str = end_time.strftime('%Y-%m-%dT%H:%M:%S') if end_time else now.strftime('%Y-%m-%dT%H:%M:%S')
+                        
+                        print(f"[Search] Time filter: range={time_range}, start={start_str}, end={end_str}")
                         
                         # Build a bool query that tries multiple timestamp fields
                         # Events may have timestamps in different fields depending on how they were indexed
@@ -1728,6 +1741,7 @@ def search():
                             }
                         }
                         filters.append(time_filter)
+                        print(f"[Search] Added time filter with {len(time_filter['bool']['should'])} field options")
                 
                 # Combine base query with filters
                 if filters:
