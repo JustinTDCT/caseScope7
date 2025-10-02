@@ -2476,8 +2476,7 @@ def build_opensearch_query(user_query):
             "default_operator": "AND",
             "analyze_wildcard": True,
             "fields": ["*"],
-            "lenient": True,
-            "case_insensitive": True  # Explicit case-insensitive matching
+            "lenient": True
         }
     }
 

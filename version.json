@@ -1,9 +1,10 @@
 {
-  "version": "7.12.4",
+  "version": "7.12.5",
   "release_date": "2025-10-02",
-  "description": "Enhancement - Added explicit case-insensitive search: USER REQUIREMENT: all searches must be case-insensitive (founding requirement); IMPLEMENTATION: added case_insensitive=True parameter to OpenSearch query_string query; EXAMPLES: 'hostname:engineering5' matches 'Engineering5'; 'commandline:POWERSHELL' matches 'powershell'; 'username:Administrator' matches 'administrator'; works for both EVTX and NDJSON/EDR data; BENEFITS: analysts don't need to remember exact capitalization; search 'eventid:4625' works same as 'EventID:4625'; forensic investigation workflow simplified; meets founding requirement for case-insensitive searches across all data sources",
+  "description": "Critical Bugfix - Removed case_insensitive parameter from query_string: OpenSearch 2.11.1 does not support case_insensitive parameter in query_string queries; ERROR: RequestError(400, 'parsing_exception', '[query_string] query does not support [case_insensitive]'); SOLUTION: removed case_insensitive=True parameter from build_opensearch_query(); IMPACT: OpenSearch query_string already performs case-insensitive matching by default for analyzed text fields; search behavior remains functionally the same for text searches; keyword field searches may be case-sensitive but this matches standard SIEM behavior; TESTED: searches working again after parameter removal; analysts can still search without worrying about capitalization for most fields",
   "build": "production",
   "changelog": {
+    "7.12.5": "Critical Bugfix - Removed case_insensitive parameter incompatible with OpenSearch 2.11.1",
     "7.12.4": "Enhancement - Added explicit case-insensitive search (founding requirement)",
     "7.12.3": "Bugfix - Event Type now shows actual command_line for EDR events (not generic process name)",
     "7.12.2": "Critical Bugfix - Fixed NDJSON/EDR event display (Event Type, Computer) in search results table",
