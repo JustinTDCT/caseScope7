@@ -34,9 +34,9 @@ fi
 # Get version from version.json
 get_version() {
     if [ -f "version.json" ]; then
-        python3 -c "import json; print(json.load(open('version.json'))['version'])" 2>/dev/null || echo "7.1.1"
+        python3 -c "import json; print(json.load(open('version.json'))['version'])" 2>/dev/null || echo "unknown"
     else
-        echo "7.1.1"
+        echo "unknown"
     fi
 }
 
