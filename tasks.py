@@ -1337,7 +1337,7 @@ def hunt_iocs(self, case_id):
                 return {'status': 'error', 'message': 'Case not found'}
             
             # Get all active IOCs for this case
-            iocs = IOC.query.filter_by(case_id=case_id, is_active=True).all()
+            iocs = db.session.query(IOC).filter_by(case_id=case_id, is_active=True).all()
             
             if not iocs:
                 logger.warning(f"No active IOCs found for case {case_id}")
@@ -1346,7 +1346,7 @@ def hunt_iocs(self, case_id):
             logger.info(f"Found {len(iocs)} active IOCs to hunt")
             
             # Get all indexed files for this case
-            indexed_files = CaseFile.query.filter_by(case_id=case_id, is_indexed=True, is_deleted=False).all()
+            indexed_files = db.session.query(CaseFile).filter_by(case_id=case_id, is_indexed=True, is_deleted=False).all()
             
             if not indexed_files:
                 logger.warning(f"No indexed files found for case {case_id}")
@@ -1430,10 +1430,11 @@ def hunt_iocs(self, case_id):
                 }
                 
                 try:
-                    # Search OpenSearch
+                    # Search OpenSearch (ignore_unavailable allows searching even if some indices don't exist)
                     response = opensearch_client.search(
                         index=','.join(indices),
-                        body=query
+                        body=query,
+                        ignore_unavailable=True
                     )
                     
                     hits = response['hits']['hits']
