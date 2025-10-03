@@ -1,9 +1,10 @@
 {
-  "version": "7.14.2",
+  "version": "7.14.3",
   "release_date": "2025-10-03",
-  "description": "Critical Bugfix - Complete log_audit Parameter Fix & Changelog Organization: FIXED all remaining log_audit calls with incompatible user_id parameter throughout codebase (edit_case, archive_case, create_template, edit_template, delete_template); log_audit derives user_id automatically from current_user so explicit parameter causes errors; REORGANIZED entire version.json changelog to consistent reverse chronological order (newest-first) throughout - previously v7.11.0+ was newest-first but v7.1.1-7.10.21 was oldest-first causing confusion; now all 214 versions from 7.14.2 down to 7.1.1 follow standard changelog format; IMPACT: No more 'unexpected keyword argument user_id' errors from ANY case management, template, or IOC operations; version history now easy to navigate with latest changes always at top",
+  "description": "UI Bugfix - IOC Management Page Padding: FIXED IOC Management page missing content div wrapper causing no padding/spacing; page content was directly inside main-content div instead of wrapped in content div like all other pages; ADDED missing opening content div after main-content and closing content div before closing main-content; now has consistent 2rem padding matching violations page, search page, SIGMA rules page, and all other application pages; IMPACT: IOC Management page now has proper spacing and padding consistent with the rest of the application UI",
   "build": "production",
   "changelog": {
+    "7.14.3": "UI Bugfix - Fixed IOC Management page missing content div wrapper for consistent padding with other pages",
     "7.14.2": "Critical Bugfix - Fixed ALL log_audit parameter errors (5 more calls) + Reorganized changelog to consistent reverse chronological order",
     "7.14.1": "Critical Bugfix - Fixed close/reopen case errors + Added admin case deletion with comprehensive data cleanup",
     "7.14.0": "Major Feature - IOC Management & Threat Hunting system with automatic/manual hunting across all indexed events",
