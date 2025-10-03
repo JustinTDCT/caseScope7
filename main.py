@@ -1935,7 +1935,7 @@ def search():
         (SavedSearch.case_id == case.id) | (SavedSearch.case_id == None)
     ).order_by(SavedSearch.last_used.desc().nullslast(), SavedSearch.created_at.desc()).all()
     
-    return render_search_page(case, query_str, results, total_hits, page, per_page, error_message, len(indexed_files), violations_only, time_range, custom_start, custom_end, recent_searches, saved_searches)
+    return render_search_page(case, query_str, results, total_hits, page, per_page, error_message, len(indexed_files), violations_only, time_range, custom_start, custom_end, recent_searches, saved_searches, sort_field, sort_order)
 
 @app.route('/search/save', methods=['POST'])
 @login_required
@@ -3857,7 +3857,7 @@ def render_wazuh_style_fields(data, path=""):
     html += '</table>'
     return html
 
-def render_search_page(case, query_str, results, total_hits, page, per_page, error_message, indexed_file_count, violations_only=False, time_range='all', custom_start=None, custom_end=None, recent_searches=[], saved_searches=[]):
+def render_search_page(case, query_str, results, total_hits, page, per_page, error_message, indexed_file_count, violations_only=False, time_range='all', custom_start=None, custom_end=None, recent_searches=[], saved_searches=[], sort_field='relevance', sort_order='desc'):
     """Render search interface with results"""
     from flask import get_flashed_messages
     flash_messages_html = ""
