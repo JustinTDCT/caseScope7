@@ -519,6 +519,7 @@ def get_theme_css():
                 padding: 1rem;
                 color: #f8fafc;
                 border-bottom: 1px solid #334155;
+                vertical-align: middle;
             }
             
             tbody tr:hover {
@@ -1415,9 +1416,9 @@ def get_theme_css():
             }
             
             .actions-cell {
-                display: flex;
-                gap: 0.5rem;
-                justify-content: flex-end;
+                text-align: right;
+                white-space: nowrap;
+                vertical-align: middle;
             }
             
             .btn-action {
@@ -1427,6 +1428,13 @@ def get_theme_css():
                 border-radius: 6px;
                 cursor: pointer;
                 transition: all 0.2s;
+                display: inline-block;
+                margin-left: 0.5rem;
+                vertical-align: middle;
+            }
+            
+            .btn-action:first-child {
+                margin-left: 0;
             }
             
             .btn-view {
