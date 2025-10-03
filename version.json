@@ -1,9 +1,10 @@
 {
-  "version": "7.14.7",
+  "version": "7.14.8",
   "release_date": "2025-10-03",
-  "description": "UI Fix - Table Row Border Consistency: FIXED table row borders breaking and becoming inconsistent near action buttons in User Management and other table-based pages; ROOT CAUSE: .actions-cell used display:flex which changed box model causing table cell borders to render incorrectly; SOLUTION: removed flexbox from .actions-cell, changed to text-align:right with vertical-align:middle; added vertical-align:middle to all td elements for consistent cell alignment; converted action buttons from flex items to inline-block with margin-left spacing; added :first-child selector to remove left margin from first button; IMPACT: Clean, professional horizontal lines throughout all table rows; no more broken/misaligned borders; consistent visual spacing",
+  "description": "Critical Bugfix - Delete Case Button Missing: FIXED delete case button not appearing for administrators in Case Management page; ROOT CAUSE: typo in role check used 'Admin' instead of 'administrator' (actual role name in database); button check at line 6693 didn't match endpoint authorization check at line 653; IMPACT: Delete functionality was fully implemented but hidden due to incorrect role comparison; administrators can now permanently delete cases with comprehensive data cleanup (OpenSearch indices, disk files, all database records); three-step confirmation process (2 confirms + type case name) prevents accidental deletion; deletes: uploaded files, indices, IOCs/matches, SIGMA violations, event tags, search history, saved searches; makes case disappear completely as if it never existed",
   "build": "production",
   "changelog": {
+    "7.14.8": "Critical Bugfix - Fixed delete case button not appearing due to role check typo ('Admin' → 'administrator')",
     "7.14.7": "UI Fix - Fixed table row border inconsistencies near action buttons by removing flexbox from table cells",
     "7.14.6": "UI Fixes - Added missing header to IOC Management page + Fixed modal centering with flexbox display",
     "7.14.5": "UI Consistency - Standardized all page headers (title left, user right) + Removed green background from version badge",
