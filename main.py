@@ -647,9 +647,12 @@ def reopen_case(case_id):
 
 @app.route('/case/delete/<int:case_id>', methods=['POST'])
 @login_required
-@admin_required
 def delete_case(case_id):
     """Permanently delete a case and all associated data"""
+    # Admin-only function
+    if current_user.role != 'administrator':
+        return jsonify({'success': False, 'message': 'Access denied. Administrator role required.'}), 403
+    
     case = db.session.get(Case, case_id)
     if not case:
         return jsonify({'success': False, 'message': 'Case not found'}), 404
