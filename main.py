@@ -6832,7 +6832,7 @@ def render_case_management(cases, users):
                             .then(data => {{
                                 if (data.success) {{
                                     alert('✓ Case deleted successfully');
-                                    window.location.href = '/case/manage';
+                                    window.location.href = '/case-management';
                                 }} else {{
                                     alert('Error: ' + data.message);
                                 }}
