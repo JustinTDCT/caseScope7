@@ -1710,7 +1710,7 @@ def ioc_list():
             ioc_value_normalized = ioc_value.lower()
             
             # Check for duplicates
-            existing = IOC.query.filter_by(
+            existing = db.session.query(IOC).filter_by(
                 case_id=case_id,
                 ioc_type=ioc_type,
                 ioc_value_normalized=ioc_value_normalized
@@ -1746,7 +1746,7 @@ def ioc_list():
     status_filter = request.args.get('status', 'active')
     
     # Build query
-    query = IOC.query.filter_by(case_id=case_id)
+    query = db.session.query(IOC).filter_by(case_id=case_id)
     
     if type_filter != 'all':
         query = query.filter_by(ioc_type=type_filter)
@@ -1763,9 +1763,9 @@ def ioc_list():
     iocs = query.order_by(IOC.added_at.desc()).all()
     
     # Get statistics
-    total_iocs = IOC.query.filter_by(case_id=case_id).count()
-    active_iocs = IOC.query.filter_by(case_id=case_id, is_active=True).count()
-    total_matches = IOCMatch.query.filter_by(case_id=case_id).count()
+    total_iocs = db.session.query(IOC).filter_by(case_id=case_id).count()
+    active_iocs = db.session.query(IOC).filter_by(case_id=case_id, is_active=True).count()
+    total_matches = db.session.query(IOCMatch).filter_by(case_id=case_id).count()
     iocs_with_matches = db.session.query(IOC.id).join(IOCMatch).filter(IOC.case_id == case_id).distinct().count()
     
     # Get unique IOC types for filter
@@ -1819,7 +1819,7 @@ def ioc_delete(ioc_id):
         return redirect(url_for('ioc_list'))
     
     # Delete associated matches first
-    IOCMatch.query.filter_by(ioc_id=ioc_id).delete()
+    db.session.query(IOCMatch).filter_by(ioc_id=ioc_id).delete()
     
     # Store info for logging
     ioc_info = f'{ioc.ioc_type}={ioc.ioc_value}'
@@ -1848,7 +1848,7 @@ def ioc_hunt():
         return redirect(url_for('case_selection'))
     
     # Get active IOCs
-    active_iocs = IOC.query.filter_by(case_id=case_id, is_active=True).count()
+    active_iocs = db.session.query(IOC).filter_by(case_id=case_id, is_active=True).count()
     
     if active_iocs == 0:
         flash('No active IOCs to hunt for. Add IOCs first.', 'warning')
@@ -1889,7 +1889,7 @@ def ioc_matches():
     per_page = 50
     
     # Build query
-    query = IOCMatch.query.filter_by(case_id=case_id)
+    query = db.session.query(IOCMatch).filter_by(case_id=case_id)
     
     if ioc_filter != 'all':
         query = query.filter_by(ioc_id=int(ioc_filter))
@@ -1906,12 +1906,12 @@ def ioc_matches():
     )
     
     # Get filter options
-    all_iocs = IOC.query.join(IOCMatch).filter(IOCMatch.case_id == case_id).distinct().all()
+    all_iocs = db.session.query(IOC).join(IOCMatch).filter(IOCMatch.case_id == case_id).distinct().all()
     
     # Get statistics
-    total_matches = IOCMatch.query.filter_by(case_id=case_id).count()
-    manual_count = IOCMatch.query.filter_by(case_id=case_id, hunt_type='manual').count()
-    automatic_count = IOCMatch.query.filter_by(case_id=case_id, hunt_type='automatic').count()
+    total_matches = db.session.query(IOCMatch).filter_by(case_id=case_id).count()
+    manual_count = db.session.query(IOCMatch).filter_by(case_id=case_id, hunt_type='manual').count()
+    automatic_count = db.session.query(IOCMatch).filter_by(case_id=case_id, hunt_type='automatic').count()
     unique_iocs = db.session.query(IOCMatch.ioc_id).filter_by(case_id=case_id).distinct().count()
     unique_events = db.session.query(IOCMatch.event_id).filter_by(case_id=case_id).distinct().count()
     
