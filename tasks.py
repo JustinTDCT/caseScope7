@@ -663,8 +663,8 @@ def process_sigma_rules(self, file_id, index_name):
             
             # Get all enabled SIGMA rules
             logger.info("Querying for enabled SIGMA rules...")
-            enabled_rules = SigmaRule.query.filter_by(is_enabled=True).all()
-            total_rules = SigmaRule.query.count()
+            enabled_rules = db.session.query(SigmaRule).filter_by(is_enabled=True).all()
+            total_rules = db.session.query(SigmaRule).count()
             logger.info(f"Found {len(enabled_rules)} enabled SIGMA rules (out of {total_rules} total)")
             logger.info(f"TASK SUMMARY: TaskID={self.request.id}, FileID={file_id}, Index={index_name}, Rules={len(enabled_rules)}/{total_rules}")
             
@@ -803,7 +803,7 @@ def process_sigma_rules(self, file_id, index_name):
                             continue
                         
                         # Check if violation already exists
-                        existing = SigmaViolation.query.filter_by(
+                        existing = db.session.query(SigmaViolation).filter_by(
                             file_id=file_id,
                             rule_id=matching_rule.id,
                             event_id=event_id
@@ -1482,7 +1482,7 @@ def hunt_iocs(self, case_id):
                                     break
                         
                         # Check if match already exists
-                        existing_match = IOCMatch.query.filter_by(
+                        existing_match = db.session.query(IOCMatch).filter_by(
                             case_id=case_id,
                             ioc_id=ioc.id,
                             event_id=event_id
@@ -1504,7 +1504,7 @@ def hunt_iocs(self, case_id):
                             ioc_match_count += 1
                     
                     # Update IOC statistics
-                    ioc.match_count = IOCMatch.query.filter_by(ioc_id=ioc.id).count()
+                    ioc.match_count = db.session.query(IOCMatch).filter_by(ioc_id=ioc.id).count()
                     if ioc_match_count > 0:
                         ioc.last_seen = datetime.utcnow()
                     ioc.last_hunted = datetime.utcnow()
