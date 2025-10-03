@@ -3054,13 +3054,13 @@ def dashboard():
         </div>
         <div class="main-content">
             <div class="header">
+                <div class="case-title">🎯 System Dashboard</div>
                 <div class="user-info">
                     <span>Welcome, {current_user.username} ({current_user.role})</span>
                     <a href="{url_for('logout')}" class="logout-btn">Logout</a>
                 </div>
             </div>
             <div class="content">
-                <h1>🎯 System Dashboard</h1>
                 <div class="tiles">
                     <div class="tile">
                         <h3>📈 System Statistics</h3>
@@ -3198,7 +3198,7 @@ def render_upload_form(case):
         
         <div class="main-content">
             <div class="header">
-                <h1>📤 Upload Files</h1>
+                <div class="case-title">📤 Upload Files</div>
                 <div class="user-info">
                     <span>Welcome, {current_user.username} ({current_user.role})</span>
                     <a href="/logout" class="logout-btn">Logout</a>
@@ -3849,9 +3849,9 @@ def render_audit_log(logs_paginated, category_filter, user_filter, success_filte
         </div>
         <div class="main-content">
             <div class="header">
-                <h1>📜 Audit Log</h1>
-                <div>
-                    <span>Welcome, {current_user.username}</span>
+                <div class="case-title">📜 Audit Log</div>
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
                     <a href="/logout" class="logout-btn">Logout</a>
                 </div>
             </div>
@@ -3968,9 +3968,9 @@ def render_user_management(users):
         </div>
         <div class="main-content">
             <div class="header">
-                <h1>👥 User Management</h1>
-                <div>
-                    <span>Welcome, {current_user.username}</span>
+                <div class="case-title">👥 User Management</div>
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
                     <a href="/logout" class="logout-btn">Logout</a>
                 </div>
             </div>
@@ -5892,6 +5892,7 @@ def render_case_selection(cases, active_case_id):
         </div>
         <div class="main-content">
             <div class="header">
+                <div class="case-title">📁 Case Selection</div>
                 <div class="user-info">
                     <span>Welcome, {current_user.username} ({current_user.role})</span>
                     <a href="/logout" class="logout-btn">Logout</a>
@@ -5899,7 +5900,6 @@ def render_case_selection(cases, active_case_id):
             </div>
             <div class="content">
                 {flash_messages_html}
-                <h1>📁 Case Selection</h1>
                 <p>Select a case to work with or create a new one</p>
                 
                 <div class="search-container">

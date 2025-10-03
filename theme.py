@@ -75,11 +75,9 @@ def get_theme_css():
             
             .version-badge {
                 font-size: 0.75rem;
-                background: #10b981;
-                color: white;
-                padding: 0.2rem 0.5rem;
-                border-radius: 4px;
-                font-weight: bold;
+                color: #94a3b8;
+                padding: 0.2rem 0;
+                font-weight: normal;
                 display: inline-block;
                 margin-top: 0.5rem;
             }
