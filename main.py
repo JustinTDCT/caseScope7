@@ -2286,7 +2286,7 @@ def search():
                     ioc_matches = []
                     try:
                         event_doc_id = hit['_id']
-                        matches = IOCMatch.query.filter_by(
+                        matches = db.session.query(IOCMatch).filter_by(
                             case_id=case.id,
                             event_id=event_doc_id
                         ).all()
