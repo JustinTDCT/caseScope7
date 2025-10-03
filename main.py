@@ -2196,6 +2196,25 @@ def search():
                     sigma_violations = source.get('sigma_detections', [])
                     has_violations = source.get('has_violations', False)
                     
+                    # Check for IOC matches for this event
+                    ioc_matches = []
+                    try:
+                        event_doc_id = hit['_id']
+                        matches = IOCMatch.query.filter_by(
+                            case_id=case.id,
+                            event_id=event_doc_id
+                        ).all()
+                        
+                        for match in matches:
+                            ioc = match.ioc
+                            ioc_matches.append({
+                                'type': ioc.ioc_type,
+                                'value': ioc.ioc_value,
+                                'severity': ioc.severity
+                            })
+                    except Exception as e:
+                        print(f"[Search] Error checking IOC matches: {e}")
+                    
                     results.append({
                         'index': hit['_index'],
                         'id': hit['_id'],
@@ -2210,7 +2229,8 @@ def search():
                         'provider': provider,
                         'full_data': source,
                         'sigma_violations': sigma_violations,
-                        'has_violations': has_violations
+                        'has_violations': has_violations,
+                        'ioc_matches': ioc_matches
                     })
                 
             except Exception as e:
@@ -4189,6 +4209,19 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             doc_id = result.get('doc_id', '')
             escaped_doc_id = html.escape(doc_id, quote=True)
             
+            # Get IOC matches for this event
+            ioc_badges = ''
+            if result.get('ioc_matches'):
+                ioc_list = []
+                for ioc_match in result['ioc_matches']:
+                    ioc_type = ioc_match.get('type', 'unknown')
+                    ioc_value = ioc_match.get('value', '')[:20]
+                    ioc_list.append(f'<span style="background: #fbbf24; color: #0f172a; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-right: 4px;" title="{ioc_type}: {ioc_match.get("value", "")}">{ioc_type.upper()}</span>')
+                ioc_badges = ''.join(ioc_list)
+            
+            if not ioc_badges:
+                ioc_badges = '<span style="color: #64748b;">-</span>'
+            
             result_rows += f'''
             <tr class="result-row">
                 <td onclick="toggleDetails('{result_id}')">{result['event_id']}</td>
@@ -4196,6 +4229,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                 <td onclick="toggleDetails('{result_id}')">{escaped_event_type}</td>
                 <td onclick="toggleDetails('{result_id}')"><span class="field-tag" onclick="addToQuery(event, 'source_filename', '{escaped_source_file}')">{escaped_source_file}</span></td>
                 <td onclick="toggleDetails('{result_id}')"><span class="field-tag" onclick="addToQuery(event, 'Computer', '{escaped_computer}')">{escaped_computer}</span></td>
+                <td onclick="toggleDetails('{result_id}')" style="padding: 8px;">{ioc_badges}</td>
                 <td style="text-align: center;">
                     <button class="tag-btn" data-event-id="{escaped_doc_id}" data-timestamp="{result['timestamp']}" onclick="event.stopPropagation(); toggleTag(this);" title="Tag for timeline">
                         <span class="tag-icon">☆</span>
@@ -4203,7 +4237,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                 </td>
             </tr>
             <tr id="{result_id}" class="details-row" style="display: none;">
-                <td colspan="6">
+                <td colspan="7">
                     <div class="event-details">
                         <div class="event-details-header">
                             <h4>Event Fields</h4>
@@ -4218,12 +4252,12 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             </tr>
             '''
     elif query_str and not error_message:
-        result_rows = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #aaa;">No results found for your query.</td></tr>'
+        result_rows = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #aaa;">No results found for your query.</td></tr>'
     elif not query_str:
-        result_rows = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #aaa;">Enter a search query above to search indexed events.</td></tr>'
+        result_rows = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #aaa;">Enter a search query above to search indexed events.</td></tr>'
     
     if error_message:
-        result_rows = f'<tr><td colspan="6" style="text-align: center; padding: 40px; color: #f44336;"><strong>Error:</strong> {error_message}</td></tr>'
+        result_rows = f'<tr><td colspan="7" style="text-align: center; padding: 40px; color: #f44336;"><strong>Error:</strong> {error_message}</td></tr>'
     
     # Pagination
     total_pages = (total_hits + per_page - 1) // per_page if total_hits > 0 else 1
@@ -4379,6 +4413,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                             <th>Event Information</th>
                             <th>Source File</th>
                             <th>Computer</th>
+                            <th>IOCs</th>
                             <th>Tag</th>
                         </tr>
                     </thead>
