@@ -1746,6 +1746,40 @@ def ioc_delete(ioc_id):
     flash(f'✓ IOC deleted: {ioc_info}', 'success')
     return redirect(url_for('ioc_list'))
 
+@app.route('/ioc/hunt', methods=['GET'])
+@login_required
+def ioc_hunt():
+    """Trigger IOC hunting across all indexed events"""
+    # Check for active case
+    case_id = session.get('active_case_id')
+    if not case_id:
+        flash('Please select a case first', 'warning')
+        return redirect(url_for('case_selection'))
+    
+    case = db.session.get(Case, case_id)
+    if not case:
+        flash('Case not found', 'error')
+        return redirect(url_for('case_selection'))
+    
+    # Get active IOCs
+    active_iocs = IOC.query.filter_by(case_id=case_id, is_active=True).count()
+    
+    if active_iocs == 0:
+        flash('No active IOCs to hunt for. Add IOCs first.', 'warning')
+        return redirect(url_for('ioc_list'))
+    
+    # Trigger background hunt task
+    if celery_app:
+        from tasks import hunt_iocs
+        task = hunt_iocs.delay(case_id)
+        
+        log_audit('ioc_hunt', 'ioc_management', f'Started IOC hunt for {active_iocs} indicators in case {case.name}', success=True)
+        flash(f'🔍 IOC hunt started for {active_iocs} indicators. This may take a few minutes...', 'success')
+    else:
+        flash('Background worker not available. IOC hunting requires Celery.', 'error')
+    
+    return redirect(url_for('ioc_list'))
+
 @app.route('/search/export', methods=['POST'])
 @login_required
 def export_search():
@@ -5147,7 +5181,7 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
             
             <div class="search-box" style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
                 <button onclick="showAddIOCModal()" class="btn-primary">+ Add IOC</button>
-                <button onclick="window.location.href='/ioc/hunt?action=manual'" class="btn-primary" style="background: #fbbf24;">🔍 Hunt Now</button>
+                <button onclick="window.location.href='/ioc/hunt'" class="btn-primary" style="background: #fbbf24;">🔍 Hunt Now</button>
                 <button onclick="window.location.href='/ioc/matches'" class="btn-primary" style="background: #60a5fa;">📋 View Matches</button>
                 
                 <div style="flex: 1; display: flex; gap: 10px; justify-content: flex-end;">
