@@ -1780,6 +1780,62 @@ def ioc_hunt():
     
     return redirect(url_for('ioc_list'))
 
+@app.route('/ioc/matches', methods=['GET'])
+@login_required
+def ioc_matches():
+    """View IOC matches for active case"""
+    # Check for active case
+    case_id = session.get('active_case_id')
+    if not case_id:
+        flash('Please select a case first', 'warning')
+        return redirect(url_for('case_selection'))
+    
+    case = db.session.get(Case, case_id)
+    if not case:
+        flash('Case not found', 'error')
+        return redirect(url_for('case_selection'))
+    
+    # Get filter parameters
+    ioc_filter = request.args.get('ioc', 'all')
+    type_filter = request.args.get('type', 'all')
+    hunt_type_filter = request.args.get('hunt_type', 'all')
+    page = int(request.args.get('page', 1))
+    per_page = 50
+    
+    # Build query
+    query = IOCMatch.query.filter_by(case_id=case_id)
+    
+    if ioc_filter != 'all':
+        query = query.filter_by(ioc_id=int(ioc_filter))
+    
+    if type_filter != 'all':
+        query = query.join(IOC).filter(IOC.ioc_type == type_filter)
+    
+    if hunt_type_filter != 'all':
+        query = query.filter_by(hunt_type=hunt_type_filter)
+    
+    # Get paginated results
+    matches_paginated = query.order_by(IOCMatch.detected_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    
+    # Get filter options
+    all_iocs = IOC.query.join(IOCMatch).filter(IOCMatch.case_id == case_id).distinct().all()
+    
+    # Get statistics
+    total_matches = IOCMatch.query.filter_by(case_id=case_id).count()
+    manual_count = IOCMatch.query.filter_by(case_id=case_id, hunt_type='manual').count()
+    automatic_count = IOCMatch.query.filter_by(case_id=case_id, hunt_type='automatic').count()
+    unique_iocs = db.session.query(IOCMatch.ioc_id).filter_by(case_id=case_id).distinct().count()
+    unique_events = db.session.query(IOCMatch.event_id).filter_by(case_id=case_id).distinct().count()
+    
+    return render_ioc_matches_page(
+        case, matches_paginated.items, matches_paginated.total,
+        page, per_page, ioc_filter, type_filter, hunt_type_filter,
+        all_iocs, total_matches, manual_count, automatic_count,
+        unique_iocs, unique_events
+    )
+
 @app.route('/search/export', methods=['POST'])
 @login_required
 def export_search():
@@ -5369,6 +5425,220 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
                 }}
             }}
         </script>
+    </body>
+    </html>
+    '''
+
+def render_ioc_matches_page(case, matches, total_matches, page, per_page, ioc_filter, type_filter, 
+                            hunt_type_filter, all_iocs, total_count, manual_count, automatic_count,
+                            unique_iocs, unique_events):
+    """Render IOC Matches Page"""
+    from flask import get_flashed_messages
+    import html
+    
+    # Flash messages
+    flash_messages_html = ""
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        icon = "⚠️" if category == "warning" else "❌" if category == "error" else "✅"
+        flash_messages_html += f'''
+        <div class="flash-message flash-{category}">
+            <span class="flash-icon">{icon}</span>
+            <span class="flash-text">{message}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        '''
+    
+    # Build matches table
+    matches_html = ""
+    for match in matches:
+        # Get IOC details
+        ioc = match.ioc
+        
+        # IOC type color
+        type_colors = {
+            'ip': '#60a5fa',
+            'domain': '#34d399',
+            'hostname': '#a78bfa',
+            'username': '#f472b6',
+            'hash_md5': '#fbbf24',
+            'hash_sha1': '#fb923c',
+            'hash_sha256': '#f87171',
+            'command': '#38bdf8',
+            'filename': '#4ade80'
+        }
+        type_color = type_colors.get(ioc.ioc_type, '#64748b')
+        
+        # Hunt type badge
+        hunt_badge = '🤖 Auto' if match.hunt_type == 'automatic' else '👤 Manual'
+        hunt_color = '#3b82f6' if match.hunt_type == 'automatic' else '#10b981'
+        
+        # Escape values
+        ioc_value_safe = html.escape(ioc.ioc_value[:50], quote=True)
+        matched_field_safe = html.escape(match.matched_field or 'N/A', quote=True)
+        matched_value_safe = html.escape(match.matched_value[:60] if match.matched_value else 'N/A', quote=True)
+        
+        matches_html += f'''
+        <tr class="match-row">
+            <td><span style="background: {type_color}; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; font-weight: bold;">{ioc.ioc_type.upper()}</span></td>
+            <td style="font-family: monospace; color: #60a5fa;">{ioc_value_safe}</td>
+            <td>{matched_field_safe}</td>
+            <td style="font-family: monospace; font-size: 0.9rem;">{matched_value_safe}</td>
+            <td>{match.event_timestamp[:19] if match.event_timestamp and len(match.event_timestamp) > 19 else match.event_timestamp or 'N/A'}</td>
+            <td><span style="color: {hunt_color}; font-weight: bold;">{hunt_badge}</span></td>
+            <td>{match.detected_at.strftime('%Y-%m-%d %H:%M:%S') if match.detected_at else 'N/A'}</td>
+            <td class="actions-cell">
+                <a href="/search?event_id={match.event_id}" class="btn-action btn-view" title="View Event">👁️</a>
+            </td>
+        </tr>
+        '''
+    
+    # Build filter dropdowns
+    ioc_options = ''.join([f'<option value="{ioc.id}" {"selected" if str(ioc.id) == ioc_filter else ""}>{ioc.ioc_type}:{ioc.ioc_value[:30]}</option>' for ioc in all_iocs])
+    
+    # Get unique IOC types for type filter
+    ioc_types = ['ip', 'domain', 'fqdn', 'hostname', 'username', 'hash_md5', 'hash_sha1', 'hash_sha256', 'command', 'filename', 'process_name', 'registry_key', 'email', 'url']
+    type_options = ''.join([f'<option value="{t}" {"selected" if t == type_filter else ""}>{t.replace("_", " ").title()}</option>' for t in ioc_types])
+    
+    # Pagination
+    total_pages = (total_matches + per_page - 1) // per_page
+    pagination_html = ""
+    if total_pages > 1:
+        if page > 1:
+            pagination_html += f'<a href="?page={page-1}&ioc={ioc_filter}&type={type_filter}&hunt_type={hunt_type_filter}" class="page-btn">← Previous</a>'
+        pagination_html += f'<span class="page-info">Page {page} of {total_pages}</span>'
+        if page < total_pages:
+            pagination_html += f'<a href="?page={page+1}&ioc={ioc_filter}&type={type_filter}&hunt_type={hunt_type_filter}" class="page-btn">Next →</a>'
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>IOC Matches - caseScope 7.14</title>
+        {get_theme_css()}
+        <style>
+            .match-row {{
+                transition: background 0.2s ease;
+            }}
+            .match-row:hover {{
+                background: #1e293b;
+            }}
+            .stats-container {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 1rem;
+                margin-bottom: 2rem;
+            }}
+            .stat-box {{
+                background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+                padding: 1.5rem;
+                border-radius: 12px;
+                border: 1px solid #334155;
+                text-align: center;
+            }}
+            .stat-box .value {{
+                font-size: 2.5rem;
+                font-weight: bold;
+                margin-bottom: 0.5rem;
+            }}
+            .stat-box .label {{
+                color: #94a3b8;
+                font-size: 0.9rem;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
+            </div>
+            
+            {render_sidebar_menu('ioc_matches')}
+        </div>
+        <div class="main-content">
+            <div class="header">
+                <div class="case-title">🎯 IOC Matches - Case: {case.name}</div>
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
+                    <a href="/logout" class="logout-btn">Logout</a>
+                </div>
+            </div>
+            <div class="content">
+                {flash_messages_html}
+                
+                <h1>🎯 IOC Matches Found</h1>
+                
+                <div class="stats-container">
+                    <div class="stat-box">
+                        <div class="value" style="color: #3b82f6;">{total_count}</div>
+                        <div class="label">Total Matches</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="value" style="color: #10b981;">{unique_iocs}</div>
+                        <div class="label">Unique IOCs</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="value" style="color: #fbbf24;">{unique_events}</div>
+                        <div class="label">Affected Events</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="value" style="color: #3b82f6;">{automatic_count}</div>
+                        <div class="label">Automatic</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="value" style="color: #10b981;">{manual_count}</div>
+                        <div class="label">Manual</div>
+                    </div>
+                </div>
+                
+                <div class="filter-bar" style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <strong>Filters:</strong>
+                        <select onchange="window.location.href='?ioc='+this.value+'&type={type_filter}&hunt_type={hunt_type_filter}'" style="padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;">
+                            <option value="all" {"selected" if ioc_filter == "all" else ""}>All IOCs</option>
+                            {ioc_options}
+                        </select>
+                        <select onchange="window.location.href='?ioc={ioc_filter}&type='+this.value+'&hunt_type={hunt_type_filter}'" style="padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;">
+                            <option value="all" {"selected" if type_filter == "all" else ""}>All Types</option>
+                            {type_options}
+                        </select>
+                        <select onchange="window.location.href='?ioc={ioc_filter}&type={type_filter}&hunt_type='+this.value" style="padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;">
+                            <option value="all" {"selected" if hunt_type_filter == "all" else ""}>All Hunt Types</option>
+                            <option value="automatic" {"selected" if hunt_type_filter == "automatic" else ""}>Automatic</option>
+                            <option value="manual" {"selected" if hunt_type_filter == "manual" else ""}>Manual</option>
+                        </select>
+                    </div>
+                    <div style="margin-left: auto;">
+                        <button onclick="window.location.href='/ioc/list'" class="btn-primary">← Back to IOCs</button>
+                    </div>
+                </div>
+                
+                {f'<div class="pagination-container">{pagination_html}</div>' if pagination_html else ''}
+                
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>IOC Type</th>
+                            <th>IOC Value</th>
+                            <th>Matched Field</th>
+                            <th>Matched Value</th>
+                            <th>Event Time</th>
+                            <th>Hunt Type</th>
+                            <th>Detected</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {matches_html if matches_html else '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: #64748b;">No IOC matches found. Try adjusting your filters or running a hunt.</td></tr>'}
+                    </tbody>
+                </table>
+                
+                {f'<div class="pagination-container">{pagination_html}</div>' if pagination_html else ''}
+            </div>
+        </div>
     </body>
     </html>
     '''
