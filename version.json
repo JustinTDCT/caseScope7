@@ -1,9 +1,10 @@
 {
-  "version": "7.14.8",
+  "version": "7.14.9",
   "release_date": "2025-10-03",
-  "description": "Critical Bugfix - Delete Case Button Missing: FIXED delete case button not appearing for administrators in Case Management page; ROOT CAUSE: typo in role check used 'Admin' instead of 'administrator' (actual role name in database); button check at line 6693 didn't match endpoint authorization check at line 653; IMPACT: Delete functionality was fully implemented but hidden due to incorrect role comparison; administrators can now permanently delete cases with comprehensive data cleanup (OpenSearch indices, disk files, all database records); three-step confirmation process (2 confirms + type case name) prevents accidental deletion; deletes: uploaded files, indices, IOCs/matches, SIGMA violations, event tags, search history, saved searches; makes case disappear completely as if it never existed",
+  "description": "Critical Bugfix - Delete Case SQLAlchemy 2.0 Compatibility: FIXED 'Neither InstrumentedAttribute object nor Comparator object associated with SearchHistory.query has an attribute filter_by' error when deleting cases; ROOT CAUSE: delete_case function used old SQLAlchemy 1.x syntax (Model.query.filter_by()) which is deprecated in SQLAlchemy 2.0; SOLUTION: updated ALL 8 query statements to SQLAlchemy 2.0 syntax using db.session.query(Model).filter_by(); affected models: CaseFile, IOCMatch, IOC, EventTag, SigmaViolation, SearchHistory, SavedSearch, CaseFile; IMPACT: Case deletion now works properly with complete data cleanup (OpenSearch indices deleted, disk files removed, all database records purged); administrators can permanently remove cases and all associated data as intended",
   "build": "production",
   "changelog": {
+    "7.14.9": "Critical Bugfix - Fixed delete case error by updating to SQLAlchemy 2.0 query syntax (8 query statements)",
     "7.14.8": "Critical Bugfix - Fixed delete case button not appearing due to role check typo ('Admin' → 'administrator')",
     "7.14.7": "UI Fix - Fixed table row border inconsistencies near action buttons by removing flexbox from table cells",
     "7.14.6": "UI Fixes - Added missing header to IOC Management page + Fixed modal centering with flexbox display",
