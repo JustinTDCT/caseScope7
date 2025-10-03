@@ -1,9 +1,10 @@
 {
-  "version": "7.15.3",
+  "version": "7.15.4",
   "release_date": "2025-10-03",
-  "description": "Critical Bugfix - Fixed IOC Hunting Missing Nested Field Values: FIXED IOC hunting not finding matches when values are in nested/flattened field paths; ROOT CAUSE: IOC hunting searched simplified field names (IpAddress, Computer, SourceAddress) but actual indexed EVTX data uses full dot-notation paths (EventData.Data_12.#text where Data_12.@Name='IpAddress'); specific field searches would miss values in these nested structures; SOLUTION: added wildcard query_string search across ALL fields (*) as fallback in addition to specific field searches; ensures IOCs found regardless of field structure depth; EXAMPLE: IP address 172.99.54.1 in EventData.Data_12.#text now detected correctly; applies to all IOC types (IP, hostname, username, hash, command, etc.); IMPACT: IOC hunting now finds ALL matches including those in nested XML structures; comprehensive threat indicator detection across all event field locations",
+  "description": "Enhancement - IOC Matches Display Improvements: ADDED source_filename column to ioc_match table showing which EVTX/NDJSON file contained each match; IMPROVED matched field detection with recursive deep search to accurately identify exact field paths (e.g., EventData.Data_12.#text); CHANGED 'Detected' column to 'Event Date' showing actual event timestamp (not hunt timestamp) for timeline analysis; ADDED Source File column to IOC Matches page between Event Time and Hunt Type; matched field now displays with green monospace styling (EventData.Data_12.#text instead of 'unknown'); IMPACT: analysts can now see WHICH file contained each IOC match for correlation analysis; accurate field paths enable precise investigation; event timestamps allow chronological analysis of IOC activity; comprehensive match metadata for threat hunting workflows",
   "build": "production",
   "changelog": {
+    "7.15.4": "Enhancement - Added source filename column, improved matched field detection, changed Detected to Event Date",
     "7.15.3": "Critical Bugfix - Fixed IOC hunting missing values in nested fields by adding wildcard ALL-field query",
     "7.15.2": "Critical Bugfix - Fixed event search errors by adding ignore_unavailable=True to both OpenSearch search calls",
     "7.15.1": "Critical Bugfix - Fixed IOC hunting index errors + Completed tasks.py SQLAlchemy 2.0 migration (7 more queries)",

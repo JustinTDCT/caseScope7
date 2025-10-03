@@ -1465,11 +1465,38 @@ def hunt_iocs(self, case_id):
                                         source.get('@timestamp') or \
                                         'N/A'
                         
-                        # Find which field matched
+                        # Extract source filename
+                        source_filename = source.get('_casescope_metadata', {}).get('filename') or \
+                                        source.get('_casescope_metadata_filename') or \
+                                        'Unknown'
+                        
+                        # Find which field matched - recursive search through all fields
                         matched_field = 'unknown'
                         matched_value = search_value
                         
+                        def search_nested_dict(d, search_val, path=''):
+                            """Recursively search nested dict for matching value"""
+                            if isinstance(d, dict):
+                                for key, val in d.items():
+                                    current_path = f"{path}.{key}" if path else key
+                                    if isinstance(val, (dict, list)):
+                                        result = search_nested_dict(val, search_val, current_path)
+                                        if result:
+                                            return result
+                                    elif val and search_val.lower() in str(val).lower():
+                                        return (current_path, str(val))
+                            elif isinstance(d, list):
+                                for idx, item in enumerate(d):
+                                    result = search_nested_dict(item, search_val, f"{path}[{idx}]")
+                                    if result:
+                                        return result
+                            return None
+                        
+                        # Try specific fields first
+                        found = False
                         for field in search_fields:
+                            if field == '*':
+                                continue
                             # Check nested fields
                             if '.' in field:
                                 parts = field.split('.')
@@ -1482,15 +1509,24 @@ def hunt_iocs(self, case_id):
                                         break
                                 if val and search_value.lower() in str(val).lower():
                                     matched_field = field
-                                    matched_value = str(val)
+                                    matched_value = str(val)[:500]
+                                    found = True
                                     break
                             else:
                                 # Direct field
                                 val = source.get(field)
                                 if val and search_value.lower() in str(val).lower():
                                     matched_field = field
-                                    matched_value = str(val)
+                                    matched_value = str(val)[:500]
+                                    found = True
                                     break
+                        
+                        # If not found in specific fields, do deep search
+                        if not found:
+                            result = search_nested_dict(source, search_value)
+                            if result:
+                                matched_field, matched_value = result
+                                matched_value = matched_value[:500]
                         
                         # Check if match already exists
                         existing_match = db.session.query(IOCMatch).filter_by(
@@ -1507,6 +1543,7 @@ def hunt_iocs(self, case_id):
                                 event_id=event_id,
                                 index_name=index_name,
                                 event_timestamp=event_timestamp,
+                                source_filename=source_filename,
                                 matched_field=matched_field,
                                 matched_value=matched_value[:500],  # Truncate long values
                                 hunt_type='automatic'

@@ -341,6 +341,7 @@ class IOCMatch(db.Model):
     event_id = db.Column(db.String(100), nullable=False)  # OpenSearch document ID
     index_name = db.Column(db.String(200), nullable=False)
     event_timestamp = db.Column(db.String(100))  # For sorting
+    source_filename = db.Column(db.String(300))  # Source EVTX/NDJSON file
     
     # Match Details
     matched_field = db.Column(db.String(200))  # Which field contained the IOC
@@ -5602,18 +5603,20 @@ def render_ioc_matches_page(case, matches, total_matches, page, per_page, ioc_fi
         
         # Escape values
         ioc_value_safe = html.escape(ioc.ioc_value[:50], quote=True)
-        matched_field_safe = html.escape(match.matched_field or 'N/A', quote=True)
+        matched_field_safe = html.escape(match.matched_field or 'unknown', quote=True)
         matched_value_safe = html.escape(match.matched_value[:60] if match.matched_value else 'N/A', quote=True)
+        filename_safe = html.escape(match.source_filename or 'Unknown', quote=True)
         
         matches_html += f'''
         <tr class="match-row">
             <td><span style="background: {type_color}; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; font-weight: bold;">{ioc.ioc_type.upper()}</span></td>
             <td style="font-family: monospace; color: #60a5fa;">{ioc_value_safe}</td>
-            <td>{matched_field_safe}</td>
+            <td style="font-family: monospace; font-size: 0.85rem; color: #34d399;">{matched_field_safe}</td>
             <td style="font-family: monospace; font-size: 0.9rem;">{matched_value_safe}</td>
             <td>{match.event_timestamp[:19] if match.event_timestamp and len(match.event_timestamp) > 19 else match.event_timestamp or 'N/A'}</td>
+            <td style="color: #60a5fa; font-size: 0.9rem;">{filename_safe}</td>
             <td><span style="color: {hunt_color}; font-weight: bold;">{hunt_badge}</span></td>
-            <td>{match.detected_at.strftime('%Y-%m-%d %H:%M:%S') if match.detected_at else 'N/A'}</td>
+            <td>{match.event_timestamp[:19] if match.event_timestamp and len(match.event_timestamp) > 19 else match.event_timestamp or 'N/A'}</td>
             <td class="actions-cell">
                 <a href="/search?event_id={match.event_id}" class="btn-action btn-view" title="View Event">👁️</a>
             </td>
@@ -5753,13 +5756,14 @@ def render_ioc_matches_page(case, matches, total_matches, page, per_page, ioc_fi
                             <th>Matched Field</th>
                             <th>Matched Value</th>
                             <th>Event Time</th>
+                            <th>Source File</th>
                             <th>Hunt Type</th>
-                            <th>Detected</th>
+                            <th>Event Date</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {matches_html if matches_html else '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: #64748b;">No IOC matches found. Try adjusting your filters or running a hunt.</td></tr>'}
+                        {matches_html if matches_html else '<tr><td colspan="9" style="text-align: center; padding: 2rem; color: #64748b;">No IOC matches found. Try adjusting your filters or running a hunt.</td></tr>'}
                     </tbody>
                 </table>
                 
