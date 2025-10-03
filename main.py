@@ -1663,6 +1663,8 @@ def search():
     time_range = 'all'
     custom_start = None
     custom_end = None
+    sort_field = 'relevance'
+    sort_order = 'desc'
     
     if request.method == 'POST':
         query_str = request.form.get('query', '').strip()
@@ -1671,6 +1673,8 @@ def search():
         time_range = request.form.get('time_range', 'all')
         custom_start = request.form.get('custom_start')
         custom_end = request.form.get('custom_end')
+        sort_field = request.form.get('sort', 'relevance')
+        sort_order = request.form.get('sort_order', 'desc')
         
         if query_str:
             try:
@@ -1784,13 +1788,27 @@ def search():
                 
                 # Search across all indices for this case
                 from_offset = (page - 1) * per_page
+                # Build sort configuration
+                if sort_field == 'timestamp':
+                    # Sort by timestamp using the date field mapping
+                    sort_config = [
+                        {
+                            "System.TimeCreated.@SystemTime.date": {
+                                "order": sort_order,
+                                "unmapped_type": "date"
+                            }
+                        },
+                        "_score"  # Secondary sort by relevance
+                    ]
+                else:
+                    # Default: sort by relevance only
+                    sort_config = ["_score"]
+                
                 search_body = {
                     "query": os_query,
                     "from": from_offset,
                     "size": per_page,
-                    # Sort by relevance score only (no timestamp sorting to avoid mapping issues)
-                    # Timestamp is text field, can't reliably sort on it
-                    "sort": ["_score"],
+                    "sort": sort_config,
                     "_source": True
                 }
                 
@@ -3961,6 +3979,8 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                     <form method="POST" id="searchForm">
                         <input type="text" name="query" class="search-input" placeholder="Enter search query (e.g., EventID:4624 AND Computer:SERVER01)" value="{query_str}" autofocus>
                         <input type="hidden" name="page" id="pageInput" value="{page}">
+                        <input type="hidden" name="sort" id="sortInput" value="{sort_field}">
+                        <input type="hidden" name="sort_order" id="sortOrderInput" value="{sort_order}">
                         
                         <div style="display: flex; gap: 15px; margin-bottom: 15px; align-items: center; flex-wrap: wrap;">
                             <label style="color: rgba(255,255,255,0.9); font-size: 14px;">
@@ -4039,8 +4059,14 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                     <thead>
                         <tr>
                             <th>Event ID</th>
-                            <th>Timestamp</th>
-                            <th>Event Type</th>
+                            <th class="sortable-header">
+                                Timestamp 
+                                <span class="sort-controls">
+                                    <a href="#" onclick="event.preventDefault(); sortBy('timestamp', 'desc')" title="Newest first">▼</a>
+                                    <a href="#" onclick="event.preventDefault(); sortBy('timestamp', 'asc')" title="Oldest first">▲</a>
+                                </span>
+                            </th>
+                            <th>Event Information</th>
                             <th>Source File</th>
                             <th>Computer</th>
                             <th>Tag</th>
@@ -4182,6 +4208,13 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             
             function searchPage(pageNum) {{
                 document.getElementById('pageInput').value = pageNum;
+                document.getElementById('searchForm').submit();
+            }}
+            
+            function sortBy(field, order) {{
+                document.getElementById('sortInput').value = field;
+                document.getElementById('sortOrderInput').value = order;
+                document.getElementById('pageInput').value = 1;  // Reset to first page
                 document.getElementById('searchForm').submit();
             }}
             

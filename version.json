@@ -1,9 +1,10 @@
 {
-  "version": "7.13.0",
+  "version": "7.13.1",
   "release_date": "2025-10-02",
-  "description": "Major Feature - Timeline Event Tagging: NEW event_tag database table for timeline analysis; analysts can tag important events with star/bookmark icon directly in search results; real-time tag/untag with visual feedback (empty star ☆ vs filled star ★); tagged events persist per case and per user; API endpoints: POST /api/event/tag, POST /api/event/untag, GET /api/event/tags; stores event_id (OpenSearch doc ID), index_name, timestamp, tag_type, color, notes; supports multi-user tagging with unique constraint; timeline tags load automatically on search page; hover tooltip shows who tagged event; foundation for future timeline visualization features; includes database migration migrate_timeline_tags.py",
+  "description": "Enhancement - Timestamp Sorting & UI Improvements: ADDED timestamp sorting capability with ▼ newest first and ▲ oldest first controls in search results; sorts using OpenSearch date field mapping (System.TimeCreated.@SystemTime.date) with unmapped_type fallback; sort persists across pagination; click arrows to sort descending/ascending; defaults to relevance sorting (_score); RENAMED Event Type column to Event Information for clearer labeling; sortBy() JavaScript function updates hidden form fields (sort, sort_order) and submits; CSS styling for .sortable-header and .sort-controls with hover effects; sort controls show gray (inactive) and blue (hover); foundational requirement per user request for timeline analysis workflow",
   "build": "production",
   "changelog": {
+    "7.13.1": "Enhancement - Added timestamp column sorting (newest/oldest first) + renamed Event Type to Event Information",
     "7.13.0": "Major Feature - Timeline event tagging for incident analysis with star icons in search results",
     "7.12.5": "Critical Bugfix - Removed case_insensitive parameter incompatible with OpenSearch 2.11.1",
     "7.12.4": "Enhancement - Added explicit case-insensitive search (founding requirement)",

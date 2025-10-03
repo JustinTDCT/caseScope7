@@ -1293,6 +1293,33 @@ def get_theme_css():
                 transition: all 0.2s ease;
             }
             
+            /* === SORTABLE HEADERS === */
+            .sortable-header {
+                position: relative;
+                cursor: pointer;
+            }
+            
+            .sort-controls {
+                display: inline-flex;
+                flex-direction: column;
+                margin-left: 0.5rem;
+                line-height: 1;
+                font-size: 0.7rem;
+                gap: 2px;
+            }
+            
+            .sort-controls a {
+                color: #64748b;
+                text-decoration: none;
+                transition: all 0.2s ease;
+                line-height: 1;
+            }
+            
+            .sort-controls a:hover {
+                color: #3b82f6;
+                transform: scale(1.3);
+            }
+            
             /* === SIGMA VIOLATIONS PAGE === */
             .stats-bar {
                 display: flex;
