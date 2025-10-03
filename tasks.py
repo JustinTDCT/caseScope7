@@ -1418,6 +1418,17 @@ def hunt_iocs(self, case_id):
                             }
                         })
                 
+                # CRITICAL: Add wildcard search across ALL fields to catch flattened field paths
+                # e.g., EventData.Data_12.#text where Data_12.@Name might be "IpAddress"
+                # This ensures we find IOCs even when they're in nested/flattened structures
+                should_clauses.append({
+                    "query_string": {
+                        "query": f"*{search_value}*",
+                        "fields": ["*"],
+                        "analyze_wildcard": True
+                    }
+                })
+                
                 query = {
                     "query": {
                         "bool": {
