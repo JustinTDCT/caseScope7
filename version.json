@@ -1,9 +1,10 @@
 {
-  "version": "7.14.9",
+  "version": "7.14.10",
   "release_date": "2025-10-03",
-  "description": "Critical Bugfix - Delete Case SQLAlchemy 2.0 Compatibility: FIXED 'Neither InstrumentedAttribute object nor Comparator object associated with SearchHistory.query has an attribute filter_by' error when deleting cases; ROOT CAUSE: delete_case function used old SQLAlchemy 1.x syntax (Model.query.filter_by()) which is deprecated in SQLAlchemy 2.0; SOLUTION: updated ALL 8 query statements to SQLAlchemy 2.0 syntax using db.session.query(Model).filter_by(); affected models: CaseFile, IOCMatch, IOC, EventTag, SigmaViolation, SearchHistory, SavedSearch, CaseFile; IMPACT: Case deletion now works properly with complete data cleanup (OpenSearch indices deleted, disk files removed, all database records purged); administrators can permanently remove cases and all associated data as intended",
+  "description": "Bugfix - Fixed Post-Deletion Redirect: FIXED 404 'Not Found' error after successfully deleting a case; ROOT CAUSE: JavaScript deleteCase function redirected to '/case/manage' but actual route is '/case-management' (with hyphen); mismatch between redirect URL and Flask route definition; user experienced successful deletion (all data removed) followed by 404 error page; SOLUTION: changed window.location.href from '/case/manage' to '/case-management' in deleteCase JavaScript function; IMPACT: After deleting a case, user is now properly redirected back to Case Management page showing remaining cases; complete user flow works end-to-end without errors",
   "build": "production",
   "changelog": {
+    "7.14.10": "Bugfix - Fixed 404 error after case deletion by correcting redirect URL (/case/manage → /case-management)",
     "7.14.9": "Critical Bugfix - Fixed delete case error by updating to SQLAlchemy 2.0 query syntax (8 query statements)",
     "7.14.8": "Critical Bugfix - Fixed delete case button not appearing due to role check typo ('Admin' → 'administrator')",
     "7.14.7": "UI Fix - Fixed table row border inconsistencies near action buttons by removing flexbox from table cells",
