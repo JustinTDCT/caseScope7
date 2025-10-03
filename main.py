@@ -1723,57 +1723,28 @@ def search():
                             start_time = None
                             end_time = None
                     
-                    # Simple date filtering using wildcard/prefix matching
-                    # Since timestamps are text (YYYY-MM-DD HH:MM:SS format), we can use simple prefix queries
+                    # Date range filtering using proper date range queries on .date field
                     if start_time:
-                        # For single-day queries, use simple wildcard on date prefix
-                        start_date_str = start_time.strftime('%Y-%m-%d')
-                        end_date_str = end_time.strftime('%Y-%m-%d') if end_time else now.strftime('%Y-%m-%d')
+                        # Format timestamps for OpenSearch date range query
+                        # Convert to ISO format (YYYY-MM-DDTHH:MM:SS)
+                        start_iso = start_time.strftime('%Y-%m-%dT%H:%M:%S')
+                        end_iso = end_time.strftime('%Y-%m-%dT%H:%M:%S') if end_time else now.strftime('%Y-%m-%dT%H:%M:%S')
                         
-                        print(f"[Search] Time filter: range={time_range}, start={start_date_str}, end={end_date_str}")
+                        print(f"[Search] Time filter: range={time_range}, start={start_iso}, end={end_iso}")
                         
-                        # If same day, use simple prefix query
-                        if start_date_str == end_date_str:
-                            # Single day: simple wildcard
-                            # Use .keyword subfield because wildcard queries only work on keyword fields, not analyzed text
-                            time_filter = {
-                                "bool": {
-                                    "should": [
-                                        {"wildcard": {"System.TimeCreated.@SystemTime.keyword": f"{start_date_str}*"}},
-                                        {"wildcard": {"System_TimeCreated_SystemTime.keyword": f"{start_date_str}*"}},
-                                        {"wildcard": {"@timestamp": f"{start_date_str}*"}}
-                                    ],
-                                    "minimum_should_match": 1
+                        # Use range query on the .date field (which has proper date type mapping)
+                        # This is much more efficient than wildcards and handles all date ranges
+                        time_filter = {
+                            "range": {
+                                "System.TimeCreated.@SystemTime.date": {
+                                    "gte": start_iso,
+                                    "lte": end_iso,
+                                    "format": "strict_date_optional_time"
                                 }
                             }
-                        else:
-                            # Multi-day range: match any date in range using OR of wildcards
-                            # This is simple but works for reasonable ranges (< 30 days)
-                            # Use .keyword subfield because wildcard queries only work on keyword fields, not analyzed text
-                            from datetime import timedelta
-                            date_patterns = []
-                            current = start_time.date()
-                            end = end_time.date() if end_time else now.date()
-                            
-                            while current <= end:
-                                date_str = current.strftime('%Y-%m-%d')
-                                date_patterns.append({"wildcard": {"System.TimeCreated.@SystemTime.keyword": f"{date_str}*"}})
-                                date_patterns.append({"wildcard": {"System_TimeCreated_SystemTime.keyword": f"{date_str}*"}})
-                                date_patterns.append({"wildcard": {"@timestamp": f"{date_str}*"}})
-                                current += timedelta(days=1)
-                            
-                            time_filter = {
-                                "bool": {
-                                    "should": date_patterns,
-                                    "minimum_should_match": 1
-                                }
-                            }
+                        }
                         
                         filters.append(time_filter)
-                        print(f"[Search] Added simple wildcard time filter for date range")
-                        print(f"[Search] Time filter patterns: {len(date_patterns) if 'date_patterns' in locals() else 1} patterns")
-                        import json
-                        print(f"[Search] Time filter JSON: {json.dumps(time_filter, indent=2)}")
                 
                 # Combine base query with filters
                 if filters:
@@ -1788,7 +1759,9 @@ def search():
                 
                 # Search across all indices for this case
                 from_offset = (page - 1) * per_page
+                
                 # Build sort configuration
+                print(f"[Search] Sort parameters: field={sort_field}, order={sort_order}")
                 if sort_field == 'timestamp':
                     # Sort by timestamp using the date field mapping
                     sort_config = [
@@ -1800,9 +1773,11 @@ def search():
                         },
                         "_score"  # Secondary sort by relevance
                     ]
+                    print(f"[Search] Using timestamp sort: {sort_order}")
                 else:
                     # Default: sort by relevance only
                     sort_config = ["_score"]
+                    print(f"[Search] Using relevance sort")
                 
                 search_body = {
                     "query": os_query,
@@ -3929,13 +3904,25 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
     
     # Pagination
     total_pages = (total_hits + per_page - 1) // per_page if total_hits > 0 else 1
+    
+    # OpenSearch limits results to 10,000 by default
+    opensearch_limit = 10000
+    is_limited = total_hits >= opensearch_limit
+    max_accessible_page = min(total_pages, opensearch_limit // per_page)
+    
     pagination_html = ""
     if total_hits > per_page:
         pagination_html = '<div class="pagination">'
         if page > 1:
             pagination_html += f'<button class="page-btn" onclick="searchPage({page - 1})">← Previous</button>'
-        pagination_html += f'<span class="page-info">Page {page} of {total_pages} ({total_hits:,} results)</span>'
-        if page < total_pages:
+        
+        # Show warning if results exceed OpenSearch limit
+        if is_limited:
+            pagination_html += f'<span class="page-info" style="color: #fbbf24;">⚠️ Page {page} of {max_accessible_page} ({total_hits:,}+ results - OpenSearch limits to first {opensearch_limit:,})</span>'
+        else:
+            pagination_html += f'<span class="page-info">Page {page} of {total_pages} ({total_hits:,} results)</span>'
+        
+        if page < max_accessible_page:
             pagination_html += f'<button class="page-btn" onclick="searchPage({page + 1})">Next →</button>'
         pagination_html += '</div>'
     elif total_hits > 0:

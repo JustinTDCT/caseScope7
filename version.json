@@ -1,9 +1,10 @@
 {
-  "version": "7.13.1",
-  "release_date": "2025-10-02",
-  "description": "Enhancement - Timestamp Sorting & UI Improvements: ADDED timestamp sorting capability with ▼ newest first and ▲ oldest first controls in search results; sorts using OpenSearch date field mapping (System.TimeCreated.@SystemTime.date) with unmapped_type fallback; sort persists across pagination; click arrows to sort descending/ascending; defaults to relevance sorting (_score); RENAMED Event Type column to Event Information for clearer labeling; sortBy() JavaScript function updates hidden form fields (sort, sort_order) and submits; CSS styling for .sortable-header and .sort-controls with hover effects; sort controls show gray (inactive) and blue (hover); foundational requirement per user request for timeline analysis workflow",
+  "version": "7.13.2",
+  "release_date": "2025-10-03",
+  "description": "Critical Fixes - Search Reliability & Pagination: FIXED time range filtering to use proper OpenSearch date range queries instead of wildcard patterns; now uses range query on System.TimeCreated.@SystemTime.date field with gte/lte parameters and ISO format; VASTLY improved performance and reliability for custom date ranges; ADDED OpenSearch result limit warning when total_hits >= 10,000 (yellow ⚠️ notice shows 'OpenSearch limits to first 10,000'); pagination now respects max_accessible_page to prevent navigating beyond limit; FIXED pagination persistence - all search parameters (query, sort, time_range, custom dates, violations_only) now properly maintained across page changes via form submission; ADDED debug logging for sort parameters to diagnose issues; sort configuration verified working with timestamp field sorting; IMPACT: Time range searches now reliable for any date range; users notified when results exceed OpenSearch limits; pagination fully functional with state preservation",
   "build": "production",
   "changelog": {
+    "7.13.2": "Critical Fixes - Time range filtering now reliable with proper date queries + OpenSearch 10K limit warning + full pagination persistence",
     "7.13.1": "Enhancement - Added timestamp column sorting (newest/oldest first) + renamed Event Type to Event Information",
     "7.13.0": "Major Feature - Timeline event tagging for incident analysis with star icons in search results",
     "7.12.5": "Critical Bugfix - Removed case_insensitive parameter incompatible with OpenSearch 2.11.1",
