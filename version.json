@@ -1,9 +1,10 @@
 {
-  "version": "7.15.1",
+  "version": "7.15.2",
   "release_date": "2025-10-03",
-  "description": "Critical Bugfix - IOC Hunting Index Errors + Complete tasks.py SQLAlchemy 2.0 Migration: FIXED 'index_not_found_exception' errors during IOC hunting caused by searching non-existent indices; added ignore_unavailable=True parameter to OpenSearch search allowing graceful handling when only some file types have been uploaded (e.g., System.evtx exists but WinLogon.evtx doesn't); IOC hunting now completes successfully even with missing indices; COMPLETED SQLAlchemy 2.0 migration in tasks.py: updated ALL 7 remaining queries (SigmaRule: 2, SigmaViolation: 1, IOC: 1, IOCMatch: 2, CaseFile: 1); TOTAL MIGRATION: 93+ queries updated across main.py and tasks.py; ZERO deprecated SQLAlchemy syntax remaining in ENTIRE codebase (main.py + tasks.py); IMPACT: IOC hunting works reliably, all background tasks use SQLAlchemy 2.0, production-ready",
+  "description": "Critical Bugfix - Fixed Event Search Index Errors: FIXED NotFoundError(404, 'index_not_found_exception') in search function causing searches to fail when querying non-existent indices; added ignore_unavailable=True parameter to BOTH OpenSearch search calls (CSV export and main search); same root cause as IOC hunting issue - when users upload only some file types (e.g., System.evtx, Security.evtx) but not others (e.g., TerminalServices, SessionBroker), the search would try to query all expected indices and fail with 404 on missing ones; NOW gracefully skips missing indices and returns results from available indices only; IMPACT: Event search works reliably regardless of which file types have been uploaded; users can search immediately after uploading any files without needing complete event log coverage; production-ready search functionality",
   "build": "production",
   "changelog": {
+    "7.15.2": "Critical Bugfix - Fixed event search errors by adding ignore_unavailable=True to both OpenSearch search calls",
     "7.15.1": "Critical Bugfix - Fixed IOC hunting index errors + Completed tasks.py SQLAlchemy 2.0 migration (7 more queries)",
     "7.15.0": "MAJOR - Complete SQLAlchemy 2.0 migration: updated ALL 86+ queries across entire codebase to 2.0 syntax",
     "7.14.11": "Critical Bugfix - Fixed IOC hunting by updating 14 IOC/IOCMatch queries to SQLAlchemy 2.0 syntax",
