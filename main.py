@@ -5330,13 +5330,15 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
         </div>
         
         <div class="main-content">
+            <div class="header">
+                <div class="case-title">🎯 IOC Management - {case.name}</div>
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
+                    <a href="/logout" class="logout-btn">Logout</a>
+                </div>
+            </div>
             <div class="content">
                 {flash_messages_html}
-                
-                <div class="page-header">
-                <h1>🎯 IOC Management</h1>
-                <p class="subtitle">Indicators of Compromise for {case.name}</p>
-            </div>
             
             <div class="stats-bar">
                 <div class="stat-card">
