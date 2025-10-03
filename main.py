@@ -605,7 +605,6 @@ def close_case(case_id):
         
         # Log the action
         log_audit(
-            user_id=session.get('user_id'),
             action='close_case',
             category='case_management',
             details=f'Closed case: {case.name} (ID: {case.id})',
@@ -636,7 +635,6 @@ def reopen_case(case_id):
         
         # Log the action
         log_audit(
-            user_id=session.get('user_id'),
             action='reopen_case',
             category='case_management',
             details=f'Reopened case: {case.name} (ID: {case.id})',
@@ -648,6 +646,96 @@ def reopen_case(case_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/case/delete/<int:case_id>', methods=['POST'])
+@login_required
+@admin_required
+def delete_case(case_id):
+    """Permanently delete a case and all associated data"""
+    case = db.session.get(Case, case_id)
+    if not case:
+        return jsonify({'success': False, 'message': 'Case not found'}), 404
+    
+    try:
+        case_name = case.name
+        
+        # 1. Delete OpenSearch indices for all case files
+        from tasks import make_index_name
+        case_files = CaseFile.query.filter_by(case_id=case_id, is_deleted=False).all()
+        
+        for file in case_files:
+            if file.is_indexed:
+                index_name = make_index_name(case_id, file.original_filename)
+                try:
+                    if opensearch_client.indices.exists(index=index_name):
+                        opensearch_client.indices.delete(index=index_name)
+                        print(f"[Delete Case] Deleted OpenSearch index: {index_name}")
+                except Exception as e:
+                    print(f"[Delete Case] Error deleting index {index_name}: {e}")
+        
+        # 2. Delete files from disk
+        import os
+        import shutil
+        upload_folder = app.config.get('UPLOAD_FOLDER', '/opt/casescope/uploads')
+        case_folder = os.path.join(upload_folder, f'case_{case_id}')
+        
+        if os.path.exists(case_folder):
+            try:
+                shutil.rmtree(case_folder)
+                print(f"[Delete Case] Deleted case folder: {case_folder}")
+            except Exception as e:
+                print(f"[Delete Case] Error deleting case folder: {e}")
+        
+        # 3. Delete all associated database records
+        # Note: Some will cascade automatically based on foreign key relationships
+        
+        # Delete IOC matches
+        IOCMatch.query.filter_by(case_id=case_id).delete()
+        
+        # Delete IOCs
+        IOC.query.filter_by(case_id=case_id).delete()
+        
+        # Delete event tags
+        EventTag.query.filter_by(case_id=case_id).delete()
+        
+        # Delete SIGMA violations
+        SigmaViolation.query.filter_by(case_id=case_id).delete()
+        
+        # Delete search history
+        SearchHistory.query.filter_by(case_id=case_id).delete()
+        
+        # Delete saved searches
+        SavedSearch.query.filter_by(case_id=case_id).delete()
+        
+        # Delete case files (should cascade, but being explicit)
+        CaseFile.query.filter_by(case_id=case_id).delete()
+        
+        # Delete the case itself
+        db.session.delete(case)
+        
+        # Commit all deletions
+        db.session.commit()
+        
+        # Clear active case from session if it was this one
+        if session.get('active_case_id') == case_id:
+            session.pop('active_case_id', None)
+        
+        # Log the action
+        log_audit(
+            action='delete_case',
+            category='case_management',
+            details=f'Permanently deleted case: {case_name} (ID: {case_id}) and all associated data',
+            success=True
+        )
+        
+        return jsonify({'success': True, 'message': f'Case "{case_name}" and all associated data deleted successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"[Delete Case] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Error deleting case: {str(e)}'}), 500
 
 @app.route('/case/dashboard')
 @login_required
@@ -6599,6 +6687,10 @@ def render_case_management(cases, users):
             actions_list.append(f'<button class="btn-action" onclick="closeCase({case.id}, \'{html.escape(case.name)}\')" style="background: linear-gradient(145deg, #ff9800, #f57c00);">✓ Close</button>')
             actions_list.append(f'<button class="btn-action" onclick="archiveCase({case.id}, \'{html.escape(case.name)}\')" style="background: linear-gradient(145deg, #757575, #616161);">📦 Archive</button>')
         
+        # Admin-only delete button
+        if current_user.role == 'Admin':
+            actions_list.append(f'<button class="btn-action" onclick="deleteCase({case.id}, \'{html.escape(case.name)}\')" style="background: linear-gradient(145deg, #f44336, #d32f2f);">🗑️ Delete</button>')
+        
         actions = '<div style="display: flex; flex-wrap: wrap; gap: 4px;">' + ''.join(actions_list) + '</div>'
         
         case_rows += f'''
@@ -6723,6 +6815,33 @@ def render_case_management(cases, users):
                     .catch(error => {{
                         alert('Error: ' + error);
                     }});
+                }}
+            }}
+            
+            function deleteCase(id, name) {{
+                if (confirm('⚠️ WARNING: PERMANENTLY DELETE case "' + name + '"?\\n\\nThis will DELETE ALL:\\n• Uploaded files\\n• OpenSearch indices\\n• IOCs and matches\\n• SIGMA violations\\n• Search history\\n• Event tags\\n\\nThis action CANNOT be undone!')) {{
+                    if (confirm('Are you ABSOLUTELY SURE you want to delete "' + name + '" forever?\\n\\nType the case name in the next prompt to confirm.')) {{
+                        const confirmName = prompt('Type the case name to confirm deletion:\\n"' + name + '"');
+                        if (confirmName === name) {{
+                            fetch('/case/delete/' + id, {{
+                                method: 'POST'
+                            }})
+                            .then(response => response.json())
+                            .then(data => {{
+                                if (data.success) {{
+                                    alert('✓ Case deleted successfully');
+                                    window.location.href = '/case/manage';
+                                }} else {{
+                                    alert('Error: ' + data.message);
+                                }}
+                            }})
+                            .catch(error => {{
+                                alert('Error: ' + error);
+                            }});
+                        }} else {{
+                            alert('Case name did not match. Deletion cancelled.');
+                        }}
+                    }}
                 }}
             }}
         </script>
