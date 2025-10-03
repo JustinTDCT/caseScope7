@@ -1,9 +1,10 @@
 {
-  "version": "7.14.1",
+  "version": "7.14.2",
   "release_date": "2025-10-03",
-  "description": "Critical Bugfix & Enhancement - Case Management: FIXED close_case and reopen_case log_audit calls that were passing incompatible user_id parameter causing errors; ADDED comprehensive case deletion feature for admins to permanently remove cases and ALL associated data; delete removes OpenSearch indices, uploaded files from disk, IOCs and matches, SIGMA violations, event tags, search history, and case files; admin-only delete button in case management UI with triple-confirmation (warning dialog, confirmation dialog, typed case name verification) to prevent accidental deletion; clears active case from session if currently selected case is deleted; extensive logging and error handling for safe deletion operations; IMPACT: Admins can now completely clean up test cases or closed investigations, case closure now works without errors",
+  "description": "Critical Bugfix - Complete log_audit Parameter Fix & Changelog Organization: FIXED all remaining log_audit calls with incompatible user_id parameter throughout codebase (edit_case, archive_case, create_template, edit_template, delete_template); log_audit derives user_id automatically from current_user so explicit parameter causes errors; REORGANIZED entire version.json changelog to consistent reverse chronological order (newest-first) throughout - previously v7.11.0+ was newest-first but v7.1.1-7.10.21 was oldest-first causing confusion; now all 214 versions from 7.14.2 down to 7.1.1 follow standard changelog format; IMPACT: No more 'unexpected keyword argument user_id' errors from ANY case management, template, or IOC operations; version history now easy to navigate with latest changes always at top",
   "build": "production",
   "changelog": {
+    "7.14.2": "Critical Bugfix - Fixed ALL log_audit parameter errors (5 more calls) + Reorganized changelog to consistent reverse chronological order",
     "7.14.1": "Critical Bugfix - Fixed close/reopen case errors + Added admin case deletion with comprehensive data cleanup",
     "7.14.0": "Major Feature - IOC Management & Threat Hunting system with automatic/manual hunting across all indexed events",
     "7.13.2": "Critical Fixes - Time range filtering now reliable with proper date queries + OpenSearch 10K limit warning + full pagination persistence",
