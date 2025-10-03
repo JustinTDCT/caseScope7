@@ -6690,7 +6690,7 @@ def render_case_management(cases, users):
             actions_list.append(f'<button class="btn-action" onclick="archiveCase({case.id}, \'{html.escape(case.name)}\')" style="background: linear-gradient(145deg, #757575, #616161);">📦 Archive</button>')
         
         # Admin-only delete button
-        if current_user.role == 'Admin':
+        if current_user.role == 'administrator':
             actions_list.append(f'<button class="btn-action" onclick="deleteCase({case.id}, \'{html.escape(case.name)}\')" style="background: linear-gradient(145deg, #f44336, #d32f2f);">🗑️ Delete</button>')
         
         actions = '<div style="display: flex; flex-wrap: wrap; gap: 4px;">' + ''.join(actions_list) + '</div>'
