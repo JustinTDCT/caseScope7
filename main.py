@@ -5327,9 +5327,10 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
         </div>
         
         <div class="main-content">
-            {flash_messages_html}
-            
-            <div class="page-header">
+            <div class="content">
+                {flash_messages_html}
+                
+                <div class="page-header">
                 <h1>🎯 IOC Management</h1>
                 <p class="subtitle">Indicators of Compromise for {case.name}</p>
             </div>
@@ -5395,6 +5396,7 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
                     {iocs_html}
                 </tbody>
             </table>
+            </div>
         </div>
         
         <!-- Add IOC Modal -->
