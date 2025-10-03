@@ -11,7 +11,7 @@ from pathlib import Path
 def migrate_ioc_matches():
     """Add source_filename column to ioc_match table"""
     
-    db_path = Path('/opt/casescope/casescope.db')
+    db_path = Path('/opt/casescope/data/casescope.db')
     
     if not db_path.exists():
         print(f"❌ Database not found at {db_path}")
