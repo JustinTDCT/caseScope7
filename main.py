@@ -662,7 +662,7 @@ def delete_case(case_id):
         
         # 1. Delete OpenSearch indices for all case files
         from tasks import make_index_name
-        case_files = CaseFile.query.filter_by(case_id=case_id, is_deleted=False).all()
+        case_files = db.session.query(CaseFile).filter_by(case_id=case_id, is_deleted=False).all()
         
         for file in case_files:
             if file.is_indexed:
@@ -691,25 +691,25 @@ def delete_case(case_id):
         # Note: Some will cascade automatically based on foreign key relationships
         
         # Delete IOC matches
-        IOCMatch.query.filter_by(case_id=case_id).delete()
+        db.session.query(IOCMatch).filter_by(case_id=case_id).delete()
         
         # Delete IOCs
-        IOC.query.filter_by(case_id=case_id).delete()
+        db.session.query(IOC).filter_by(case_id=case_id).delete()
         
         # Delete event tags
-        EventTag.query.filter_by(case_id=case_id).delete()
+        db.session.query(EventTag).filter_by(case_id=case_id).delete()
         
         # Delete SIGMA violations
-        SigmaViolation.query.filter_by(case_id=case_id).delete()
+        db.session.query(SigmaViolation).filter_by(case_id=case_id).delete()
         
         # Delete search history
-        SearchHistory.query.filter_by(case_id=case_id).delete()
+        db.session.query(SearchHistory).filter_by(case_id=case_id).delete()
         
         # Delete saved searches
-        SavedSearch.query.filter_by(case_id=case_id).delete()
+        db.session.query(SavedSearch).filter_by(case_id=case_id).delete()
         
         # Delete case files (should cascade, but being explicit)
-        CaseFile.query.filter_by(case_id=case_id).delete()
+        db.session.query(CaseFile).filter_by(case_id=case_id).delete()
         
         # Delete the case itself
         db.session.delete(case)
