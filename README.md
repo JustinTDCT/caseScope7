@@ -1,20 +1,21 @@
-# caseScope 7.4 - Digital Forensics EVTX Analysis Platform
+# caseScope 7.13 - Digital Forensics EVTX Analysis Platform
 
-**Version:** 7.4.0  
+**Version:** 7.13.1  
 **Copyright:** (c) 2025 Justin Dube <casescope@thedubes.net>
 
 ## Overview
 
-caseScope is a comprehensive digital forensics platform for analyzing Windows Event Logs (EVTX files) with Chainsaw SIGMA rule processing, OpenSearch indexing, and advanced search capabilities.
+caseScope is a comprehensive digital forensics platform for analyzing Windows Event Logs (EVTX files) and EDR telemetry (NDJSON) with Chainsaw SIGMA rule processing, OpenSearch indexing, timeline analysis, and advanced search capabilities.
 
 ## Key Features
 
 - **Case-Driven Organization**: Organize investigations by cases with proper data isolation
 - **Multi-User System**: Administrator, Analyst, and Read-Only user roles with audit logging
-- **EVTX Processing**: Parse and index Windows Event Logs with real-time progress tracking
+- **EVTX & NDJSON Processing**: Parse and index Windows Event Logs and EDR telemetry with real-time progress tracking
+- **Timeline Event Tagging**: Star/bookmark important events for timeline analysis with collaborative multi-user tagging
 - **Chainsaw SIGMA Engine**: Automated threat detection using 3000+ SIGMA rules via Chainsaw v2.12.2
-- **Powerful Search**: Boolean logic, field-specific queries, SIGMA violation filtering
-- **Event Type Descriptions**: Human-readable descriptions for 100+ Windows Event IDs
+- **Powerful Search**: Boolean logic, field-specific queries, SIGMA violation filtering, timestamp sorting
+- **Event Information Descriptions**: Human-readable descriptions for 100+ Windows Event IDs and EDR events
 - **Audit Trail**: Complete logging of authentication, file operations, searches, admin actions
 - **Modern Render-Based UI**: Dark blue gradient theme, no templates
 
@@ -103,13 +104,13 @@ sudo journalctl -u casescope-worker -f
 
 ## File Processing Workflow
 
-1. **Upload**: EVTX files uploaded to case (3GB max per file, 5 files per batch)
+1. **Upload**: EVTX/NDJSON files uploaded to case (3GB max per file, 5 files per batch)
 2. **Duplicate Check**: SHA256 hash verification
 3. **Event Counting**: Real-time event count for accurate progress
 4. **Indexing**: OpenSearch bulk indexing with flattened event structure
-5. **SIGMA Processing**: Chainsaw hunt on EVTX with enabled rules
+5. **SIGMA Processing**: Chainsaw hunt on EVTX with enabled rules (EDR logs skip this step)
 6. **Enrichment**: Flag violated events with `has_violations`, `violation_count`, `sigma_detections`
-7. **Completed**: Events searchable with violation filtering
+7. **Completed**: Events searchable with violation filtering, timeline tagging, and sorting
 
 ## Search Capabilities
 
@@ -119,11 +120,26 @@ sudo journalctl -u casescope-worker -f
 - **Boolean**: `EventID:4624 AND Computer:DC01`
 - **Wildcards**: `*.exe` or `admin*`
 - **Phrases**: `"mimikatz detected"`
+- **Case-insensitive**: Automatically applied for analyzed text fields
 
 ### Supported Fields
 - EventID, Computer, Channel, Provider, Level, Task
 - TimeCreated, event_type (description)
 - source_filename, has_violations
+- EDR fields: command_line, process_name, parent_process, user, hash values
+
+### Timeline Tagging (v7.13.0)
+- **Star Icon**: Click ☆ to tag important events for timeline
+- **Visual Feedback**: Tagged events show filled gold star ★
+- **Collaborative**: All analysts see who tagged each event
+- **Persistent**: Tags saved per case and per user
+- **API Access**: `/api/event/tag`, `/api/event/untag`, `/api/event/tags`
+
+### Timestamp Sorting (v7.13.1)
+- **▼ Newest First**: Sort events by timestamp descending
+- **▲ Oldest First**: Sort events by timestamp ascending
+- **Default**: Relevance sorting by search score
+- **Persistent**: Sort order maintained across pagination
 
 ### Violation Filtering
 - Checkbox: "Show only SIGMA violations"
@@ -147,19 +163,25 @@ sudo journalctl -u casescope-worker -f
 
 ## API Endpoints
 
+### Web Pages
 - `/` - Dashboard
 - `/case/select` - Case selection
 - `/case/dashboard` - Case dashboard
 - `/upload` - File upload
 - `/files` - File list
-- `/search` - Event search
+- `/search` - Event search (with sorting and tagging)
 - `/violations` - SIGMA violations
 - `/sigma-rules` - Rule management
 - `/users` - User management (admin)
 - `/audit-log` - Audit log viewer (admin)
+
+### API Endpoints
 - `/api/file/progress/<id>` - Real-time task progress
 - `/api/reindex-all-files` - Bulk re-index
 - `/api/rerun-all-rules` - Bulk re-run rules
+- `/api/event/tag` - Tag event for timeline (POST)
+- `/api/event/untag` - Remove event tag (POST)
+- `/api/event/tags` - Get tagged events (GET)
 
 ## Configuration
 
@@ -175,7 +197,7 @@ sudo journalctl -u casescope-worker -f
 
 ### Database
 - **SQLite**: `/opt/casescope/data/casescope.db`
-- **Models**: User, Case, CaseFile, SigmaRule, SigmaViolation, AuditLog
+- **Models**: User, Case, CaseFile, SigmaRule, SigmaViolation, AuditLog, EventTag, SearchHistory, SavedSearch, CaseTemplate
 - **Migrations**: Auto-run on Option 2/3 installs
 
 ## Logging
@@ -229,13 +251,23 @@ sudo -u casescope /opt/casescope/venv/bin/python3 migrate_audit_log.py
 
 ## Version History
 
-- **7.4.0**: Audit logging system
+- **7.13.1**: Timestamp column sorting (newest/oldest first) + Event Information rename
+- **7.13.0**: Timeline event tagging with star icons for incident analysis
+- **7.12.x**: NDJSON/EDR telemetry ingestion, case-insensitive search fixes
+- **7.11.x**: NDJSON ingestion foundation
+- **7.10.x**: Search enhancements with saved searches and history
+- **7.9.x**: Case templates and workflow improvements
+- **7.8.x**: Enhanced search with field extraction
+- **7.7.x**: Case management improvements
+- **7.6.x**: SIGMA violation management
+- **7.5.x**: File management and progress tracking
+- **7.4.x**: Audit logging system
 - **7.3.x**: User management system
 - **7.2.x**: Chainsaw SIGMA engine integration
 - **7.1.x**: Core EVTX indexing and search
 - **7.0.x**: Initial architecture
 
-See `version.json` for complete changelog.
+See `version.json` and `CHANGELOG.md` for complete changelog.
 
 ## Support
 
