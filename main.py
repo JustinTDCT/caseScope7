@@ -292,6 +292,76 @@ class EventTag(db.Model):
     def __repr__(self):
         return f'<EventTag Case:{self.case_id} Event:{self.event_id[:8]} By:{self.tagged_by}>'
 
+class IOC(db.Model):
+    """Indicators of Compromise for threat hunting"""
+    __tablename__ = 'ioc'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    case_id = db.Column(db.Integer, db.ForeignKey('case.id'), nullable=False)
+    
+    # IOC Details
+    ioc_type = db.Column(db.String(50), nullable=False)  # ip, domain, fqdn, hostname, username, hash_md5, hash_sha1, hash_sha256, command, filename, process_name, registry_key, email, url
+    ioc_value = db.Column(db.String(1000), nullable=False)  # The actual indicator value
+    ioc_value_normalized = db.Column(db.String(1000))  # Lowercase/normalized for matching
+    
+    # Context
+    description = db.Column(db.Text)  # What this IOC represents
+    source = db.Column(db.String(200))  # Where it came from (threat intel, manual analysis, etc.)
+    severity = db.Column(db.String(20), default='medium')  # low, medium, high, critical
+    
+    # Status
+    is_active = db.Column(db.Boolean, default=True)  # Active for hunting
+    
+    # Threat Hunting Results
+    match_count = db.Column(db.Integer, default=0)  # Number of events matching this IOC
+    last_seen = db.Column(db.DateTime)  # Last time this IOC was seen in events
+    last_hunted = db.Column(db.DateTime)  # Last time hunting was performed
+    
+    # Metadata
+    added_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    added_at = db.Column(db.DateTime, default=datetime.utcnow)
+    notes = db.Column(db.Text)  # Analyst notes
+    
+    # Relationships
+    case = db.relationship('Case', backref='iocs')
+    analyst = db.relationship('User', backref='iocs_added')
+    
+    def __repr__(self):
+        return f'<IOC {self.ioc_type}:{self.ioc_value[:30]}>'
+
+class IOCMatch(db.Model):
+    """Records of IOC matches found in events"""
+    __tablename__ = 'ioc_match'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    case_id = db.Column(db.Integer, db.ForeignKey('case.id'), nullable=False)
+    ioc_id = db.Column(db.Integer, db.ForeignKey('ioc.id'), nullable=False)
+    
+    # Event Information
+    event_id = db.Column(db.String(100), nullable=False)  # OpenSearch document ID
+    index_name = db.Column(db.String(200), nullable=False)
+    event_timestamp = db.Column(db.String(100))  # For sorting
+    
+    # Match Details
+    matched_field = db.Column(db.String(200))  # Which field contained the IOC
+    matched_value = db.Column(db.Text)  # The actual value that matched
+    
+    # Metadata
+    detected_at = db.Column(db.DateTime, default=datetime.utcnow)
+    hunt_type = db.Column(db.String(20), default='manual')  # manual or automatic
+    
+    # Relationships
+    case = db.relationship('Case', backref='ioc_matches')
+    ioc = db.relationship('IOC', backref='matches')
+    
+    # Unique constraint: one match per IOC per event
+    __table_args__ = (
+        db.UniqueConstraint('case_id', 'ioc_id', 'event_id', name='unique_ioc_event_match'),
+    )
+    
+    def __repr__(self):
+        return f'<IOCMatch IOC:{self.ioc_id} Event:{self.event_id[:8]}>'
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
