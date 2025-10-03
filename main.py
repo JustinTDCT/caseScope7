@@ -4073,7 +4073,7 @@ def render_user_management(users):
         
         <script>
             function showCreateModal() {{
-                document.getElementById('createModal').style.display = 'block';
+                document.getElementById('createModal').style.display = 'flex';
             }}
             
             function showEditModal(id, username, email, role, isActive) {{
@@ -4083,7 +4083,7 @@ def render_user_management(users):
                 document.getElementById('edit-role').value = role;
                 document.getElementById('edit-active').value = isActive.toString();
                 document.getElementById('editForm').action = '/users/edit/' + id;
-                document.getElementById('editModal').style.display = 'block';
+                document.getElementById('editModal').style.display = 'flex';
             }}
             
             function closeModal(modalId) {{
