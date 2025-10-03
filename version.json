@@ -1,9 +1,10 @@
 {
-  "version": "7.14.4",
+  "version": "7.14.5",
   "release_date": "2025-10-03",
-  "description": "Critical Installation Fix - Undefined Decorator: FIXED NameError during installation caused by @admin_required decorator that was never defined; delete_case function at line 650 used @admin_required but decorator was missing from codebase; caused 'NameError: name admin_required is not defined' during migrate_audit_log.py execution breaking ALL installation options (1, 2, 3); REPLACED undefined decorator with inline role check matching pattern used in 12 other locations throughout codebase (if current_user.role != 'administrator': return 403); IMPACT: Installation and upgrades now work correctly for all options; admin-only delete functionality preserved with proper access control",
+  "description": "UI Consistency - Header Layout & Version Badge: STANDARDIZED all page headers to consistent layout with title/page name on left and user info on right; FIXED 5 pages with inconsistent header structure (System Dashboard, Case Selection, Upload Files, Audit Log, User Management) that were missing title or had incorrect element ordering; all headers now use .case-title div for left side and .user-info div for right side; REMOVED green background (#10b981) from version badge in sidebar; version number now displays as plain gray text (#94a3b8) without background color box; changed font-weight from bold to normal for cleaner minimalist appearance; IMPACT: Consistent professional header layout across all 13+ pages; version badge matches modern flat UI aesthetic without distracting green highlight",
   "build": "production",
   "changelog": {
+    "7.14.5": "UI Consistency - Standardized all page headers (title left, user right) + Removed green background from version badge",
     "7.14.4": "Critical Installation Fix - Removed undefined @admin_required decorator causing NameError breaking all installations",
     "7.14.3": "UI Bugfix - Fixed IOC Management page missing content div wrapper for consistent padding with other pages",
     "7.14.2": "Critical Bugfix - Fixed ALL log_audit parameter errors (5 more calls) + Reorganized changelog to consistent reverse chronological order",
