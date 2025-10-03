@@ -179,7 +179,7 @@ class Case(db.Model):
     @property
     def file_count(self):
         """Get number of files in this case"""
-        return CaseFile.query.filter_by(case_id=self.id, is_deleted=False).count()
+        return db.session.query(CaseFile).filter_by(case_id=self.id, is_deleted=False).count()
     
     @property
     def total_events(self):
@@ -190,7 +190,7 @@ class Case(db.Model):
     @property
     def storage_size(self):
         """Get total storage size for this case"""
-        files = CaseFile.query.filter_by(case_id=self.id, is_deleted=False).all()
+        files = db.session.query(CaseFile).filter_by(case_id=self.id, is_deleted=False).all()
         return sum(f.file_size for f in files if f.file_size)
 
 class CaseFile(db.Model):
@@ -396,10 +396,10 @@ def index():
 def debug_database():
     """Debug route to check database status"""
     try:
-        user_count = User.query.count()
-        case_count = Case.query.count()
-        file_count = CaseFile.query.count()
-        all_users = User.query.all()
+        user_count = db.session.query(User).count()
+        case_count = db.session.query(Case).count()
+        file_count = db.session.query(CaseFile).count()
+        all_users = db.session.query(User).all()
         user_list = [{"id": u.id, "username": u.username, "email": u.email, "role": u.role, "active": u.is_active} for u in all_users]
         
         return f'''
@@ -472,14 +472,14 @@ def create_case():
                 flash(f'Error creating case: {str(e)}', 'error')
     
     # GET request - load users for the form
-    users = User.query.filter_by(is_active=True).order_by(User.username).all()
+    users = db.session.query(User).filter_by(is_active=True).order_by(User.username).all()
     return render_case_form(users)
 
 @app.route('/case/select')
 @login_required
 def case_selection():
     """Case selection page"""
-    cases = Case.query.filter_by(is_active=True).order_by(Case.updated_at.desc()).all()
+    cases = db.session.query(Case).filter_by(is_active=True).order_by(Case.updated_at.desc()).all()
     active_case_id = session.get('active_case_id')
     
     return render_case_selection(cases, active_case_id)
@@ -551,7 +551,7 @@ def edit_case(case_id):
             return redirect(url_for('edit_case', case_id=case_id))
     
     # GET request - show edit form
-    users = User.query.filter_by(is_active=True).order_by(User.username).all()
+    users = db.session.query(User).filter_by(is_active=True).order_by(User.username).all()
     return render_edit_case(case, users)
 
 @app.route('/case/archive/<int:case_id>', methods=['POST'])
@@ -753,9 +753,9 @@ def case_dashboard():
         return redirect(url_for('case_selection'))
     
     # Get case-specific statistics
-    total_files = CaseFile.query.filter_by(case_id=case.id, is_deleted=False).count()
-    indexed_files = CaseFile.query.filter_by(case_id=case.id, is_deleted=False, is_indexed=True).count()
-    processing_files = CaseFile.query.filter_by(case_id=case.id, is_deleted=False).filter(
+    total_files = db.session.query(CaseFile).filter_by(case_id=case.id, is_deleted=False).count()
+    indexed_files = db.session.query(CaseFile).filter_by(case_id=case.id, is_deleted=False, is_indexed=True).count()
+    processing_files = db.session.query(CaseFile).filter_by(case_id=case.id, is_deleted=False).filter(
         CaseFile.indexing_status.in_(['Counting Events', 'Indexing', 'Running Rules', 'Preparing to Index'])
     ).count()
     total_events = db.session.query(db.func.sum(CaseFile.event_count)).filter_by(case_id=case.id, is_deleted=False).scalar() or 0
@@ -816,7 +816,7 @@ def upload_files():
                 sha256_hash = hashlib.sha256(file_data).hexdigest()
                 
                 # Check for duplicate hash in this case
-                duplicate = CaseFile.query.filter_by(
+                duplicate = db.session.query(CaseFile).filter_by(
                     case_id=case.id, 
                     file_hash=sha256_hash,
                     is_deleted=False
@@ -874,7 +874,7 @@ def upload_files():
                 # Trigger background indexing for each uploaded file
                 try:
                     # Get the files we just uploaded
-                    recent_files = CaseFile.query.filter_by(
+                    recent_files = db.session.query(CaseFile).filter_by(
                         case_id=case.id,
                         indexing_status='Uploaded'
                     ).order_by(CaseFile.uploaded_at.desc()).limit(success_count).all()
@@ -923,7 +923,7 @@ def list_files():
     if not case:
         flash('Case not found.', 'error')
         return redirect(url_for('case_selection'))
-    files = CaseFile.query.filter_by(case_id=case.id, is_deleted=False).order_by(CaseFile.uploaded_at.desc()).all()
+    files = db.session.query(CaseFile).filter_by(case_id=case.id, is_deleted=False).order_by(CaseFile.uploaded_at.desc()).all()
     
     return render_file_list(case, files)
 
@@ -933,10 +933,10 @@ def list_files():
 def file_management():
     """File management page - view and manage all files across all cases"""
     # Get all files across all cases
-    files = CaseFile.query.filter_by(is_deleted=False).order_by(CaseFile.uploaded_at.desc()).all()
+    files = db.session.query(CaseFile).filter_by(is_deleted=False).order_by(CaseFile.uploaded_at.desc()).all()
     
     # Get all cases for case filter dropdown
-    cases = Case.query.order_by(Case.name).all()
+    cases = db.session.query(Case).order_by(Case.name).all()
     
     # Audit log
     log_audit('file_management', 'view', 'Viewed file management page', True)
@@ -948,7 +948,7 @@ def file_management():
 @login_required
 def reindex_file(file_id):
     """Re-index a file (discard existing index and re-process)"""
-    case_file = CaseFile.query.get_or_404(file_id)
+    case_file = db.session.get(CaseFile, file_id) or abort(404)
     
     # Verify file belongs to active case
     active_case_id = session.get('active_case_id')
@@ -995,7 +995,7 @@ def reindex_file(file_id):
 @login_required
 def rerun_rules(file_id):
     """Re-run SIGMA rules on a file (discard existing violations and re-process)"""
-    case_file = CaseFile.query.get_or_404(file_id)
+    case_file = db.session.get(CaseFile, file_id) or abort(404)
     
     # Verify file belongs to active case
     active_case_id = session.get('active_case_id')
@@ -1010,7 +1010,7 @@ def rerun_rules(file_id):
     
     try:
         # Delete existing violations for this file
-        existing_violations = SigmaViolation.query.filter_by(file_id=file_id).all()
+        existing_violations = db.session.query(SigmaViolation).filter_by(file_id=file_id).all()
         if existing_violations:
             print(f"[Re-run Rules] Deleting {len(existing_violations)} existing violations for file ID {file_id}")
             for violation in existing_violations:
@@ -1093,7 +1093,7 @@ def api_reindex_all_files():
             return jsonify({'success': False, 'message': 'Access denied'}), 403
         
         # Get all indexed files for this case
-        files = CaseFile.query.filter_by(case_id=case_id, is_deleted=False).all()
+        files = db.session.query(CaseFile).filter_by(case_id=case_id, is_deleted=False).all()
         
         if not files:
             return jsonify({'success': False, 'message': 'No files found in this case'}), 404
@@ -1151,7 +1151,7 @@ def api_rerun_all_rules():
             return jsonify({'success': False, 'message': 'Access denied'}), 403
         
         # Get all indexed files for this case
-        files = CaseFile.query.filter_by(case_id=case_id, is_deleted=False, is_indexed=True).all()
+        files = db.session.query(CaseFile).filter_by(case_id=case_id, is_deleted=False, is_indexed=True).all()
         
         if not files:
             return jsonify({'success': False, 'message': 'No indexed files found in this case'}), 404
@@ -1160,7 +1160,7 @@ def api_rerun_all_rules():
         for case_file in files:
             try:
                 # Delete existing violations for this file
-                existing_violations = SigmaViolation.query.filter_by(file_id=case_file.id).all()
+                existing_violations = db.session.query(SigmaViolation).filter_by(file_id=case_file.id).all()
                 if existing_violations:
                     print(f"[Bulk Re-run Rules] Deleting {len(existing_violations)} violations for file ID {case_file.id}")
                     for violation in existing_violations:
@@ -1211,8 +1211,8 @@ def update_event_ids():
 def case_management():
     """Case management page - view and manage all cases"""
     # Get all cases (active and archived)
-    cases = Case.query.order_by(Case.updated_at.desc()).all()
-    users = User.query.filter_by(is_active=True).order_by(User.username).all()
+    cases = db.session.query(Case).order_by(Case.updated_at.desc()).all()
+    users = db.session.query(User).filter_by(is_active=True).order_by(User.username).all()
     return render_case_management(cases, users)
 
 @app.route('/templates/create', methods=['POST'])
@@ -1234,7 +1234,7 @@ def create_template():
             return jsonify({'success': False, 'message': 'Template name is required'}), 400
         
         # Check for duplicate name
-        existing = CaseTemplate.query.filter_by(name=name).first()
+        existing = db.session.query(CaseTemplate).filter_by(name=name).first()
         if existing:
             return jsonify({'success': False, 'message': 'A template with this name already exists'}), 400
         
@@ -1297,7 +1297,7 @@ def edit_template(template_id):
             return jsonify({'success': False, 'message': 'Template name is required'}), 400
         
         # Check for duplicate name (excluding current template)
-        existing = CaseTemplate.query.filter(
+        existing = db.session.query(CaseTemplate).filter(
             CaseTemplate.name == name,
             CaseTemplate.id != template_id
         ).first()
@@ -1350,7 +1350,7 @@ def delete_template(template_id):
     
     try:
         # Check if template is in use
-        cases_using_template = Case.query.filter_by(template_id=template_id).count()
+        cases_using_template = db.session.query(Case).filter_by(template_id=template_id).count()
         if cases_using_template > 0:
             return jsonify({
                 'success': False,
@@ -1385,7 +1385,7 @@ def user_management():
         return redirect(url_for('dashboard'))
     
     # Get all users
-    users = User.query.order_by(User.created_at.desc()).all()
+    users = db.session.query(User).order_by(User.created_at.desc()).all()
     
     return render_user_management(users)
 
@@ -1416,11 +1416,11 @@ def create_user():
             return redirect(url_for('user_management'))
         
         # Check if username or email already exists
-        if User.query.filter_by(username=username).first():
+        if db.session.query(User).filter_by(username=username).first():
             flash(f'Username "{username}" already exists.', 'error')
             return redirect(url_for('user_management'))
         
-        if User.query.filter_by(email=email).first():
+        if db.session.query(User).filter_by(email=email).first():
             flash(f'Email "{email}" already exists.', 'error')
             return redirect(url_for('user_management'))
         
@@ -1476,7 +1476,7 @@ def edit_user(user_id):
             return redirect(url_for('user_management'))
         
         # Check if email already exists (excluding current user)
-        existing_user = User.query.filter_by(email=email).first()
+        existing_user = db.session.query(User).filter_by(email=email).first()
         if existing_user and existing_user.id != user_id:
             flash(f'Email "{email}" already in use.', 'error')
             return redirect(url_for('user_management'))
@@ -1525,7 +1525,7 @@ def delete_user(user_id):
     
     # Prevent deleting last administrator
     if user.role == 'administrator':
-        admin_count = User.query.filter_by(role='administrator').count()
+        admin_count = db.session.query(User).filter_by(role='administrator').count()
         if admin_count <= 1:
             flash('Cannot delete the last administrator account.', 'error')
             return redirect(url_for('user_management'))
@@ -1611,7 +1611,7 @@ def violations():
     per_page = 50
     
     # Build query
-    query = SigmaViolation.query.filter_by(case_id=case_id)
+    query = db.session.query(SigmaViolation).filter_by(case_id=case_id)
     
     if severity_filter != 'all':
         query = query.filter_by(severity=severity_filter)
@@ -1633,16 +1633,16 @@ def violations():
     )
     
     # Get filter options
-    all_rules = SigmaRule.query.join(SigmaViolation).filter(SigmaViolation.case_id == case_id).distinct().all()
-    all_files = CaseFile.query.join(SigmaViolation).filter(SigmaViolation.case_id == case_id).distinct().all()
+    all_rules = db.session.query(SigmaRule).join(SigmaViolation).filter(SigmaViolation.case_id == case_id).distinct().all()
+    all_files = db.session.query(CaseFile).join(SigmaViolation).filter(SigmaViolation.case_id == case_id).distinct().all()
     
     # Get statistics
-    total_violations = SigmaViolation.query.filter_by(case_id=case_id).count()
-    critical_count = SigmaViolation.query.filter_by(case_id=case_id, severity='critical').count()
-    high_count = SigmaViolation.query.filter_by(case_id=case_id, severity='high').count()
-    medium_count = SigmaViolation.query.filter_by(case_id=case_id, severity='medium').count()
-    low_count = SigmaViolation.query.filter_by(case_id=case_id, severity='low').count()
-    reviewed_count = SigmaViolation.query.filter_by(case_id=case_id, is_reviewed=True).count()
+    total_violations = db.session.query(SigmaViolation).filter_by(case_id=case_id).count()
+    critical_count = db.session.query(SigmaViolation).filter_by(case_id=case_id, severity='critical').count()
+    high_count = db.session.query(SigmaViolation).filter_by(case_id=case_id, severity='high').count()
+    medium_count = db.session.query(SigmaViolation).filter_by(case_id=case_id, severity='medium').count()
+    low_count = db.session.query(SigmaViolation).filter_by(case_id=case_id, severity='low').count()
+    reviewed_count = db.session.query(SigmaViolation).filter_by(case_id=case_id, is_reviewed=True).count()
     
     return render_violations_page(
         case, violations_paginated.items, violations_paginated.total,
@@ -1655,7 +1655,7 @@ def violations():
 @login_required
 def review_violation(violation_id):
     """Mark a violation as reviewed"""
-    violation = SigmaViolation.query.get(violation_id)
+    violation = db.session.get(SigmaViolation, violation_id)
     if not violation:
         return jsonify({'status': 'error', 'message': 'Violation not found'}), 404
     
@@ -1944,7 +1944,7 @@ def export_search():
     violations_only = request.form.get('violations_only') == 'true'
     
     # Get indexed files
-    indexed_files = CaseFile.query.filter_by(case_id=case.id, is_indexed=True, is_deleted=False).all()
+    indexed_files = db.session.query(CaseFile).filter_by(case_id=case.id, is_indexed=True, is_deleted=False).all()
     if not indexed_files:
         flash('No indexed files to export.', 'error')
         return redirect(url_for('search'))
@@ -2047,7 +2047,7 @@ def search():
         return redirect(url_for('case_selection'))
     
     # Get all indexed files for this case to determine which indices to search
-    indexed_files = CaseFile.query.filter_by(case_id=case.id, is_indexed=True, is_deleted=False).all()
+    indexed_files = db.session.query(CaseFile).filter_by(case_id=case.id, is_indexed=True, is_deleted=False).all()
     
     if not indexed_files:
         flash('No indexed files in this case. Upload and index files first.', 'warning')
@@ -2476,7 +2476,7 @@ def download_sigma_rules():
                                 rule_hash = hashlib.sha256(yaml_content.encode()).hexdigest()
                                 
                                 # Check if already exists
-                                existing = SigmaRule.query.filter_by(rule_hash=rule_hash).first()
+                                existing = db.session.query(SigmaRule).filter_by(rule_hash=rule_hash).first()
                                 if existing:
                                     skipped_count += 1
                                     continue
@@ -2521,7 +2521,7 @@ def download_sigma_rules():
                 db.session.commit()
             
             # Count auto-enabled rules
-            enabled_count = SigmaRule.query.filter_by(is_enabled=True).count()
+            enabled_count = db.session.query(SigmaRule).filter_by(is_enabled=True).count()
             
             flash(f'✓ Import complete: {imported_count} new rules added ({enabled_count} enabled), {skipped_count} duplicates skipped, {error_count} errors', 'success')
             return redirect(url_for('sigma_rules'))
@@ -2569,7 +2569,7 @@ def sigma_rules():
                 rule_hash = hashlib.sha256(yaml_content.encode()).hexdigest()
                 
                 # Check for duplicates
-                existing = SigmaRule.query.filter_by(rule_hash=rule_hash).first()
+                existing = db.session.query(SigmaRule).filter_by(rule_hash=rule_hash).first()
                 if existing:
                     flash(f'Rule already exists: {existing.title}', 'warning')
                     return redirect(url_for('sigma_rules'))
@@ -2604,7 +2604,7 @@ def sigma_rules():
         elif action == 'toggle':
             # Toggle rule enabled/disabled
             rule_id = request.form.get('rule_id')
-            rule = SigmaRule.query.get(rule_id)
+            rule = db.session.get(SigmaRule, rule_id)
             if rule:
                 rule.is_enabled = not rule.is_enabled
                 db.session.commit()
@@ -2615,7 +2615,7 @@ def sigma_rules():
         elif action == 'delete':
             # Delete user-uploaded rule (not built-in)
             rule_id = request.form.get('rule_id')
-            rule = SigmaRule.query.get(rule_id)
+            rule = db.session.get(SigmaRule, rule_id)
             if rule and not rule.is_builtin:
                 db.session.delete(rule)
                 db.session.commit()
@@ -2625,14 +2625,14 @@ def sigma_rules():
             return redirect(url_for('sigma_rules'))
     
     # GET request - show all rules (search is client-side JavaScript)
-    all_rules = SigmaRule.query.order_by(SigmaRule.is_builtin.desc(), SigmaRule.level.desc(), SigmaRule.title).all()
-    enabled_count = SigmaRule.query.filter_by(is_enabled=True).count()
-    total_count = SigmaRule.query.count()
+    all_rules = db.session.query(SigmaRule).order_by(SigmaRule.is_builtin.desc(), SigmaRule.level.desc(), SigmaRule.title).all()
+    enabled_count = db.session.query(SigmaRule).filter_by(is_enabled=True).count()
+    total_count = db.session.query(SigmaRule).count()
     
     # Get violation statistics
-    total_violations = SigmaViolation.query.count()
-    critical_violations = SigmaViolation.query.join(SigmaRule).filter(SigmaRule.level == 'critical').count()
-    high_violations = SigmaViolation.query.join(SigmaRule).filter(SigmaRule.level == 'high').count()
+    total_violations = db.session.query(SigmaViolation).count()
+    critical_violations = db.session.query(SigmaViolation).join(SigmaRule).filter(SigmaRule.level == 'critical').count()
+    high_violations = db.session.query(SigmaViolation).join(SigmaRule).filter(SigmaRule.level == 'high').count()
     
     return render_sigma_rules_page(all_rules, enabled_count, total_count, total_violations, critical_violations, high_violations)
 
@@ -2941,11 +2941,11 @@ def login():
         
         try:
             # Check if database exists and is accessible
-            user_count = User.query.count()
+            user_count = db.session.query(User).count()
             print(f"DEBUG: Total users in database: {user_count}")
             
             # Look for the user
-            user = User.query.filter(db.func.lower(User.username) == username).first()
+            user = db.session.query(User).filter(db.func.lower(User.username) == username).first()
             print(f"DEBUG: User found: {user is not None}")
             
             if user:
@@ -2969,7 +2969,7 @@ def login():
                 print(f"DEBUG: No user found with username: '{username}'")
                 log_audit('login_failed', 'authentication', f'Failed login attempt for non-existent user {username}', success=False, username=username)
                 # List all users for debugging
-                all_users = User.query.all()
+                all_users = db.session.query(User).all()
                 print(f"DEBUG: All users in database: {[u.username for u in all_users]}")
                 flash('Invalid username or password.', 'error')
                 
@@ -3023,19 +3023,19 @@ def logout():
 @login_required
 def dashboard():
     # Get real system statistics
-    total_cases = Case.query.count()
-    total_files = CaseFile.query.filter_by(is_deleted=False).count()
-    total_indexed = CaseFile.query.filter_by(is_deleted=False, is_indexed=True).count()
+    total_cases = db.session.query(Case).count()
+    total_files = db.session.query(CaseFile).filter_by(is_deleted=False).count()
+    total_indexed = db.session.query(CaseFile).filter_by(is_deleted=False, is_indexed=True).count()
     total_events = db.session.query(db.func.sum(CaseFile.event_count)).filter_by(is_deleted=False).scalar() or 0
     total_storage = db.session.query(db.func.sum(CaseFile.file_size)).filter_by(is_deleted=False).scalar() or 0
     total_violations = db.session.query(db.func.sum(CaseFile.violation_count)).filter_by(is_deleted=False).scalar() or 0
     
     # Get user count
-    total_users = User.query.count()
+    total_users = db.session.query(User).count()
     
     # Recent activity
-    recent_cases = Case.query.order_by(Case.created_at.desc()).limit(5).all()
-    recent_files = CaseFile.query.filter_by(is_deleted=False).order_by(CaseFile.uploaded_at.desc()).limit(5).all()
+    recent_cases = db.session.query(Case).order_by(Case.created_at.desc()).limit(5).all()
+    recent_files = db.session.query(CaseFile).filter_by(is_deleted=False).order_by(CaseFile.uploaded_at.desc()).limit(5).all()
     
     return f'''
     <!DOCTYPE html>
@@ -4839,7 +4839,7 @@ def render_sigma_rules_page(all_rules, enabled_count, total_count, total_violati
         builtin_badge = '<span class="builtin-badge">🏢 Built-in</span>' if rule.is_builtin else '<span class="user-badge">👤 Custom</span>'
         
         # Violation count for this rule
-        rule_violations = SigmaViolation.query.filter_by(rule_id=rule.id).count()
+        rule_violations = db.session.query(SigmaViolation).filter_by(rule_id=rule.id).count()
         
         rules_html += f'''
         <tr class="rule-row" data-rule-id="{rule.id}">
@@ -6157,7 +6157,7 @@ def load_default_sigma_rules():
     import hashlib
     
     # Check if we already have built-in rules
-    existing_count = SigmaRule.query.filter_by(is_builtin=True).count()
+    existing_count = db.session.query(SigmaRule).filter_by(is_builtin=True).count()
     if existing_count > 0:
         print(f"Built-in SIGMA rules already loaded ({existing_count} rules)")
         return
@@ -6287,7 +6287,7 @@ detection:
         rule_hash = hashlib.sha256(rule_data['rule_yaml'].encode()).hexdigest()
         
         # Check if rule already exists by hash
-        existing = SigmaRule.query.filter_by(rule_hash=rule_hash).first()
+        existing = db.session.query(SigmaRule).filter_by(rule_hash=rule_hash).first()
         if not existing:
             rule = SigmaRule(
                 name=rule_data['name'],
@@ -6348,7 +6348,7 @@ def init_db():
             db.session.rollback()
         
         # Create default admin user
-        admin = User.query.filter_by(username='administrator').first()
+        admin = db.session.query(User).filter_by(username='administrator').first()
         if not admin:
             admin = User(
                 username='administrator',
@@ -7158,7 +7158,7 @@ def tag_event():
         
         # Check if already tagged by this user for this tag_type
         tag_type = data.get('tag_type', 'timeline')
-        existing = EventTag.query.filter_by(
+        existing = db.session.query(EventTag).filter_by(
             case_id=case_id,
             event_id=data['event_id'],
             tagged_by=current_user.id,
@@ -7221,7 +7221,7 @@ def untag_event():
         
         # Find and delete the tag
         tag_type = data.get('tag_type', 'timeline')
-        tag = EventTag.query.filter_by(
+        tag = db.session.query(EventTag).filter_by(
             case_id=case_id,
             event_id=data['event_id'],
             tagged_by=current_user.id,
@@ -7268,7 +7268,7 @@ def get_event_tags():
         tag_type = request.args.get('tag_type', 'timeline')
         
         # Get all tags for this case
-        tags = EventTag.query.filter_by(
+        tags = db.session.query(EventTag).filter_by(
             case_id=case_id,
             tag_type=tag_type
         ).all()
