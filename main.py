@@ -264,9 +264,33 @@ class SigmaViolation(db.Model):
     file = db.relationship('CaseFile', backref='violations')
     rule = db.relationship('SigmaRule', backref='violations')
     reviewer = db.relationship('User', backref='reviewed_violations')
+
+class EventTag(db.Model):
+    """Timeline and analysis tags for events"""
+    __tablename__ = 'event_tag'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    case_id = db.Column(db.Integer, db.ForeignKey('case.id'), nullable=False)
+    event_id = db.Column(db.String(100), nullable=False)  # OpenSearch document ID (hash)
+    index_name = db.Column(db.String(200), nullable=False)  # OpenSearch index name
+    event_timestamp = db.Column(db.String(100))  # Event's actual timestamp for sorting
+    tag_type = db.Column(db.String(50), default='timeline')  # timeline, important, suspicious, etc.
+    color = db.Column(db.String(20), default='blue')  # Color coding for timeline visualization
+    notes = db.Column(db.Text)  # Analyst notes about why this event is tagged
+    tagged_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    tagged_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    case = db.relationship('Case', backref='tagged_events')
+    tagger = db.relationship('User', backref='tagged_events')
+    
+    # Unique constraint: one user can only tag an event once per type
+    __table_args__ = (
+        db.UniqueConstraint('case_id', 'event_id', 'tagged_by', 'tag_type', name='unique_event_tag'),
+    )
     
     def __repr__(self):
-        return f'<SigmaViolation Rule:{self.rule_id} File:{self.file_id}>'
+        return f'<EventTag Case:{self.case_id} Event:{self.event_id[:8]} By:{self.tagged_by}>'
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -1861,6 +1885,7 @@ def search():
                     results.append({
                         'index': hit['_index'],
                         'id': hit['_id'],
+                        'doc_id': hit['_id'],  # OpenSearch document ID for tagging
                         'score': hit['_score'],
                         'timestamp': timestamp,
                         'event_id': event_id,
@@ -3844,16 +3869,25 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             escaped_computer = html.escape(result['computer'], quote=True)
             escaped_event_type = html.escape(result['event_type'], quote=True)
             
+            # Get document ID from result for tagging
+            doc_id = result.get('doc_id', '')
+            escaped_doc_id = html.escape(doc_id, quote=True)
+            
             result_rows += f'''
-            <tr class="result-row" onclick="toggleDetails('{result_id}')">
-                <td>{result['event_id']}</td>
-                <td>{result['timestamp'][:19] if result['timestamp'] != 'N/A' else 'N/A'}</td>
-                <td>{escaped_event_type}</td>
-                <td><span class="field-tag" onclick="addToQuery(event, 'source_filename', '{escaped_source_file}')">{escaped_source_file}</span></td>
-                <td><span class="field-tag" onclick="addToQuery(event, 'Computer', '{escaped_computer}')">{escaped_computer}</span></td>
+            <tr class="result-row">
+                <td onclick="toggleDetails('{result_id}')">{result['event_id']}</td>
+                <td onclick="toggleDetails('{result_id}')">{result['timestamp'][:19] if result['timestamp'] != 'N/A' else 'N/A'}</td>
+                <td onclick="toggleDetails('{result_id}')">{escaped_event_type}</td>
+                <td onclick="toggleDetails('{result_id}')"><span class="field-tag" onclick="addToQuery(event, 'source_filename', '{escaped_source_file}')">{escaped_source_file}</span></td>
+                <td onclick="toggleDetails('{result_id}')"><span class="field-tag" onclick="addToQuery(event, 'Computer', '{escaped_computer}')">{escaped_computer}</span></td>
+                <td style="text-align: center;">
+                    <button class="tag-btn" data-event-id="{escaped_doc_id}" data-timestamp="{result['timestamp']}" onclick="event.stopPropagation(); toggleTag(this);" title="Tag for timeline">
+                        <span class="tag-icon">☆</span>
+                    </button>
+                </td>
             </tr>
             <tr id="{result_id}" class="details-row" style="display: none;">
-                <td colspan="5">
+                <td colspan="6">
                     <div class="event-details">
                         <div class="event-details-header">
                             <h4>Event Fields</h4>
@@ -3868,12 +3902,12 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             </tr>
             '''
     elif query_str and not error_message:
-        result_rows = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: #aaa;">No results found for your query.</td></tr>'
+        result_rows = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #aaa;">No results found for your query.</td></tr>'
     elif not query_str:
-        result_rows = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: #aaa;">Enter a search query above to search indexed events.</td></tr>'
+        result_rows = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #aaa;">Enter a search query above to search indexed events.</td></tr>'
     
     if error_message:
-        result_rows = f'<tr><td colspan="5" style="text-align: center; padding: 40px; color: #f44336;"><strong>Error:</strong> {error_message}</td></tr>'
+        result_rows = f'<tr><td colspan="6" style="text-align: center; padding: 40px; color: #f44336;"><strong>Error:</strong> {error_message}</td></tr>'
     
     # Pagination
     total_pages = (total_hits + per_page - 1) // per_page if total_hits > 0 else 1
@@ -4009,6 +4043,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                             <th>Event Type</th>
                             <th>Source File</th>
                             <th>Computer</th>
+                            <th>Tag</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -4163,6 +4198,133 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                 const customDiv = document.getElementById('customDates');
                 customDiv.style.display = select.value === 'custom' ? 'flex' : 'none';
             }}
+            
+            // ===== TIMELINE TAGGING FUNCTIONALITY =====
+            
+            // Store tagged events (loaded from server)
+            let taggedEvents = {{}};
+            
+            // Load tagged events on page load
+            function loadTaggedEvents() {{
+                fetch('/api/event/tags?tag_type=timeline')
+                    .then(response => response.json())
+                    .then(data => {{
+                        if (data.success) {{
+                            taggedEvents = data.tagged_events;
+                            // Update UI for all tagged events
+                            updateTagButtonStates();
+                        }}
+                    }})
+                    .catch(error => {{
+                        console.error('Error loading tagged events:', error);
+                    }});
+            }}
+            
+            // Update all tag button states based on loaded tags
+            function updateTagButtonStates() {{
+                document.querySelectorAll('.tag-btn').forEach(btn => {{
+                    const eventId = btn.dataset.eventId;
+                    const icon = btn.querySelector('.tag-icon');
+                    
+                    if (taggedEvents[eventId]) {{
+                        // Tagged - show filled star
+                        icon.textContent = '★';
+                        icon.style.color = '#fbbf24';
+                        btn.classList.add('tagged');
+                        btn.title = 'Remove from timeline (tagged by ' + taggedEvents[eventId][0].tagged_by_username + ')';
+                    }} else {{
+                        // Not tagged - show empty star
+                        icon.textContent = '☆';
+                        icon.style.color = '#94a3b8';
+                        btn.classList.remove('tagged');
+                        btn.title = 'Tag for timeline';
+                    }}
+                }});
+            }}
+            
+            // Toggle tag on/off for an event
+            function toggleTag(button) {{
+                const eventId = button.dataset.eventId;
+                const timestamp = button.dataset.timestamp;
+                const icon = button.querySelector('.tag-icon');
+                
+                // Determine current state
+                const isTagged = button.classList.contains('tagged');
+                
+                if (isTagged) {{
+                    // Untag
+                    fetch('/api/event/untag', {{
+                        method: 'POST',
+                        headers: {{
+                            'Content-Type': 'application/json'
+                        }},
+                        body: JSON.stringify({{
+                            event_id: eventId,
+                            tag_type: 'timeline'
+                        }})
+                    }})
+                    .then(response => response.json())
+                    .then(data => {{
+                        if (data.success) {{
+                            // Remove from local cache
+                            delete taggedEvents[eventId];
+                            // Update button
+                            icon.textContent = '☆';
+                            icon.style.color = '#94a3b8';
+                            button.classList.remove('tagged');
+                            button.title = 'Tag for timeline';
+                        }} else {{
+                            alert('Error: ' + data.message);
+                        }}
+                    }})
+                    .catch(error => {{
+                        console.error('Error untagging event:', error);
+                        alert('Error removing tag: ' + error.message);
+                    }});
+                }} else {{
+                    // Tag
+                    // Get current index name from results
+                    const indexName = '{case.name.lower().replace(" ", "_")}';  // Simplified for now
+                    
+                    fetch('/api/event/tag', {{
+                        method: 'POST',
+                        headers: {{
+                            'Content-Type': 'application/json'
+                        }},
+                        body: JSON.stringify({{
+                            event_id: eventId,
+                            index_name: indexName,
+                            event_timestamp: timestamp,
+                            tag_type: 'timeline',
+                            color: 'blue'
+                        }})
+                    }})
+                    .then(response => response.json())
+                    .then(data => {{
+                        if (data.success) {{
+                            // Add to local cache
+                            taggedEvents[eventId] = [{{
+                                tag_id: data.tag_id,
+                                tagged_by_username: '{current_user.username}'
+                            }}];
+                            // Update button
+                            icon.textContent = '★';
+                            icon.style.color = '#fbbf24';
+                            button.classList.add('tagged');
+                            button.title = 'Remove from timeline';
+                        }} else {{
+                            alert('Error: ' + data.message);
+                        }}
+                    }})
+                    .catch(error => {{
+                        console.error('Error tagging event:', error);
+                        alert('Error tagging event: ' + error.message);
+                    }});
+                }}
+            }}
+            
+            // Load tagged events when page loads
+            document.addEventListener('DOMContentLoaded', loadTaggedEvents);
         </script>
     </body>
     </html>
@@ -5950,6 +6112,175 @@ def render_file_management(files, cases):
     </body>
     </html>
     '''
+
+# ============================================================================
+# TIMELINE TAGGING API ENDPOINTS
+# ============================================================================
+
+@app.route('/api/event/tag', methods=['POST'])
+@login_required
+def tag_event():
+    """
+    Tag an event for timeline inclusion
+    Expects JSON: {event_id, index_name, event_timestamp, tag_type, color, notes}
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'event_id' not in data or 'index_name' not in data:
+            return jsonify({'success': False, 'message': 'Missing required fields'}), 400
+        
+        # Get active case
+        case_id = session.get('active_case_id')
+        if not case_id:
+            return jsonify({'success': False, 'message': 'No active case'}), 400
+        
+        # Check if already tagged by this user for this tag_type
+        tag_type = data.get('tag_type', 'timeline')
+        existing = EventTag.query.filter_by(
+            case_id=case_id,
+            event_id=data['event_id'],
+            tagged_by=current_user.id,
+            tag_type=tag_type
+        ).first()
+        
+        if existing:
+            return jsonify({'success': False, 'message': 'Event already tagged'}), 400
+        
+        # Create new tag
+        tag = EventTag(
+            case_id=case_id,
+            event_id=data['event_id'],
+            index_name=data['index_name'],
+            event_timestamp=data.get('event_timestamp'),
+            tag_type=tag_type,
+            color=data.get('color', 'blue'),
+            notes=data.get('notes'),
+            tagged_by=current_user.id
+        )
+        
+        db.session.add(tag)
+        db.session.commit()
+        
+        # Log the action
+        log_audit(
+            user_id=current_user.id,
+            username=current_user.username,
+            action='tag_event',
+            category='search',
+            details=f'Tagged event {data["event_id"][:16]} for timeline in case {case_id}',
+            ip_address=request.remote_addr,
+            success=True
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': 'Event tagged for timeline',
+            'tag_id': tag.id
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/event/untag', methods=['POST'])
+@login_required
+def untag_event():
+    """
+    Remove a tag from an event
+    Expects JSON: {event_id, tag_type}
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'event_id' not in data:
+            return jsonify({'success': False, 'message': 'Missing event_id'}), 400
+        
+        # Get active case
+        case_id = session.get('active_case_id')
+        if not case_id:
+            return jsonify({'success': False, 'message': 'No active case'}), 400
+        
+        # Find and delete the tag
+        tag_type = data.get('tag_type', 'timeline')
+        tag = EventTag.query.filter_by(
+            case_id=case_id,
+            event_id=data['event_id'],
+            tagged_by=current_user.id,
+            tag_type=tag_type
+        ).first()
+        
+        if not tag:
+            return jsonify({'success': False, 'message': 'Tag not found'}), 404
+        
+        db.session.delete(tag)
+        db.session.commit()
+        
+        # Log the action
+        log_audit(
+            user_id=current_user.id,
+            username=current_user.username,
+            action='untag_event',
+            category='search',
+            details=f'Removed timeline tag from event {data["event_id"][:16]} in case {case_id}',
+            ip_address=request.remote_addr,
+            success=True
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': 'Event tag removed'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/event/tags')
+@login_required
+def get_event_tags():
+    """
+    Get all tagged events for the active case
+    Returns list of event_ids that are tagged
+    """
+    try:
+        # Get active case
+        case_id = session.get('active_case_id')
+        if not case_id:
+            return jsonify({'success': False, 'message': 'No active case'}), 400
+        
+        # Get tag_type filter (optional)
+        tag_type = request.args.get('tag_type', 'timeline')
+        
+        # Get all tags for this case
+        tags = EventTag.query.filter_by(
+            case_id=case_id,
+            tag_type=tag_type
+        ).all()
+        
+        # Return as dictionary keyed by event_id for easy lookup
+        tagged_events = {}
+        for tag in tags:
+            if tag.event_id not in tagged_events:
+                tagged_events[tag.event_id] = []
+            tagged_events[tag.event_id].append({
+                'tag_id': tag.id,
+                'tagged_by': tag.tagged_by,
+                'tagged_by_username': tag.tagger.username if tag.tagger else 'Unknown',
+                'tagged_at': tag.tagged_at.isoformat() if tag.tagged_at else None,
+                'tag_type': tag.tag_type,
+                'color': tag.color,
+                'notes': tag.notes
+            })
+        
+        return jsonify({
+            'success': True,
+            'tagged_events': tagged_events,
+            'total_tags': len(tags)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 if __name__ == '__main__':
     print("Starting caseScope 7.1 application...")

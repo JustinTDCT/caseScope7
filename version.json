@@ -1,9 +1,10 @@
 {
-  "version": "7.12.5",
+  "version": "7.13.0",
   "release_date": "2025-10-02",
-  "description": "Critical Bugfix - Removed case_insensitive parameter from query_string: OpenSearch 2.11.1 does not support case_insensitive parameter in query_string queries; ERROR: RequestError(400, 'parsing_exception', '[query_string] query does not support [case_insensitive]'); SOLUTION: removed case_insensitive=True parameter from build_opensearch_query(); IMPACT: OpenSearch query_string already performs case-insensitive matching by default for analyzed text fields; search behavior remains functionally the same for text searches; keyword field searches may be case-sensitive but this matches standard SIEM behavior; TESTED: searches working again after parameter removal; analysts can still search without worrying about capitalization for most fields",
+  "description": "Major Feature - Timeline Event Tagging: NEW event_tag database table for timeline analysis; analysts can tag important events with star/bookmark icon directly in search results; real-time tag/untag with visual feedback (empty star ☆ vs filled star ★); tagged events persist per case and per user; API endpoints: POST /api/event/tag, POST /api/event/untag, GET /api/event/tags; stores event_id (OpenSearch doc ID), index_name, timestamp, tag_type, color, notes; supports multi-user tagging with unique constraint; timeline tags load automatically on search page; hover tooltip shows who tagged event; foundation for future timeline visualization features; includes database migration migrate_timeline_tags.py",
   "build": "production",
   "changelog": {
+    "7.13.0": "Major Feature - Timeline event tagging for incident analysis with star icons in search results",
     "7.12.5": "Critical Bugfix - Removed case_insensitive parameter incompatible with OpenSearch 2.11.1",
     "7.12.4": "Enhancement - Added explicit case-insensitive search (founding requirement)",
     "7.12.3": "Bugfix - Event Type now shows actual command_line for EDR events (not generic process name)",

@@ -1265,6 +1265,34 @@ def get_theme_css():
                 font-size: 0.95rem;
             }
             
+            /* === TIMELINE TAGGING === */
+            .tag-btn {
+                background: transparent;
+                border: none;
+                cursor: pointer;
+                padding: 0.25rem 0.5rem;
+                transition: all 0.2s ease;
+                font-size: 1.5rem;
+                line-height: 1;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .tag-btn:hover {
+                transform: scale(1.2);
+            }
+            
+            .tag-btn.tagged .tag-icon {
+                color: #fbbf24 !important;
+                text-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
+            }
+            
+            .tag-icon {
+                color: #94a3b8;
+                transition: all 0.2s ease;
+            }
+            
             /* === SIGMA VIOLATIONS PAGE === */
             .stats-bar {
                 display: flex;

@@ -1384,6 +1384,13 @@ except Exception as e:
             MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT3))
         fi
         
+        # Run Timeline Tags migration (v7.13.0)
+        if [ -f "/opt/casescope/app/migrate_timeline_tags.py" ]; then
+            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_timeline_tags.py
+            MIGRATION_RESULT4=$?
+            MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT4))
+        fi
+        
         if [ $MIGRATION_RESULT -eq 0 ]; then
             log "✓ All database migrations completed"
         else
