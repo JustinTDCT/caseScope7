@@ -1,9 +1,10 @@
 {
-  "version": "7.14.3",
+  "version": "7.14.4",
   "release_date": "2025-10-03",
-  "description": "UI Bugfix - IOC Management Page Padding: FIXED IOC Management page missing content div wrapper causing no padding/spacing; page content was directly inside main-content div instead of wrapped in content div like all other pages; ADDED missing opening content div after main-content and closing content div before closing main-content; now has consistent 2rem padding matching violations page, search page, SIGMA rules page, and all other application pages; IMPACT: IOC Management page now has proper spacing and padding consistent with the rest of the application UI",
+  "description": "Critical Installation Fix - Undefined Decorator: FIXED NameError during installation caused by @admin_required decorator that was never defined; delete_case function at line 650 used @admin_required but decorator was missing from codebase; caused 'NameError: name admin_required is not defined' during migrate_audit_log.py execution breaking ALL installation options (1, 2, 3); REPLACED undefined decorator with inline role check matching pattern used in 12 other locations throughout codebase (if current_user.role != 'administrator': return 403); IMPACT: Installation and upgrades now work correctly for all options; admin-only delete functionality preserved with proper access control",
   "build": "production",
   "changelog": {
+    "7.14.4": "Critical Installation Fix - Removed undefined @admin_required decorator causing NameError breaking all installations",
     "7.14.3": "UI Bugfix - Fixed IOC Management page missing content div wrapper for consistent padding with other pages",
     "7.14.2": "Critical Bugfix - Fixed ALL log_audit parameter errors (5 more calls) + Reorganized changelog to consistent reverse chronological order",
     "7.14.1": "Critical Bugfix - Fixed close/reopen case errors + Added admin case deletion with comprehensive data cleanup",
