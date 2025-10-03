@@ -1585,6 +1585,167 @@ def review_violation(violation_id):
     flash('✓ Violation marked as reviewed', 'success')
     return redirect(url_for('violations'))
 
+# ============================================================================
+# IOC MANAGEMENT ROUTES
+# ============================================================================
+
+@app.route('/ioc/list', methods=['GET', 'POST'])
+@login_required
+def ioc_list():
+    """IOC Management - View and manage Indicators of Compromise"""
+    # Check for active case
+    case_id = session.get('active_case_id')
+    if not case_id:
+        flash('Please select a case first', 'warning')
+        return redirect(url_for('case_selection'))
+    
+    case = db.session.get(Case, case_id)
+    if not case:
+        flash('Case not found', 'error')
+        return redirect(url_for('case_selection'))
+    
+    # Handle POST actions (add IOC)
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'add':
+            ioc_type = request.form.get('ioc_type', '').strip()
+            ioc_value = request.form.get('ioc_value', '').strip()
+            description = request.form.get('description', '').strip()
+            source = request.form.get('source', '').strip()
+            severity = request.form.get('severity', 'medium')
+            notes = request.form.get('notes', '').strip()
+            
+            if not ioc_type or not ioc_value:
+                flash('IOC type and value are required', 'error')
+                return redirect(url_for('ioc_list'))
+            
+            # Normalize value for matching (lowercase)
+            ioc_value_normalized = ioc_value.lower()
+            
+            # Check for duplicates
+            existing = IOC.query.filter_by(
+                case_id=case_id,
+                ioc_type=ioc_type,
+                ioc_value_normalized=ioc_value_normalized
+            ).first()
+            
+            if existing:
+                flash(f'IOC already exists: {existing.ioc_value}', 'warning')
+                return redirect(url_for('ioc_list'))
+            
+            # Create new IOC
+            ioc = IOC(
+                case_id=case_id,
+                ioc_type=ioc_type,
+                ioc_value=ioc_value,
+                ioc_value_normalized=ioc_value_normalized,
+                description=description,
+                source=source,
+                severity=severity,
+                notes=notes,
+                added_by=current_user.id
+            )
+            
+            db.session.add(ioc)
+            db.session.commit()
+            
+            log_audit('add_ioc', 'ioc_management', f'Added IOC: {ioc_type}={ioc_value}', success=True)
+            flash(f'✓ IOC added: {ioc_value}', 'success')
+            return redirect(url_for('ioc_list'))
+    
+    # Get filter parameters
+    type_filter = request.args.get('type', 'all')
+    severity_filter = request.args.get('severity', 'all')
+    status_filter = request.args.get('status', 'active')
+    
+    # Build query
+    query = IOC.query.filter_by(case_id=case_id)
+    
+    if type_filter != 'all':
+        query = query.filter_by(ioc_type=type_filter)
+    
+    if severity_filter != 'all':
+        query = query.filter_by(severity=severity_filter)
+    
+    if status_filter == 'active':
+        query = query.filter_by(is_active=True)
+    elif status_filter == 'inactive':
+        query = query.filter_by(is_active=False)
+    
+    # Get all IOCs
+    iocs = query.order_by(IOC.added_at.desc()).all()
+    
+    # Get statistics
+    total_iocs = IOC.query.filter_by(case_id=case_id).count()
+    active_iocs = IOC.query.filter_by(case_id=case_id, is_active=True).count()
+    total_matches = IOCMatch.query.filter_by(case_id=case_id).count()
+    iocs_with_matches = db.session.query(IOC.id).join(IOCMatch).filter(IOC.case_id == case_id).distinct().count()
+    
+    # Get unique IOC types for filter
+    ioc_types = db.session.query(IOC.ioc_type).filter_by(case_id=case_id).distinct().all()
+    ioc_types = [t[0] for t in ioc_types]
+    
+    return render_ioc_management_page(
+        case, iocs, total_iocs, active_iocs, total_matches, iocs_with_matches,
+        type_filter, severity_filter, status_filter, ioc_types
+    )
+
+@app.route('/ioc/edit/<int:ioc_id>', methods=['POST'])
+@login_required
+def ioc_edit(ioc_id):
+    """Edit an IOC"""
+    ioc = db.session.get(IOC, ioc_id)
+    if not ioc:
+        flash('IOC not found', 'error')
+        return redirect(url_for('ioc_list'))
+    
+    # Check case access
+    if ioc.case_id != session.get('active_case_id'):
+        flash('Access denied', 'error')
+        return redirect(url_for('ioc_list'))
+    
+    # Update fields
+    ioc.description = request.form.get('description', '').strip()
+    ioc.source = request.form.get('source', '').strip()
+    ioc.severity = request.form.get('severity', 'medium')
+    ioc.notes = request.form.get('notes', '').strip()
+    ioc.is_active = request.form.get('is_active') == 'true'
+    
+    db.session.commit()
+    
+    log_audit('edit_ioc', 'ioc_management', f'Edited IOC: {ioc.ioc_type}={ioc.ioc_value}', success=True)
+    flash(f'✓ IOC updated: {ioc.ioc_value}', 'success')
+    return redirect(url_for('ioc_list'))
+
+@app.route('/ioc/delete/<int:ioc_id>', methods=['POST'])
+@login_required
+def ioc_delete(ioc_id):
+    """Delete an IOC and its matches"""
+    ioc = db.session.get(IOC, ioc_id)
+    if not ioc:
+        flash('IOC not found', 'error')
+        return redirect(url_for('ioc_list'))
+    
+    # Check case access
+    if ioc.case_id != session.get('active_case_id'):
+        flash('Access denied', 'error')
+        return redirect(url_for('ioc_list'))
+    
+    # Delete associated matches first
+    IOCMatch.query.filter_by(ioc_id=ioc_id).delete()
+    
+    # Store info for logging
+    ioc_info = f'{ioc.ioc_type}={ioc.ioc_value}'
+    
+    # Delete IOC
+    db.session.delete(ioc)
+    db.session.commit()
+    
+    log_audit('delete_ioc', 'ioc_management', f'Deleted IOC: {ioc_info}', success=True)
+    flash(f'✓ IOC deleted: {ioc_info}', 'success')
+    return redirect(url_for('ioc_list'))
+
 @app.route('/search/export', methods=['POST'])
 @login_required
 def export_search():
@@ -2491,6 +2652,8 @@ def render_sidebar_menu(active_page=''):
 <a href="/files" class="menu-item {'active' if active_page == 'files' else ''}">📄 List Files</a>
 <a href="/search" class="menu-item {'active' if active_page == 'search' else ''}">🔍 Search Events</a>
 <a href="/violations" class="menu-item {'active' if active_page == 'violations' else ''}">🚨 SIGMA Violations</a>
+<a href="/ioc/list" class="menu-item {'active' if active_page == 'ioc_management' else ''}">🎯 IOC Management</a>
+<a href="/ioc/matches" class="menu-item {'active' if active_page == 'ioc_matches' else ''}">🔎 IOC Matches</a>
 
 <h3 class="menu-title">Management</h3>
 <a href="/case-management" class="menu-item {'active' if active_page == 'case_management' else ''}">⚙️ Case Management</a>
@@ -4861,6 +5024,314 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
                     form.appendChild(input);
                     document.body.appendChild(form);
                     form.submit();
+                }}
+            }}
+        </script>
+    </body>
+    </html>
+    '''
+
+def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matches, iocs_with_matches,
+                                type_filter, severity_filter, status_filter, ioc_types):
+    """Render IOC Management Page"""
+    from flask import get_flashed_messages
+    
+    # Flash messages
+    flash_messages_html = ""
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        icon = "⚠️" if category == "warning" else "❌" if category == "error" else "✅"
+        flash_messages_html += f'''
+        <div class="flash-message flash-{category}">
+            <span class="flash-icon">{icon}</span>
+            <span class="flash-text">{message}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        '''
+    
+    # Build IOCs table
+    iocs_html = ""
+    for ioc in iocs:
+        # Severity color
+        severity_colors = {
+            'critical': '#d32f2f',
+            'high': '#f44336',
+            'medium': '#ff9800',
+            'low': '#2196f3'
+        }
+        severity_color = severity_colors.get(ioc.severity, '#757575')
+        
+        # Status badge
+        status_badge = '<span style="color: #4caf50;">✓ Active</span>' if ioc.is_active else '<span style="color: #757575;">✗ Inactive</span>'
+        
+        # Match count badge
+        match_badge = f'<span style="color: #fbbf24; font-weight: bold;">🎯 {ioc.match_count}</span>' if ioc.match_count > 0 else '<span style="color: #94a3b8;">0</span>'
+        
+        # Last hunted info
+        last_hunted = ioc.last_hunted.strftime('%Y-%m-%d %H:%M') if ioc.last_hunted else 'Never'
+        
+        # Escape values for HTML
+        import html
+        ioc_value_safe = html.escape(ioc.ioc_value, quote=True)
+        description_safe = html.escape(ioc.description or 'No description', quote=True)
+        
+        iocs_html += f'''
+        <tr>
+            <td><span style="background: #1e293b; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.85rem;">{ioc.ioc_type}</span></td>
+            <td style="font-family: monospace; color: #60a5fa;">{ioc_value_safe[:50]}{('...' if len(ioc_value_safe) > 50 else '')}</td>
+            <td>{description_safe[:60]}{('...' if len(description_safe) > 60 else '')}</td>
+            <td><span style="color: {severity_color}; font-weight: bold;">{ioc.severity.upper()}</span></td>
+            <td>{status_badge}</td>
+            <td style="text-align: center;">{match_badge}</td>
+            <td style="font-size: 0.85rem; color: #94a3b8;">{last_hunted}</td>
+            <td>
+                <button class="btn-action" onclick="editIOC({ioc.id}, '{ioc_value_safe}', '{description_safe}', '{ioc.source or ''}', '{ioc.severity}', '{ioc.notes or ''}', {('true' if ioc.is_active else 'false')})" title="Edit">✏️</button>
+                <form method="POST" action="/ioc/delete/{ioc.id}" style="display: inline;" onsubmit="return confirm('Delete this IOC and all its matches?');">
+                    <button type="submit" class="btn-action" style="color: #f44336;" title="Delete">🗑️</button>
+                </form>
+            </td>
+        </tr>
+        '''
+    
+    if not iocs_html:
+        iocs_html = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #aaa;">No IOCs found. Add your first IOC to start threat hunting.</td></tr>'
+    
+    # IOC type options for filter and add form
+    all_ioc_types = ['ip', 'domain', 'fqdn', 'hostname', 'username', 'hash_md5', 'hash_sha1', 'hash_sha256', 'command', 'filename', 'process_name', 'registry_key', 'email', 'url']
+    type_options = ''.join([f'<option value="{t}" {"selected" if type_filter == t else ""}>{t.replace("_", " ").title()}</option>' for t in all_ioc_types])
+    type_add_options = ''.join([f'<option value="{t}">{t.replace("_", " ").title()}</option>' for t in all_ioc_types])
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>IOC Management - {case.name} - caseScope 7.14</title>
+        {get_theme_css()}
+    </head>
+    <body>
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
+            </div>
+            
+            {render_sidebar_menu('ioc_management')}
+        </div>
+        
+        <div class="main-content">
+            {flash_messages_html}
+            
+            <div class="page-header">
+                <h1>🎯 IOC Management</h1>
+                <p class="subtitle">Indicators of Compromise for {case.name}</p>
+            </div>
+            
+            <div class="stats-bar">
+                <div class="stat-card">
+                    <div class="stat-value">{total_iocs}</div>
+                    <div class="stat-label">Total IOCs</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color: #4caf50;">{active_iocs}</div>
+                    <div class="stat-label">Active</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color: #fbbf24;">{total_matches}</div>
+                    <div class="stat-label">Total Matches</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color: #60a5fa;">{iocs_with_matches}</div>
+                    <div class="stat-label">IOCs with Matches</div>
+                </div>
+            </div>
+            
+            <div class="search-box" style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
+                <button onclick="showAddIOCModal()" class="btn-primary">+ Add IOC</button>
+                <button onclick="window.location.href='/ioc/hunt?action=manual'" class="btn-primary" style="background: #fbbf24;">🔍 Hunt Now</button>
+                <button onclick="window.location.href='/ioc/matches'" class="btn-primary" style="background: #60a5fa;">📋 View Matches</button>
+                
+                <div style="flex: 1; display: flex; gap: 10px; justify-content: flex-end;">
+                    <select onchange="filterIOCs()" id="typeFilter" style="padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;">
+                        <option value="all">All Types</option>
+                        {type_options}
+                    </select>
+                    <select onchange="filterIOCs()" id="severityFilter" style="padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;">
+                        <option value="all" {"selected" if severity_filter == "all" else ""}>All Severities</option>
+                        <option value="critical" {"selected" if severity_filter == "critical" else ""}>Critical</option>
+                        <option value="high" {"selected" if severity_filter == "high" else ""}>High</option>
+                        <option value="medium" {"selected" if severity_filter == "medium" else ""}>Medium</option>
+                        <option value="low" {"selected" if severity_filter == "low" else ""}>Low</option>
+                    </select>
+                    <select onchange="filterIOCs()" id="statusFilter" style="padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;">
+                        <option value="all" {"selected" if status_filter == "all" else ""}>All Status</option>
+                        <option value="active" {"selected" if status_filter == "active" else ""}>Active</option>
+                        <option value="inactive" {"selected" if status_filter == "inactive" else ""}>Inactive</option>
+                    </select>
+                </div>
+            </div>
+            
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Value</th>
+                        <th>Description</th>
+                        <th>Severity</th>
+                        <th>Status</th>
+                        <th>Matches</th>
+                        <th>Last Hunted</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {iocs_html}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Add IOC Modal -->
+        <div id="addIOCModal" class="modal" style="display: none;">
+            <div class="modal-content" style="max-width: 600px;">
+                <span class="close" onclick="closeAddIOCModal()">&times;</span>
+                <h2>➕ Add IOC</h2>
+                <form method="POST" action="/ioc/list">
+                    <input type="hidden" name="action" value="add">
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">IOC Type *</label>
+                        <select name="ioc_type" required style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;">
+                            {type_add_options}
+                        </select>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">IOC Value *</label>
+                        <input type="text" name="ioc_value" required placeholder="e.g., 192.168.1.100, malware.exe, abc123..." style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;">
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Description</label>
+                        <textarea name="description" rows="2" placeholder="What this IOC represents..." style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;"></textarea>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Source</label>
+                        <input type="text" name="source" placeholder="e.g., Threat Intel, VirusTotal, Manual Analysis" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;">
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Severity</label>
+                            <select name="severity" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;">
+                                <option value="low">Low</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Notes</label>
+                        <textarea name="notes" rows="2" placeholder="Additional analyst notes..." style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;"></textarea>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                        <button type="button" onclick="closeAddIOCModal()" style="padding: 10px 20px; background: #475569; border: none; border-radius: 6px; color: white; cursor: pointer;">Cancel</button>
+                        <button type="submit" style="padding: 10px 20px; background: #3b82f6; border: none; border-radius: 6px; color: white; cursor: pointer; font-weight: bold;">Add IOC</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Edit IOC Modal -->
+        <div id="editIOCModal" class="modal" style="display: none;">
+            <div class="modal-content" style="max-width: 600px;">
+                <span class="close" onclick="closeEditIOCModal()">&times;</span>
+                <h2>✏️ Edit IOC</h2>
+                <form method="POST" id="editIOCForm">
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">IOC Value</label>
+                        <input type="text" id="editValue" readonly style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #94a3b8;">
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Description</label>
+                        <textarea name="description" id="editDescription" rows="2" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;"></textarea>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Source</label>
+                        <input type="text" name="source" id="editSource" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;">
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Severity</label>
+                            <select name="severity" id="editSeverity" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;">
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Status</label>
+                            <select name="is_active" id="editStatus" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;">
+                                <option value="true">Active</option>
+                                <option value="false">Inactive</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Notes</label>
+                        <textarea name="notes" id="editNotes" rows="2" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white;"></textarea>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                        <button type="button" onclick="closeEditIOCModal()" style="padding: 10px 20px; background: #475569; border: none; border-radius: 6px; color: white; cursor: pointer;">Cancel</button>
+                        <button type="submit" style="padding: 10px 20px; background: #3b82f6; border: none; border-radius: 6px; color: white; cursor: pointer; font-weight: bold;">Update IOC</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <script>
+            function showAddIOCModal() {{
+                document.getElementById('addIOCModal').style.display = 'block';
+            }}
+            
+            function closeAddIOCModal() {{
+                document.getElementById('addIOCModal').style.display = 'none';
+            }}
+            
+            function editIOC(id, value, description, source, severity, notes, isActive) {{
+                document.getElementById('editValue').value = value;
+                document.getElementById('editDescription').value = description;
+                document.getElementById('editSource').value = source;
+                document.getElementById('editSeverity').value = severity;
+                document.getElementById('editStatus').value = isActive.toString();
+                document.getElementById('editNotes').value = notes;
+                document.getElementById('editIOCForm').action = '/ioc/edit/' + id;
+                document.getElementById('editIOCModal').style.display = 'block';
+            }}
+            
+            function closeEditIOCModal() {{
+                document.getElementById('editIOCModal').style.display = 'none';
+            }}
+            
+            function filterIOCs() {{
+                const type = document.getElementById('typeFilter').value;
+                const severity = document.getElementById('severityFilter').value;
+                const status = document.getElementById('statusFilter').value;
+                window.location.href = '/ioc/list?type=' + type + '&severity=' + severity + '&status=' + status;
+            }}
+            
+            // Close modals when clicking outside
+            window.onclick = function(event) {{
+                if (event.target.className === 'modal') {{
+                    event.target.style.display = 'none';
                 }}
             }}
         </script>

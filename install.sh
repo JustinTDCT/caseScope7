@@ -1391,6 +1391,13 @@ except Exception as e:
             MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT4))
         fi
         
+        # Run IOC Management migration (v7.14.0)
+        if [ -f "/opt/casescope/app/migrate_ioc_management.py" ]; then
+            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_ioc_management.py
+            MIGRATION_RESULT5=$?
+            MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT5))
+        fi
+        
         if [ $MIGRATION_RESULT -eq 0 ]; then
             log "✓ All database migrations completed"
         else
