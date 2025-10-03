@@ -1,9 +1,10 @@
 {
-  "version": "7.15.2",
+  "version": "7.15.3",
   "release_date": "2025-10-03",
-  "description": "Critical Bugfix - Fixed Event Search Index Errors: FIXED NotFoundError(404, 'index_not_found_exception') in search function causing searches to fail when querying non-existent indices; added ignore_unavailable=True parameter to BOTH OpenSearch search calls (CSV export and main search); same root cause as IOC hunting issue - when users upload only some file types (e.g., System.evtx, Security.evtx) but not others (e.g., TerminalServices, SessionBroker), the search would try to query all expected indices and fail with 404 on missing ones; NOW gracefully skips missing indices and returns results from available indices only; IMPACT: Event search works reliably regardless of which file types have been uploaded; users can search immediately after uploading any files without needing complete event log coverage; production-ready search functionality",
+  "description": "Critical Bugfix - Fixed IOC Hunting Missing Nested Field Values: FIXED IOC hunting not finding matches when values are in nested/flattened field paths; ROOT CAUSE: IOC hunting searched simplified field names (IpAddress, Computer, SourceAddress) but actual indexed EVTX data uses full dot-notation paths (EventData.Data_12.#text where Data_12.@Name='IpAddress'); specific field searches would miss values in these nested structures; SOLUTION: added wildcard query_string search across ALL fields (*) as fallback in addition to specific field searches; ensures IOCs found regardless of field structure depth; EXAMPLE: IP address 172.99.54.1 in EventData.Data_12.#text now detected correctly; applies to all IOC types (IP, hostname, username, hash, command, etc.); IMPACT: IOC hunting now finds ALL matches including those in nested XML structures; comprehensive threat indicator detection across all event field locations",
   "build": "production",
   "changelog": {
+    "7.15.3": "Critical Bugfix - Fixed IOC hunting missing values in nested fields by adding wildcard ALL-field query",
     "7.15.2": "Critical Bugfix - Fixed event search errors by adding ignore_unavailable=True to both OpenSearch search calls",
     "7.15.1": "Critical Bugfix - Fixed IOC hunting index errors + Completed tasks.py SQLAlchemy 2.0 migration (7 more queries)",
     "7.15.0": "MAJOR - Complete SQLAlchemy 2.0 migration: updated ALL 86+ queries across entire codebase to 2.0 syntax",
