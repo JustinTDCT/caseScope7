@@ -1,9 +1,10 @@
 {
-  "version": "7.15.4",
+  "version": "7.15.5",
   "release_date": "2025-10-03",
-  "description": "Enhancement - IOC Matches Display Improvements: ADDED source_filename column to ioc_match table showing which EVTX/NDJSON file contained each match; IMPROVED matched field detection with recursive deep search to accurately identify exact field paths (e.g., EventData.Data_12.#text); CHANGED 'Detected' column to 'Event Date' showing actual event timestamp (not hunt timestamp) for timeline analysis; ADDED Source File column to IOC Matches page between Event Time and Hunt Type; matched field now displays with green monospace styling (EventData.Data_12.#text instead of 'unknown'); IMPACT: analysts can now see WHICH file contained each IOC match for correlation analysis; accurate field paths enable precise investigation; event timestamps allow chronological analysis of IOC activity; comprehensive match metadata for threat hunting workflows",
+  "description": "Bugfix - Fixed IOC Matches Migration Database Path: FIXED migrate_ioc_matches.py looking for database at wrong location (/opt/casescope/casescope.db instead of /opt/casescope/data/casescope.db); migration was failing with 'Database not found' error during option 2/3 upgrades; now correctly locates database in data/ subdirectory matching application configuration; IMPACT: IOC matches migration now runs successfully on all installation types; source_filename column added properly; matched field detection and Event Date column improvements now fully deployed",
   "build": "production",
   "changelog": {
+    "7.15.5": "Bugfix - Fixed IOC matches migration database path from /opt/casescope/ to /opt/casescope/data/",
     "7.15.4": "Enhancement - Added source filename column, improved matched field detection, changed Detected to Event Date",
     "7.15.3": "Critical Bugfix - Fixed IOC hunting missing values in nested fields by adding wildcard ALL-field query",
     "7.15.2": "Critical Bugfix - Fixed event search errors by adding ignore_unavailable=True to both OpenSearch search calls",
