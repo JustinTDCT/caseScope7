@@ -1972,7 +1972,8 @@ def export_search():
     try:
         response = opensearch_client.search(
             index=','.join(indices),
-            body=search_body
+            body=search_body,
+            ignore_unavailable=True
         )
         
         # Create CSV
@@ -2196,7 +2197,8 @@ def search():
                 
                 response = opensearch_client.search(
                     index=','.join(indices),
-                    body=search_body
+                    body=search_body,
+                    ignore_unavailable=True
                 )
                 
                 total_hits = response['hits']['total']['value']
