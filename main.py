@@ -531,7 +531,6 @@ def edit_case(case_id):
             
             # Log the action
             log_audit(
-                user_id=session.get('user_id'),
                 action='edit_case',
                 category='case_management',
                 details=f'Edited case: {case.name} (ID: {case.id})',
@@ -571,7 +570,6 @@ def archive_case(case_id):
         
         # Log the action
         log_audit(
-            user_id=session.get('user_id'),
             action='archive_case',
             category='case_management',
             details=f'Archived case: {case.name} (ID: {case.id})',
@@ -1259,7 +1257,6 @@ def create_template():
         
         # Log the action
         log_audit(
-            user_id=session.get('user_id'),
             action='create_template',
             category='case_management',
             details=f'Created template: {name}',
@@ -1324,7 +1321,6 @@ def edit_template(template_id):
         
         # Log the action
         log_audit(
-            user_id=session.get('user_id'),
             action='edit_template',
             category='case_management',
             details=f'Edited template: {name} (ID: {template_id})',
@@ -1364,7 +1360,6 @@ def delete_template(template_id):
         
         # Log the action
         log_audit(
-            user_id=session.get('user_id'),
             action='delete_template',
             category='case_management',
             details=f'Deleted template: {template_name} (ID: {template_id})',
