@@ -1,9 +1,10 @@
 {
-  "version": "7.14.5",
+  "version": "7.14.6",
   "release_date": "2025-10-03",
-  "description": "UI Consistency - Header Layout & Version Badge: STANDARDIZED all page headers to consistent layout with title/page name on left and user info on right; FIXED 5 pages with inconsistent header structure (System Dashboard, Case Selection, Upload Files, Audit Log, User Management) that were missing title or had incorrect element ordering; all headers now use .case-title div for left side and .user-info div for right side; REMOVED green background (#10b981) from version badge in sidebar; version number now displays as plain gray text (#94a3b8) without background color box; changed font-weight from bold to normal for cleaner minimalist appearance; IMPACT: Consistent professional header layout across all 13+ pages; version badge matches modern flat UI aesthetic without distracting green highlight",
+  "description": "UI Fixes - Modal Centering & Missing Header: FIXED IOC Management page missing header with user info (was only page without standard header); added header div with case title left and user welcome/logout right matching all other pages; FIXED Create/Edit User modals appearing in top-left corner instead of centered; changed JavaScript modal display from 'block' to 'flex' enabling CSS flexbox centering (align-items + justify-content: center); modals now properly centered vertically and horizontally on screen; IMPACT: IOC Management page now has consistent navigation/user controls; professional modal presentation matching modern UX standards",
   "build": "production",
   "changelog": {
+    "7.14.6": "UI Fixes - Added missing header to IOC Management page + Fixed modal centering with flexbox display",
     "7.14.5": "UI Consistency - Standardized all page headers (title left, user right) + Removed green background from version badge",
     "7.14.4": "Critical Installation Fix - Removed undefined @admin_required decorator causing NameError breaking all installations",
     "7.14.3": "UI Bugfix - Fixed IOC Management page missing content div wrapper for consistent padding with other pages",
