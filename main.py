@@ -6197,12 +6197,9 @@ def tag_event():
         
         # Log the action
         log_audit(
-            user_id=current_user.id,
-            username=current_user.username,
             action='tag_event',
             category='search',
             details=f'Tagged event {data["event_id"][:16]} for timeline in case {case_id}',
-            ip_address=request.remote_addr,
             success=True
         )
         
@@ -6251,12 +6248,9 @@ def untag_event():
         
         # Log the action
         log_audit(
-            user_id=current_user.id,
-            username=current_user.username,
             action='untag_event',
             category='search',
             details=f'Removed timeline tag from event {data["event_id"][:16]} in case {case_id}',
-            ip_address=request.remote_addr,
             success=True
         )
         
