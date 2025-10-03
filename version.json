@@ -1,9 +1,10 @@
 {
-  "version": "7.14.10",
+  "version": "7.14.11",
   "release_date": "2025-10-03",
-  "description": "Bugfix - Fixed Post-Deletion Redirect: FIXED 404 'Not Found' error after successfully deleting a case; ROOT CAUSE: JavaScript deleteCase function redirected to '/case/manage' but actual route is '/case-management' (with hyphen); mismatch between redirect URL and Flask route definition; user experienced successful deletion (all data removed) followed by 404 error page; SOLUTION: changed window.location.href from '/case/manage' to '/case-management' in deleteCase JavaScript function; IMPACT: After deleting a case, user is now properly redirected back to Case Management page showing remaining cases; complete user flow works end-to-end without errors",
+  "description": "Critical Bugfix - Fixed IOC Hunting SQLAlchemy 2.0 Compatibility: FIXED IOC hunting failures with 'Neither InstrumentedAttribute object nor Comparator object has an attribute filter_by' errors; ROOT CAUSE: all IOC and IOCMatch database queries used deprecated SQLAlchemy 1.x syntax (Model.query.filter_by()) throughout IOC management module; SOLUTION: updated 14 query statements to SQLAlchemy 2.0 syntax (db.session.query(Model).filter_by()); affected functions: ioc_list (IOC display/filtering), add_ioc (duplicate checking), delete_ioc (match deletion), ioc_hunt (active IOC count), ioc_matches (match filtering/statistics), search (IOC match display); IMPACT: IOC hunting, display, and management now fully functional; WARNING: 60+ similar queries remain in other modules (Case, User, CaseFile, SigmaRule, SigmaViolation) - will require systematic update in future release",
   "build": "production",
   "changelog": {
+    "7.14.11": "Critical Bugfix - Fixed IOC hunting by updating 14 IOC/IOCMatch queries to SQLAlchemy 2.0 syntax",
     "7.14.10": "Bugfix - Fixed 404 error after case deletion by correcting redirect URL (/case/manage → /case-management)",
     "7.14.9": "Critical Bugfix - Fixed delete case error by updating to SQLAlchemy 2.0 query syntax (8 query statements)",
     "7.14.8": "Critical Bugfix - Fixed delete case button not appearing due to role check typo ('Admin' → 'administrator')",
