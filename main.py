@@ -395,13 +395,19 @@ def load_user(user_id):
 def log_audit(action, category, details=None, success=True, username=None):
     """Log an audit event"""
     try:
+        # Get real client IP from X-Forwarded-For header (set by Nginx proxy)
+        # Falls back to remote_addr if header not present
+        forwarded_for = request.headers.get('X-Forwarded-For', request.remote_addr)
+        # X-Forwarded-For can be comma-separated if multiple proxies, take first (real client)
+        client_ip = forwarded_for.split(',')[0].strip() if forwarded_for else request.remote_addr
+        
         audit = AuditLog(
             user_id=current_user.id if current_user.is_authenticated else None,
             username=username or (current_user.username if current_user.is_authenticated else 'Anonymous'),
             action=action,
             category=category,
             details=details,
-            ip_address=request.remote_addr,
+            ip_address=client_ip,
             success=success
         )
         db.session.add(audit)
