@@ -1,5 +1,199 @@
 # caseScope 7.x - Changelog
 
+## Version 7.16.6 (2025-10-04)
+
+### Bug Fixes
+- **Critical SQL Fix**: Fixed `migrate_case_company.py` failing with "near case: syntax error"
+  - ROOT CAUSE: `case` is a reserved SQL keyword in SQLite and must be quoted
+  - Changed `PRAGMA table_info(case)` to `PRAGMA table_info("case")`
+  - Changed `ALTER TABLE case` to `ALTER TABLE "case"`
+  - Audited all migration scripts to ensure no other reserved keyword conflicts exist
+
+---
+
+## Version 7.16.5 (2025-10-04)
+
+### Critical Fixes
+- **SSL Certificate Handling**: DFIR-IRIS integration now works with self-signed certificates
+  - Disabled SSL verification in both test connection endpoint and IrisClient session
+  - Added urllib3 warning suppression to prevent console spam
+  - Increased timeout from 5s to 10s for slower internal networks
+  - **IMPACT**: DFIR-IRIS integration now production-ready for enterprise deployments
+
+---
+
+## Version 7.16.4 (2025-10-04)
+
+### Major Features
+- **DFIR-IRIS Sync UI Integration**: Complete implementation of DFIR-IRIS sync
+  - Added "Sync to DFIR-IRIS" button on case dashboard
+  - Manual sync with progress feedback
+  - Sync status indicators (last synced timestamp, IRIS case ID)
+  - Full integration of API client + sync service + UI
+  - **IMPACT**: One-click sync of cases, IOCs, and timeline events to DFIR-IRIS
+
+---
+
+## Version 7.16.3 (2025-10-04)
+
+### Major Features
+- **DFIR-IRIS Sync Service**: Intelligent 4-step workflow with deduplication
+  - Step 1: Company management (create if doesn't exist)
+  - Step 2: Case sync (create and bind to company)
+  - Step 3: IOC sync (push all case IOCs with type mapping)
+  - Step 4: Timeline sync (push tagged events as timeline entries)
+  - Comprehensive error handling and logging
+  - Intelligent deduplication to prevent duplicates
+
+---
+
+## Version 7.16.2 (2025-10-04)
+
+### Major Features
+- **DFIR-IRIS API Client Module**: Complete REST API integration
+  - `IrisClient` class with session management
+  - Company operations (create/update/list)
+  - Case operations (create/update/link to company)
+  - IOC operations (add with proper type mapping)
+  - Timeline operations (add events with full context)
+  - Full error handling and retry logic
+
+---
+
+## Version 7.16.1 (2025-10-04)
+
+### Enhancements
+- **Company Field for Cases**: Added company tracking for DFIR-IRIS integration
+  - New `company` field in Case model
+  - New `iris_company_id`, `iris_case_id`, `iris_synced_at` tracking fields
+  - Migration script: `migrate_case_company.py`
+  - Company field displayed in case forms
+  - **IMPACT**: Cases can now be properly organized by customer/company
+
+---
+
+## Version 7.16.0 (2025-10-04)
+
+### Major Features
+- **System Settings Page**: User-friendly configuration interface
+  - Navigate to Management → System Settings
+  - Configure DFIR-IRIS integration (URL, API key, customer ID)
+  - Test connection before enabling
+  - Toggle auto-sync on/off
+  - New `SystemSettings` database model
+  - Migration script: `migrate_system_settings.py`
+  - **IMPACT**: Easy setup for DFIR-IRIS integration, no command-line config needed
+
+---
+
+## Version 7.15.x Series (2025-10-04)
+
+### 7.15.6 - IOC Field Extraction Fix
+- Fixed IOC hunting field extraction for timestamp and filename
+- Added dot notation support for nested field access
+- **IMPACT**: IOC matches now properly show event timestamp and source filename
+
+### 7.15.5 - Migration Database Path Fix
+- Fixed IOC matches migration database path from `/opt/casescope/` to `/opt/casescope/data/`
+- **IMPACT**: Migration runs successfully on all installations
+
+### 7.15.4 - IOC Matches Display
+- Added source filename column to IOC matches
+- Improved matched field detection and display
+- Changed "Detected" column to "Event Date"
+- **IMPACT**: Better visibility into which files contain IOC matches
+
+### 7.15.3 - IOC Nested Field Hunting
+- **Critical**: Fixed IOC hunting missing values in nested fields
+- Added wildcard ALL-field query to catch IOCs in any nested structure
+- **IMPACT**: IOC hunting now finds matches in deeply nested JSON (e.g., `EventData.Data_12.#text`)
+
+### 7.15.2 - Event Search Index Errors
+- **Critical**: Fixed event search failing on non-existent indices
+- Added `ignore_unavailable=True` to both OpenSearch search calls
+- **IMPACT**: Search no longer crashes when indices are missing
+
+### 7.15.1 - IOC Hunting Index Errors
+- **Critical**: Fixed IOC hunting failing with index_not_found_exception
+- Added `ignore_unavailable=True` to IOC hunting queries
+- **IMPACT**: IOC hunting gracefully handles missing indices
+
+### 7.15.0 - SQLAlchemy 2.0 Migration
+- **MAJOR**: Migrated ALL 86+ queries across entire codebase to SQLAlchemy 2.0 syntax
+- Replaced deprecated `Query.get()` with `db.session.get()`
+- Replaced `Query.filter_by()` with `db.session.execute(select())`
+- **IMPACT**: Future-proof compatibility with SQLAlchemy 2.0+
+
+---
+
+## Version 7.14.x Series (2025-10-03)
+
+### 7.14.11 - IOC Query Migration
+- **Critical**: Fixed IOC hunting by updating 14 IOC/IOCMatch queries to SQLAlchemy 2.0 syntax
+- **IMPACT**: IOC hunting functional again after 7.15.0 migration
+
+### 7.14.10 - Delete Case Redirect Fix
+- Fixed 404 error after case deletion
+- Corrected redirect URL from `/case/manage` to `/case-management`
+- **IMPACT**: Smooth workflow after deleting cases
+
+### 7.14.9 - Delete Case Query Fix
+- **Critical**: Fixed delete case error by updating to SQLAlchemy 2.0 query syntax
+- Updated 8 query statements in delete_case function
+- **IMPACT**: Case deletion works correctly
+
+### 7.14.8 - Delete Case Button Fix
+- **Critical**: Fixed delete case button not appearing
+- Corrected role check typo ('Admin' → 'administrator')
+- **IMPACT**: Administrators can now delete cases
+
+### 7.14.7 - Table UI Consistency
+- Fixed table row border inconsistencies near action buttons
+- Removed flexbox from table cells for proper border rendering
+- **IMPACT**: Cleaner, more professional table appearance
+
+### 7.14.6 - IOC Page UI Fixes
+- Added missing header to IOC Management page
+- Fixed modal centering with flexbox display
+- **IMPACT**: IOC Management page matches other pages
+
+### 7.14.5 - UI Standardization
+- Standardized all page headers (title left, user right)
+- Removed green background from version badge
+- **IMPACT**: Consistent UI across all pages
+
+### 7.14.4 - Installation Critical Fix
+- **Critical**: Removed undefined `@admin_required` decorator causing NameError
+- **IMPACT**: Installations no longer break during upgrade
+
+### 7.14.3 - IOC Page Padding
+- Fixed IOC Management page missing content div wrapper
+- **IMPACT**: Consistent padding with other pages
+
+### 7.14.2 - Changelog Organization
+- Reorganized changelog to consistent reverse chronological order
+- Fixed 5 more `log_audit` parameter errors
+- **IMPACT**: Cleaner version history
+
+### 7.14.1 - Case Deletion Feature
+- Added admin case deletion with comprehensive data cleanup
+- Fixed close/reopen case errors
+- **IMPACT**: Administrators can fully remove cases
+
+### 7.14.0 - IOC Management System
+- **MAJOR FEATURE**: Complete IOC Management & Threat Hunting system
+  - Add IOCs manually (IPs, hashes, commands, hostnames, FQDNs, usernames)
+  - Automatic/manual hunting across all indexed events
+  - IOC match tracking with source filename, timestamp, matched field
+  - IOC-specific search view showing only tagged events
+  - Case-specific IOC management
+  - Bulk operations (add multiple, delete all)
+  - New database models: `IOC`, `IOCMatch`
+  - Migration script: `migrate_ioc_management.py`
+  - **IMPACT**: Full threat hunting capabilities integrated into workflow
+
+---
+
 ## Version 7.13.1 (2025-10-03)
 
 ### Enhancements

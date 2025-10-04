@@ -1,22 +1,25 @@
-# caseScope 7.13 - Digital Forensics EVTX Analysis Platform
+# caseScope 7.16 - Digital Forensics EVTX Analysis Platform
 
-**Version:** 7.13.1  
+**Version:** 7.16.6  
 **Copyright:** (c) 2025 Justin Dube <casescope@thedubes.net>
 
 ## Overview
 
-caseScope is a comprehensive digital forensics platform for analyzing Windows Event Logs (EVTX files) and EDR telemetry (NDJSON) with Chainsaw SIGMA rule processing, OpenSearch indexing, timeline analysis, and advanced search capabilities.
+caseScope is a comprehensive digital forensics platform for analyzing Windows Event Logs (EVTX files) and EDR telemetry (NDJSON) with Chainsaw SIGMA rule processing, OpenSearch indexing, IOC threat hunting, timeline analysis, DFIR-IRIS integration, and advanced search capabilities.
 
 ## Key Features
 
-- **Case-Driven Organization**: Organize investigations by cases with proper data isolation
-- **Multi-User System**: Administrator, Analyst, and Read-Only user roles with audit logging
+- **Case-Driven Organization**: Organize investigations by cases with proper data isolation and company/customer tracking
+- **Multi-User System**: Administrator, Analyst, and Read-Only user roles with comprehensive audit logging
 - **EVTX & NDJSON Processing**: Parse and index Windows Event Logs and EDR telemetry with real-time progress tracking
+- **IOC Threat Hunting**: Add and hunt for IPs, hashes, commands, hostnames, FQDNs, usernames across all indexed events
+- **DFIR-IRIS Integration**: One-click sync of cases, IOCs, and timeline events to DFIR-IRIS platform
 - **Timeline Event Tagging**: Star/bookmark important events for timeline analysis with collaborative multi-user tagging
 - **Chainsaw SIGMA Engine**: Automated threat detection using 3000+ SIGMA rules via Chainsaw v2.12.2
-- **Powerful Search**: Boolean logic, field-specific queries, SIGMA violation filtering, timestamp sorting
+- **Powerful Search**: Boolean logic, field-specific queries, SIGMA/IOC violation filtering, timestamp sorting
 - **Event Information Descriptions**: Human-readable descriptions for 100+ Windows Event IDs and EDR events
 - **Audit Trail**: Complete logging of authentication, file operations, searches, admin actions
+- **System Settings**: User-friendly configuration interface for DFIR-IRIS integration
 - **Modern Render-Based UI**: Dark blue gradient theme, no templates
 
 ## System Requirements
@@ -110,7 +113,8 @@ sudo journalctl -u casescope-worker -f
 4. **Indexing**: OpenSearch bulk indexing with flattened event structure
 5. **SIGMA Processing**: Chainsaw hunt on EVTX with enabled rules (EDR logs skip this step)
 6. **Enrichment**: Flag violated events with `has_violations`, `violation_count`, `sigma_detections`
-7. **Completed**: Events searchable with violation filtering, timeline tagging, and sorting
+7. **IOC Hunting**: Automatic hunt for case-specific IOCs across all indexed events
+8. **Completed**: Events searchable with violation filtering, IOC matches, timeline tagging, and sorting
 
 ## Search Capabilities
 
@@ -145,6 +149,9 @@ sudo journalctl -u casescope-worker -f
 - Checkbox: "Show only SIGMA violations"
 - Filters for events flagged by Chainsaw rules
 - View violation details and matched rules
+- Checkbox: "Show only IOC matches"
+- Filters for events matching indicators of compromise
+- View matched IOCs and matched field details
 
 ## SIGMA Rules
 
@@ -161,19 +168,74 @@ sudo journalctl -u casescope-worker -f
 - Creates `SigmaViolation` records in database
 - Enriches OpenSearch events with detection flags
 
+## IOC Management (v7.14.0)
+
+### IOC Types Supported
+- **IP Addresses**: IPv4/IPv6 addresses
+- **Hash Values**: MD5, SHA1, SHA256
+- **Commands**: Command-line patterns and executables
+- **Hostnames**: Computer names and NetBIOS names
+- **FQDNs**: Fully qualified domain names
+- **Usernames**: Account names and identities
+
+### IOC Workflow
+1. **Add IOCs**: Manually enter IOCs from `/ioc-management` page
+2. **Automatic Hunting**: IOCs automatically hunted across all indexed events in the case
+3. **View Matches**: See all events matching IOCs with field details
+4. **Timeline Integration**: Tagged IOC matches can be synced to DFIR-IRIS
+
+### IOC Features
+- Case-specific IOC management
+- Automatic hunting on file upload
+- Manual re-run hunting for existing files
+- Match tracking with source filename, timestamp, matched field
+- Bulk operations (add multiple IOCs, delete all)
+
+## DFIR-IRIS Integration (v7.16.0)
+
+### Configuration
+- **System Settings Page**: Management → System Settings
+- Configure IRIS URL, API key, customer ID
+- Test connection before enabling
+- Auto-sync or manual sync options
+
+### Sync Features
+1. **Company Management**: Automatically creates companies in IRIS if they don't exist
+2. **Case Sync**: Creates cases in IRIS linked to the correct company
+3. **IOC Sync**: Pushes all case IOCs to IRIS with proper type mapping
+4. **Timeline Sync**: Syncs tagged events to IRIS timeline with full context
+
+### Sync Workflow
+- One-click sync from case dashboard
+- Progress feedback during sync
+- Sync status indicators (last synced timestamp)
+- Intelligent deduplication (won't create duplicates)
+- SSL/TLS support including self-signed certificates
+
+### IRIS API Integration
+- Company create/update via `/manage/customers/add`
+- Case create/update via `/manage/cases/add`
+- IOC management via `/case/ioc/add`
+- Timeline events via `/case/timeline/events/add`
+- Full error handling and retry logic
+
 ## API Endpoints
 
 ### Web Pages
 - `/` - Dashboard
 - `/case/select` - Case selection
-- `/case/dashboard` - Case dashboard
+- `/case/dashboard` - Case dashboard with DFIR-IRIS sync
 - `/upload` - File upload
 - `/files` - File list
 - `/search` - Event search (with sorting and tagging)
 - `/violations` - SIGMA violations
 - `/sigma-rules` - Rule management
+- `/ioc-management` - IOC hunting and management
 - `/users` - User management (admin)
 - `/audit-log` - Audit log viewer (admin)
+- `/case-management` - Case lifecycle management (admin)
+- `/file-management` - Cross-case file management (admin)
+- `/system-settings` - DFIR-IRIS integration config (admin)
 
 ### API Endpoints
 - `/api/file/progress/<id>` - Real-time task progress
@@ -182,6 +244,11 @@ sudo journalctl -u casescope-worker -f
 - `/api/event/tag` - Tag event for timeline (POST)
 - `/api/event/untag` - Remove event tag (POST)
 - `/api/event/tags` - Get tagged events (GET)
+- `/api/ioc/add` - Add IOC (POST)
+- `/api/ioc/delete/<id>` - Delete IOC (DELETE)
+- `/api/ioc/hunt` - Manual IOC hunting (POST)
+- `/api/iris/test-connection` - Test DFIR-IRIS connection (POST)
+- `/api/iris/sync-case/<id>` - Sync case to DFIR-IRIS (POST)
 
 ## Configuration
 
@@ -197,7 +264,8 @@ sudo journalctl -u casescope-worker -f
 
 ### Database
 - **SQLite**: `/opt/casescope/data/casescope.db`
-- **Models**: User, Case, CaseFile, SigmaRule, SigmaViolation, AuditLog, EventTag, SearchHistory, SavedSearch, CaseTemplate
+- **SQLAlchemy**: 2.0+ compatible (migrated from 1.x)
+- **Models**: User, Case, CaseFile, SigmaRule, SigmaViolation, AuditLog, EventTag, SearchHistory, SavedSearch, CaseTemplate, IOC, IOCMatch, SystemSettings
 - **Migrations**: Auto-run on Option 2/3 installs
 
 ## Logging
@@ -251,9 +319,18 @@ sudo -u casescope /opt/casescope/venv/bin/python3 migrate_audit_log.py
 
 ## Version History
 
-- **7.13.1**: Timestamp column sorting (newest/oldest first) + Event Information rename
-- **7.13.0**: Timeline event tagging with star icons for incident analysis
-- **7.12.x**: NDJSON/EDR telemetry ingestion, case-insensitive search fixes
+- **7.16.6** (2025-10-04): Bugfix - Fixed SQL syntax error in case company migration
+- **7.16.5** (2025-10-04): Critical fix - SSL certificate handling for DFIR-IRIS (self-signed cert support)
+- **7.16.4** (2025-10-04): MAJOR - Complete DFIR-IRIS sync implementation
+- **7.16.3** (2025-10-04): DFIR-IRIS sync service with 4-step workflow
+- **7.16.2** (2025-10-04): DFIR-IRIS API client module
+- **7.16.1** (2025-10-04): Added company field to cases for DFIR-IRIS
+- **7.16.0** (2025-10-04): Major feature - System Settings page for DFIR-IRIS integration
+- **7.15.x** (2025-10-04): IOC hunting enhancements and SQLAlchemy 2.0 migration
+- **7.14.x** (2025-10-03): MAJOR - IOC Management & Threat Hunting system
+- **7.13.1** (2025-10-03): Timestamp column sorting (newest/oldest first) + Event Information rename
+- **7.13.0** (2025-10-02): Timeline event tagging with star icons for incident analysis
+- **7.12.x** (2025-10-02): NDJSON/EDR telemetry ingestion, case-insensitive search fixes
 - **7.11.x**: NDJSON ingestion foundation
 - **7.10.x**: Search enhancements with saved searches and history
 - **7.9.x**: Case templates and workflow improvements
