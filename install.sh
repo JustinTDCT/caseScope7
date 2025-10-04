@@ -5,11 +5,34 @@
 
 set -e
 
+#══════════════════════════════════════════════════════════════
+# CENTRALIZED VERSION CONFIGURATION
+#══════════════════════════════════════════════════════════════
+
+# Core application versions
+CASESCOPE_VERSION="7.25.0"  # Auto-detected from version.json
+
+# External tool versions
+CHAINSAW_VERSION="v2.12.2"    # Sigma rule processor (Rust)
+EVTX_DUMP_VERSION="v0.8.2"    # Fast EVTX parser (Rust)
+OPENSEARCH_VERSION="2.11.1"   # Search/analytics engine
+
+# Python dependencies (managed via requirements.txt)
+# - Flask, SQLAlchemy, Celery, OpenSearch client, etc.
+
+# System package versions (latest from Ubuntu 24 repos)
+# - Python 3.12+, Redis 7.x, Nginx 1.24+
+
+#══════════════════════════════════════════════════════════════
+# COLOR CODES & LOGGING
+#══════════════════════════════════════════════════════════════
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Logging function
@@ -199,8 +222,7 @@ install_chainsaw() {
     
     # Download Chainsaw release for x86_64 Linux
     cd /tmp
-    log "Downloading Chainsaw from GitHub..."
-    CHAINSAW_VERSION="v2.12.2"  # Using direct binary tarball
+    log "Downloading Chainsaw ${CHAINSAW_VERSION} from GitHub..."
     
     # Remove old downloads if exist
     rm -f chainsaw_x86_64-unknown-linux-gnu.tar.gz
@@ -348,24 +370,23 @@ install_evtx_dump() {
     
     # Download evtx_dump release for x86_64 Linux
     cd /tmp
-    log "Downloading evtx_dump from GitHub..."
-    EVTX_VERSION="v0.8.2"  # Stable release version
+    log "Downloading evtx_dump ${EVTX_DUMP_VERSION} from GitHub..."
     
     # Remove old downloads if exist
     rm -f evtx_dump-*-linux-gnu
     
-    wget --show-progress https://github.com/omerbenamram/evtx/releases/download/${EVTX_VERSION}/evtx_dump-${EVTX_VERSION}-x86_64-unknown-linux-gnu
+    wget --show-progress https://github.com/omerbenamram/evtx/releases/download/${EVTX_DUMP_VERSION}/evtx_dump-${EVTX_DUMP_VERSION}-x86_64-unknown-linux-gnu
     
-    if [ $? -ne 0 ] || [ ! -f "evtx_dump-${EVTX_VERSION}-x86_64-unknown-linux-gnu" ]; then
+    if [ $? -ne 0 ] || [ ! -f "evtx_dump-${EVTX_DUMP_VERSION}-x86_64-unknown-linux-gnu" ]; then
         log_error "Failed to download evtx_dump from GitHub"
-        log_error "URL: https://github.com/omerbenamram/evtx/releases/download/${EVTX_VERSION}/evtx_dump-${EVTX_VERSION}-x86_64-unknown-linux-gnu"
+        log_error "URL: https://github.com/omerbenamram/evtx/releases/download/${EVTX_DUMP_VERSION}/evtx_dump-${EVTX_DUMP_VERSION}-x86_64-unknown-linux-gnu"
         return 1
     fi
     
-    log "Download successful ($(du -h evtx_dump-${EVTX_VERSION}-x86_64-unknown-linux-gnu | cut -f1)), installing..."
+    log "Download successful ($(du -h evtx_dump-${EVTX_DUMP_VERSION}-x86_64-unknown-linux-gnu | cut -f1)), installing..."
     
     # Move binary to casescope bin
-    mv "evtx_dump-${EVTX_VERSION}-x86_64-unknown-linux-gnu" /opt/casescope/bin/evtx_dump
+    mv "evtx_dump-${EVTX_DUMP_VERSION}-x86_64-unknown-linux-gnu" /opt/casescope/bin/evtx_dump
     chmod +x /opt/casescope/bin/evtx_dump
     
     # Verify it's actually there and executable
@@ -622,19 +643,21 @@ update_opensearch_config() {
 
 # Install OpenSearch
 install_opensearch() {
-    log "Installing OpenSearch..."
+    log "Installing OpenSearch ${OPENSEARCH_VERSION}..."
     
     if [ ! -d "/opt/opensearch" ]; then
         cd /tmp
         
         # Download OpenSearch
-        wget -q https://artifacts.opensearch.org/releases/bundle/opensearch/2.11.1/opensearch-2.11.1-linux-x64.tar.gz
+        log "Downloading OpenSearch ${OPENSEARCH_VERSION}..."
+        wget -q https://artifacts.opensearch.org/releases/bundle/opensearch/${OPENSEARCH_VERSION}/opensearch-${OPENSEARCH_VERSION}-linux-x64.tar.gz
         
         # Extract
-        tar -xzf opensearch-2.11.1-linux-x64.tar.gz
+        log "Extracting OpenSearch..."
+        tar -xzf opensearch-${OPENSEARCH_VERSION}-linux-x64.tar.gz
         
         # Move to final location
-        mv opensearch-2.11.1 /opt/opensearch
+        mv opensearch-${OPENSEARCH_VERSION} /opt/opensearch
         
         # Create required directories
         mkdir -p /opt/opensearch/tmp
@@ -645,7 +668,7 @@ install_opensearch() {
         chown -R casescope:casescope /opt/opensearch
         
         # Clean up
-        rm -f opensearch-2.11.1-linux-x64.tar.gz
+        rm -f opensearch-${OPENSEARCH_VERSION}-linux-x64.tar.gz
         
         log "OpenSearch installed"
     else
