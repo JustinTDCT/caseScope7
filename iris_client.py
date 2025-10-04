@@ -26,6 +26,12 @@ class IrisClient:
             base_url: DFIR-IRIS server URL (e.g., https://iris.company.com)
             api_key: API authentication key
         """
+        import urllib3
+        from urllib3.exceptions import InsecureRequestWarning
+        
+        # Suppress SSL warnings for self-signed certificates
+        urllib3.disable_warnings(InsecureRequestWarning)
+        
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key
         self.session = requests.Session()
@@ -33,6 +39,8 @@ class IrisClient:
             'Authorization': f'Bearer {api_key}',
             'Content-Type': 'application/json'
         })
+        # Disable SSL verification for self-signed certificates (common in internal deployments)
+        self.session.verify = False
     
     def _request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         """

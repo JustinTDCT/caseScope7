@@ -1681,6 +1681,11 @@ def test_iris_connection():
     
     try:
         import requests
+        from urllib3.exceptions import InsecureRequestWarning
+        import urllib3
+        
+        # Suppress SSL warnings for self-signed certificates
+        urllib3.disable_warnings(InsecureRequestWarning)
         
         iris_url = request.form.get('iris_url', '').strip()
         iris_api_key = request.form.get('iris_api_key', '').strip()
@@ -1695,7 +1700,8 @@ def test_iris_connection():
             'Content-Type': 'application/json'
         }
         
-        response = requests.get(test_url, headers=headers, timeout=5)
+        # Disable SSL verification for self-signed certificates (common in internal deployments)
+        response = requests.get(test_url, headers=headers, timeout=10, verify=False)
         
         if response.status_code == 200:
             log_audit('IRIS Connection Test', 'system', 'Connection test successful', success=True)
