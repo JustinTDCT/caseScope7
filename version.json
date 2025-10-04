@@ -1,9 +1,10 @@
 {
-  "version": "7.16.7",
+  "version": "7.16.8",
   "release_date": "2025-10-04",
-  "description": "Bugfix - Fixed DFIR-IRIS Test Connection Endpoint: FIXED test connection failing with HTTP 404 'Resource not found' error; ROOT CAUSE: test was trying to hit /api/v1/ping endpoint which doesn't exist in DFIR-IRIS API; SOLUTION: changed test endpoint from /api/v1/ping to /manage/cases/list (valid DFIR-IRIS API endpoint); /manage/cases/list is a basic read operation that properly tests URL, API key authentication, and network connectivity; IMPACT: Test Connection button now works correctly with all DFIR-IRIS servers; users can verify their settings before enabling integration; proper validation of URL and API key before attempting sync operations",
+  "description": "Critical Bugfix - Migrated SystemSettings Queries to SQLAlchemy 2.0: FIXED Internal Server Error (500) when saving system settings; ROOT CAUSE: get_setting() and set_setting() helper functions were using deprecated SQLAlchemy 1.x query syntax (db.session.query().filter_by().first()) causing database access errors; SOLUTION: migrated both functions to SQLAlchemy 2.0 syntax using db.session.execute(select()) with .scalar_one_or_none(); IMPACT: System Settings page now saves correctly; DFIR-IRIS configuration (URL, API key, customer ID, auto-sync) can be saved without errors; completes SQLAlchemy 2.0 migration for all database operations",
   "build": "production",
   "changelog": {
+    "7.16.8": "Critical Bugfix - Fixed 500 error saving settings by migrating to SQLAlchemy 2.0 syntax",
     "7.16.7": "Bugfix - Fixed DFIR-IRIS test connection using wrong endpoint (/api/v1/ping → /manage/cases/list)",
     "7.16.6": "Bugfix - Fixed SQL syntax error in case company migration (quoted reserved keyword)",
     "7.16.5": "Critical Fix - SSL certificate handling for DFIR-IRIS (works with self-signed certs now)",
