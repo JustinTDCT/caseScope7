@@ -3,7 +3,8 @@
 # caseScope 7.x Installation Script
 # Copyright (c) 2025 Justin Dube <casescope@thedubes.net>
 
-set -e
+# Note: We don't use 'set -e' because we handle errors explicitly with proper logging
+# set -e would cause silent exits on non-critical errors
 
 #══════════════════════════════════════════════════════════════
 # CENTRALIZED VERSION CONFIGURATION
@@ -460,7 +461,8 @@ check_requirements() {
     # Check available memory
     log_step "Checking system memory..."
     TOTAL_MEM=$(free -m | awk 'NR==2{printf "%.0f", $2}')
-    TOTAL_MEM_GB=$(echo "scale=1; $TOTAL_MEM/1024" | bc)
+    # Use awk instead of bc for better portability
+    TOTAL_MEM_GB=$(awk "BEGIN {printf \"%.1f\", $TOTAL_MEM/1024}")
     if [ "$TOTAL_MEM" -ge 8192 ]; then
         log_success "System Memory: ${TOTAL_MEM_GB}GB (Sufficient)"
     else
@@ -470,7 +472,8 @@ check_requirements() {
     # Check available disk space
     log_step "Checking disk space..."
     AVAILABLE_SPACE=$(df / | awk 'NR==2 {print $4}')
-    AVAILABLE_GB=$(echo "scale=1; $AVAILABLE_SPACE/1024/1024" | bc)
+    # Use awk instead of bc for better portability
+    AVAILABLE_GB=$(awk "BEGIN {printf \"%.1f\", $AVAILABLE_SPACE/1024/1024}")
     if [ "$AVAILABLE_SPACE" -ge 10485760 ]; then  # 10GB in KB
         log_success "Available Disk Space: ${AVAILABLE_GB}GB (Sufficient)"
     else
