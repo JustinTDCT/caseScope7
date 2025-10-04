@@ -5980,7 +5980,7 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
         iocs_html = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #aaa;">No IOCs found. Add your first IOC to start threat hunting.</td></tr>'
     
     # IOC type options for filter and add form
-    all_ioc_types = ['ip', 'domain', 'fqdn', 'hostname', 'username', 'hash_md5', 'hash_sha1', 'hash_sha256', 'command', 'filename', 'process_name', 'registry_key', 'email', 'url']
+    all_ioc_types = ['ip', 'domain', 'fqdn', 'hostname', 'username', 'hash_md5', 'hash_sha1', 'hash_sha256', 'command', 'filename', 'process_name', 'malware_name', 'registry_key', 'email', 'url']
     type_options = ''.join([f'<option value="{t}" {"selected" if type_filter == t else ""}>{t.replace("_", " ").title()}</option>' for t in all_ioc_types])
     type_add_options = ''.join([f'<option value="{t}">{t.replace("_", " ").title()}</option>' for t in all_ioc_types])
     
@@ -6186,7 +6186,7 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
         
         <script>
             function showAddIOCModal() {{
-                document.getElementById('addIOCModal').style.display = 'block';
+                document.getElementById('addIOCModal').style.display = 'flex';
             }}
             
             function closeAddIOCModal() {{
@@ -6201,7 +6201,7 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
                 document.getElementById('editStatus').value = isActive.toString();
                 document.getElementById('editNotes').value = notes;
                 document.getElementById('editIOCForm').action = '/ioc/edit/' + id;
-                document.getElementById('editIOCModal').style.display = 'block';
+                document.getElementById('editIOCModal').style.display = 'flex';
             }}
             
             function closeEditIOCModal() {{
@@ -6296,7 +6296,7 @@ def render_ioc_matches_page(case, matches, total_matches, page, per_page, ioc_fi
     ioc_options = ''.join([f'<option value="{ioc.id}" {"selected" if str(ioc.id) == ioc_filter else ""}>{ioc.ioc_type}:{ioc.ioc_value[:30]}</option>' for ioc in all_iocs])
     
     # Get unique IOC types for type filter
-    ioc_types = ['ip', 'domain', 'fqdn', 'hostname', 'username', 'hash_md5', 'hash_sha1', 'hash_sha256', 'command', 'filename', 'process_name', 'registry_key', 'email', 'url']
+    ioc_types = ['ip', 'domain', 'fqdn', 'hostname', 'username', 'hash_md5', 'hash_sha1', 'hash_sha256', 'command', 'filename', 'process_name', 'malware_name', 'registry_key', 'email', 'url']
     type_options = ''.join([f'<option value="{t}" {"selected" if t == type_filter else ""}>{t.replace("_", " ").title()}</option>' for t in ioc_types])
     
     # Pagination
