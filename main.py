@@ -770,7 +770,9 @@ def delete_case(case_id):
         db.session.query(IOC).filter_by(case_id=case_id).delete()
         
         # Delete event tags
-        db.session.query(EventTag).filter_by(case_id=case_id).delete()
+        db.session.execute(
+            delete(EventTag).where(EventTag.case_id == case_id)
+        )
         
         # Delete SIGMA violations
         db.session.query(SigmaViolation).filter_by(case_id=case_id).delete()
@@ -7909,12 +7911,14 @@ def tag_event():
         
         # Check if already tagged by this user for this tag_type
         tag_type = data.get('tag_type', 'timeline')
-        existing = db.session.query(EventTag).filter_by(
-            case_id=case_id,
-            event_id=data['event_id'],
-            tagged_by=current_user.id,
-            tag_type=tag_type
-        ).first()
+        existing = db.session.execute(
+            select(EventTag).where(
+                EventTag.case_id == case_id,
+                EventTag.event_id == data['event_id'],
+                EventTag.tagged_by == current_user.id,
+                EventTag.tag_type == tag_type
+            )
+        ).scalar_one_or_none()
         
         if existing:
             return jsonify({'success': False, 'message': 'Event already tagged'}), 400
@@ -7972,12 +7976,14 @@ def untag_event():
         
         # Find and delete the tag
         tag_type = data.get('tag_type', 'timeline')
-        tag = db.session.query(EventTag).filter_by(
-            case_id=case_id,
-            event_id=data['event_id'],
-            tagged_by=current_user.id,
-            tag_type=tag_type
-        ).first()
+        tag = db.session.execute(
+            select(EventTag).where(
+                EventTag.case_id == case_id,
+                EventTag.event_id == data['event_id'],
+                EventTag.tagged_by == current_user.id,
+                EventTag.tag_type == tag_type
+            )
+        ).scalar_one_or_none()
         
         if not tag:
             return jsonify({'success': False, 'message': 'Tag not found'}), 404
@@ -8019,10 +8025,12 @@ def get_event_tags():
         tag_type = request.args.get('tag_type', 'timeline')
         
         # Get all tags for this case
-        tags = db.session.query(EventTag).filter_by(
-            case_id=case_id,
-            tag_type=tag_type
-        ).all()
+        tags = db.session.execute(
+            select(EventTag).where(
+                EventTag.case_id == case_id,
+                EventTag.tag_type == tag_type
+            )
+        ).scalars().all()
         
         # Return as dictionary keyed by event_id for easy lookup
         tagged_events = {}
