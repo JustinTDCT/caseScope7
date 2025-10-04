@@ -16,6 +16,8 @@ from datetime import datetime
 from opensearchpy import OpenSearch
 import re
 from sqlalchemy import select, delete
+import psutil
+import sqlalchemy
 
 # Import dark flat theme CSS
 from theme import get_theme_css
@@ -3304,6 +3306,40 @@ def dashboard():
     # Get user count
     total_users = db.session.query(User).count()
     
+    # SIGMA Rules statistics
+    total_sigma_rules = db.session.query(SigmaRule).count()
+    enabled_sigma_rules = db.session.query(SigmaRule).filter_by(enabled=True).count()
+    latest_rule = db.session.query(SigmaRule).order_by(SigmaRule.created_at.desc()).first()
+    last_rule_update = latest_rule.created_at.strftime('%Y-%m-%d') if latest_rule else 'Never'
+    
+    # IOC statistics
+    total_iocs = db.session.query(IOC).count()
+    total_ioc_matches = db.session.query(IOCMatch).count()
+    
+    # System resource metrics
+    ram = psutil.virtual_memory()
+    ram_used_gb = ram.used / (1024**3)
+    ram_total_gb = ram.total / (1024**3)
+    ram_percent = ram.percent
+    cpu_percent = psutil.cpu_percent(interval=0.1)
+    
+    # System versions
+    try:
+        import sqlite3
+        sqlite_version = sqlite3.sqlite_version
+    except:
+        sqlite_version = "Unknown"
+    
+    try:
+        opensearch_info = opensearch_client.info()
+        opensearch_version = opensearch_info.get('version', {}).get('number', 'Unknown')
+    except:
+        opensearch_version = "Unknown"
+    
+    sqlalchemy_version = sqlalchemy.__version__
+    flask_version = Flask.__version__
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    
     # Recent activity
     recent_cases = db.session.query(Case).order_by(Case.created_at.desc()).limit(5).all()
     recent_files = db.session.query(CaseFile).filter_by(is_deleted=False).order_by(CaseFile.uploaded_at.desc()).limit(5).all()
@@ -3339,20 +3375,32 @@ def dashboard():
                         <p><strong>Total Files:</strong> {total_files:,} ({total_indexed:,} indexed)</p>
                         <p><strong>Total Events:</strong> {total_events:,}</p>
                         <p><strong>Total Users:</strong> {total_users}</p>
+                        <p><strong>RAM:</strong> <span id="ram-usage">{ram_used_gb:.1f} GB / {ram_total_gb:.1f} GB ({ram_percent:.1f}%)</span></p>
+                        <p><strong>CPU:</strong> <span id="cpu-usage">{cpu_percent:.1f}%</span></p>
                     </div>
                     <div class="tile">
                         <h3>💾 Storage & Analysis</h3>
                         <p><strong>Storage Used:</strong> {total_storage / (1024*1024*1024):.2f} GB</p>
                         <p><strong>Indexed Files:</strong> {total_indexed:,} / {total_files:,}</p>
                         <p><strong>SIGMA Violations:</strong> {total_violations:,}</p>
-                        <p><strong>Processing:</strong> <span class="status operational">✓ Active</span></p>
+                        <p><strong>IOC Matches:</strong> {total_ioc_matches:,}</p>
                     </div>
                     <div class="tile">
-                        <h3>🔧 System Status</h3>
-                        <p><span class="status operational">✓ OpenSearch: Running</span></p>
-                        <p><span class="status operational">✓ Redis: Running</span></p>
-                        <p><span class="status operational">✓ Celery Worker: Running</span></p>
-                        <p><span class="status operational">✓ Web Server: Running</span></p>
+                        <h3>📋 SIGMA Rules</h3>
+                        <p><strong>Total Rules:</strong> {total_sigma_rules:,}</p>
+                        <p><strong>Enabled:</strong> <span style="color: #4caf50; font-weight: 600;">{enabled_sigma_rules:,}</span> / {total_sigma_rules:,}</p>
+                        <p><strong>Last Updated:</strong> {last_rule_update}</p>
+                        <p><strong>IOCs Tracked:</strong> {total_iocs:,}</p>
+                        <p style="margin-top: 15px;"><a href="/sigma-rules" style="color: #4caf50;">→ Manage Rules</a></p>
+                    </div>
+                    <div class="tile">
+                        <h3>⚙️ System Versions</h3>
+                        <p><strong>Python:</strong> {python_version}</p>
+                        <p><strong>Flask:</strong> {flask_version}</p>
+                        <p><strong>SQLAlchemy:</strong> {sqlalchemy_version}</p>
+                        <p><strong>SQLite:</strong> {sqlite_version}</p>
+                        <p><strong>OpenSearch:</strong> {opensearch_version}</p>
+                        <p><strong>caseScope:</strong> {APP_VERSION}</p>
                     </div>
                 </div>
                 
@@ -3373,9 +3421,60 @@ def dashboard():
         <div class="footer">
             Copyright (c) 2025 Justin Dube | <a href="mailto:casescope@thedubes.net">casescope@thedubes.net</a>
         </div>
+        
+        <script>
+            // Auto-update system metrics every 3 seconds
+            function updateSystemMetrics() {{
+                fetch('/api/system-metrics')
+                    .then(response => response.json())
+                    .then(data => {{
+                        if (data.success) {{
+                            // Update RAM
+                            document.getElementById('ram-usage').textContent = 
+                                data.ram_used_gb.toFixed(1) + ' GB / ' + 
+                                data.ram_total_gb.toFixed(1) + ' GB (' + 
+                                data.ram_percent.toFixed(1) + '%)';
+                            
+                            // Update CPU
+                            document.getElementById('cpu-usage').textContent = 
+                                data.cpu_percent.toFixed(1) + '%';
+                        }}
+                    }})
+                    .catch(error => {{
+                        console.error('Error fetching system metrics:', error);
+                    }});
+            }}
+            
+            // Update every 3 seconds
+            setInterval(updateSystemMetrics, 3000);
+        </script>
     </body>
     </html>
     '''
+
+@app.route('/api/system-metrics')
+@login_required
+def api_system_metrics():
+    """API endpoint for real-time system metrics"""
+    try:
+        ram = psutil.virtual_memory()
+        ram_used_gb = ram.used / (1024**3)
+        ram_total_gb = ram.total / (1024**3)
+        ram_percent = ram.percent
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        
+        return jsonify({
+            'success': True,
+            'ram_used_gb': ram_used_gb,
+            'ram_total_gb': ram_total_gb,
+            'ram_percent': ram_percent,
+            'cpu_percent': cpu_percent
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @app.route('/change_password', methods=['GET', 'POST'])
 @login_required
