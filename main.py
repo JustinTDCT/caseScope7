@@ -6559,6 +6559,7 @@ def render_case_selection(cases, active_case_id):
     case_rows = ""
     for case in cases:
         active_class = "active-case" if case.id == active_case_id else ""
+        sync_badge = '<span class="sync-badge-small sync-synced">✓ Synced</span>' if case.iris_synced_at else '<span class="sync-badge-small sync-not-synced">⚠</span>'
         case_rows += f'''
         <tr class="case-row {active_class}" onclick="selectCase({case.id})">
             <td>{case.case_number}</td>
@@ -6568,6 +6569,7 @@ def render_case_selection(cases, active_case_id):
             <td>{case.file_count}</td>
             <td>{case.created_at.strftime('%Y-%m-%d')}</td>
             <td>{case.creator.username}</td>
+            <td>{sync_badge}</td>
             <td>{'✓ Active' if case.id == active_case_id else ''}</td>
         </tr>
         '''
@@ -6584,6 +6586,24 @@ def render_case_selection(cases, active_case_id):
             .case-row.active-case {{
                 background: rgba(76,175,80,0.15);
                 border-left: 4px solid var(--accent-green);
+            }}
+            
+            /* Small sync badges for table */
+            .sync-badge-small {{
+                display: inline-block;
+                padding: 4px 10px;
+                border-radius: 12px;
+                font-size: 11px;
+                font-weight: 600;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            }}
+            .sync-synced {{
+                background: linear-gradient(135deg, #4caf50, #388e3c);
+                color: white;
+            }}
+            .sync-not-synced {{
+                background: linear-gradient(135deg, #ff9800, #f57c00);
+                color: white;
             }}
         </style>
     </head>
@@ -6623,6 +6643,7 @@ def render_case_selection(cases, active_case_id):
                             <th>Files</th>
                             <th>Created</th>
                             <th>Created By</th>
+                            <th>IRIS Sync</th>
                             <th>Active</th>
                         </tr>
                     </thead>
@@ -6729,6 +6750,25 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
             .btn-secondary:hover {{ 
                 background: #1976d2;
             }}
+            
+            /* Sync Status Badges */
+            .sync-badge {{
+                display: inline-block;
+                padding: 6px 14px;
+                border-radius: 20px;
+                font-size: 13px;
+                font-weight: 600;
+                letter-spacing: 0.3px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            }}
+            .sync-badge-synced {{
+                background: linear-gradient(135deg, #4caf50, #388e3c);
+                color: white;
+            }}
+            .sync-badge-not-synced {{
+                background: linear-gradient(135deg, #ff9800, #f57c00);
+                color: white;
+            }}
         </style>
     </head>
     <body>
@@ -6751,11 +6791,15 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
             <div class="content">
                 {flash_messages_html}
                 <div class="case-info">
-                    <h2>Case Details</h2>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h2>Case Details</h2>
+                        {'<span class="sync-badge sync-badge-synced">✓ Synced to IRIS</span>' if case.iris_synced_at else '<span class="sync-badge sync-badge-not-synced">⚠ Not Synced</span>'}
+                    </div>
                     <p><strong>Case Number:</strong> {case.case_number}</p>
                     <p><strong>Description:</strong> {case.description or 'No description provided'}</p>
                     <p><strong>Priority:</strong> {case.priority} | <strong>Status:</strong> {case.status}</p>
                     <p><strong>Created:</strong> {case.created_at.strftime('%Y-%m-%d %H:%M')} by {case.creator.username}</p>
+                    {f'<p><strong>DFIR-IRIS Sync:</strong> Last synced {case.iris_synced_at.strftime("%Y-%m-%d %H:%M")} (Case ID: {case.iris_case_id})</p>' if case.iris_synced_at else ''}
                 </div>
                 
                 <div class="tiles">
