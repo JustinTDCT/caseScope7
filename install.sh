@@ -1457,67 +1457,37 @@ except Exception as e:
         log "Database preservation: Existing database retained"
         log "Using existing user accounts and settings"
         
-        # Run database migrations
+        # Run unified database migrations
         log "Running database migrations..."
-        cd /opt/casescope/app
         
-        # v7.4.0 - audit_log table
-        sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_audit_log.py
-        MIGRATION_RESULT=$?
-        
-        # v7.6.0 - saved_search and search_history tables
-        if [ -f "/opt/casescope/app/migrate_search_enhancements.py" ]; then
-            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_search_enhancements.py
-            MIGRATION_RESULT2=$?
-            MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT2))
-        fi
-        
-        # Run Case Management migration (v7.7.0)
-        if [ -f "/opt/casescope/app/migrate_case_management.py" ]; then
-            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_case_management.py
-            MIGRATION_RESULT3=$?
-            MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT3))
-        fi
-        
-        # Run Timeline Tags migration (v7.13.0)
-        if [ -f "/opt/casescope/app/migrate_timeline_tags.py" ]; then
-            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_timeline_tags.py
-            MIGRATION_RESULT4=$?
-            MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT4))
-        fi
-        
-        # Run IOC Matches migration (v7.15.4)
-        if [ -f "/opt/casescope/app/migrate_ioc_matches.py" ]; then
-            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_ioc_matches.py
-            MIGRATION_RESULT6=$?
-            MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT6))
-        fi
-        
-        # Run IOC Management migration (v7.14.0)
-        if [ -f "/opt/casescope/app/migrate_ioc_management.py" ]; then
-            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_ioc_management.py
-            MIGRATION_RESULT7=$?
-            MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT7))
-        fi
-        
-        # Run System Settings migration (v7.16.0)
-        if [ -f "/opt/casescope/app/migrate_system_settings.py" ]; then
-            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_system_settings.py
-            MIGRATION_RESULT8=$?
-            MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT8))
-        fi
-        
-        # Run Case Company migration (v7.16.1)
-        if [ -f "/opt/casescope/app/migrate_case_company.py" ]; then
-            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_case_company.py
-            MIGRATION_RESULT9=$?
-            MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT9))
-        fi
-        
-        if [ $MIGRATION_RESULT -eq 0 ]; then
-            log "✓ All database migrations completed"
+        # Use unified migration script (replaces 8 individual migration scripts)
+        if [ -f "/opt/casescope/app/migrate_database.py" ]; then
+            log "Using unified migration script (migrate_database.py)..."
+            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_database.py
+            MIGRATION_RESULT=$?
+            
+            if [ $MIGRATION_RESULT -eq 0 ]; then
+                log "✓ All database migrations completed successfully"
+            else
+                log_error "Database migrations failed (exit code: $MIGRATION_RESULT)"
+                log_error "Check logs above for details"
+                # Non-fatal - continue installation
+            fi
         else
-            log_error "Some database migrations failed (non-fatal, continuing...)"
+            log_warning "Unified migration script not found, using legacy migration scripts..."
+            cd /opt/casescope/app
+            
+            # Fallback to individual migration scripts (for backwards compatibility)
+            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_audit_log.py 2>/dev/null || true
+            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_search_enhancements.py 2>/dev/null || true
+            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_case_management.py 2>/dev/null || true
+            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_timeline_tags.py 2>/dev/null || true
+            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_ioc_management.py 2>/dev/null || true
+            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_ioc_matches.py 2>/dev/null || true
+            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_system_settings.py 2>/dev/null || true
+            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_case_company.py 2>/dev/null || true
+            
+            log "✓ Legacy migrations completed (best-effort)"
         fi
         
         # Still run a basic check to ensure database is accessible
