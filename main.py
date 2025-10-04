@@ -4292,7 +4292,7 @@ def render_system_settings(settings):
                             
                             <div class="form-group">
                                 <div class="checkbox-group" onclick="toggleCheckbox('iris_enabled')">
-                                    <input type="checkbox" id="iris_enabled" name="iris_enabled" value="true" {iris_enabled_checked} onchange="updateFormState()">
+                                    <input type="checkbox" id="iris_enabled" name="iris_enabled" value="true" {iris_enabled_checked} onchange="updateFormState()" onclick="event.stopPropagation()">
                                     <label for="iris_enabled">
                                         Enable DFIR-IRIS Integration
                                         <span class="help-text">Turn this on to connect to DFIR-IRIS</span>
@@ -4333,7 +4333,7 @@ def render_system_settings(settings):
                                 
                                 <div class="form-group">
                                     <div class="checkbox-group" onclick="toggleCheckbox('iris_auto_sync')">
-                                        <input type="checkbox" id="iris_auto_sync" name="iris_auto_sync" value="true" {iris_auto_sync_checked}>
+                                        <input type="checkbox" id="iris_auto_sync" name="iris_auto_sync" value="true" {iris_auto_sync_checked} onclick="event.stopPropagation()">
                                         <label for="iris_auto_sync">
                                             Automatic Sync
                                             <span class="help-text">Automatically send new IOCs and tagged events to DFIR-IRIS (recommended)</span>
@@ -4385,6 +4385,29 @@ def render_system_settings(settings):
                     statusBadge.textContent = 'DISABLED';
                 }}
             }}
+            
+            // Handle form submission to ensure checkbox values are sent correctly
+            document.getElementById('settingsForm').addEventListener('submit', function(e) {{
+                // For each checkbox, if it's not checked, set its value to 'false' before submitting
+                const irisEnabled = document.getElementById('iris_enabled');
+                const irisAutoSync = document.getElementById('iris_auto_sync');
+                
+                // Remove any existing hidden inputs
+                const existingHiddens = this.querySelectorAll('input[type="hidden"][name="iris_enabled"], input[type="hidden"][name="iris_auto_sync"]');
+                existingHiddens.forEach(h => h.remove());
+                
+                // If checkbox is checked, let it send 'true'
+                // If checkbox is unchecked, change its value to 'false' and make it not disabled
+                if (!irisEnabled.checked) {{
+                    irisEnabled.value = 'false';
+                    irisEnabled.checked = true; // Temporarily check it so it sends a value
+                }}
+                
+                if (!irisAutoSync.checked) {{
+                    irisAutoSync.value = 'false';
+                    irisAutoSync.checked = true; // Temporarily check it so it sends a value
+                }}
+            }});
             
             function testConnection() {{
                 const resultDiv = document.getElementById('testResult');
