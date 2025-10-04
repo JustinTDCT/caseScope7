@@ -407,9 +407,40 @@ class IrisSyncService:
                             logger.warning(f"Search fallback also failed for {event.event_id}: {str(search_err)}")
                             event_data = {}
                     
-                    # Extract Event Information (event_type field from OpenSearch)
-                    event_type = event_data.get('event_type', 'Unknown Event')
-                    event_title = event_type
+                    # Extract Event Information
+                    # For EVTX files: use event_type field (added during indexing)
+                    # For NDJSON/EDR files: extract from command_line or process info
+                    event_type = event_data.get('event_type')
+                    
+                    if event_type:
+                        # EVTX file with event_type field
+                        event_title = event_type
+                    else:
+                        # NDJSON/EDR file - build meaningful title from available fields
+                        command_line = event_data.get('command_line', '')
+                        process_name = event_data.get('process', {}).get('name', '') if isinstance(event_data.get('process'), dict) else ''
+                        image = event_data.get('image', '')
+                        
+                        # Try to extract just the executable name from command_line
+                        if command_line:
+                            # Get first part before space (the executable)
+                            exe = command_line.split()[0] if command_line.split() else command_line
+                            # Get just filename from path
+                            if '\\' in exe:
+                                exe = exe.split('\\')[-1]
+                            elif '/' in exe:
+                                exe = exe.split('/')[-1]
+                            # Remove quotes
+                            exe = exe.strip('"\'')
+                            event_title = f"Process: {exe}"
+                        elif process_name:
+                            event_title = f"Process: {process_name}"
+                        elif image:
+                            # Get just filename from image path
+                            image_name = image.split('\\')[-1] if '\\' in image else image.split('/')[-1] if '/' in image else image
+                            event_title = f"Process: {image_name}"
+                        else:
+                            event_title = 'EDR Event'
                     
                     # Extract actual event timestamp from the event source
                     # EVTX: System.TimeCreated.@SystemTime (try both dot and underscore notation)
@@ -463,7 +494,41 @@ class IrisSyncService:
                     # Extract filename and computer for event source
                     # Format: {filename}-{computer}
                     filename = event_data.get('_casescope_metadata', {}).get('filename', 'Unknown')
-                    computer = event_data.get('System.Computer', event_data.get('System_Computer', 'Unknown'))
+                    
+                    # Extract computer/hostname - different fields for EVTX vs NDJSON
+                    computer = None
+                    
+                    # Try EVTX fields first
+                    if 'System.Computer' in event_data:
+                        computer = event_data['System.Computer']
+                    elif 'System_Computer' in event_data:
+                        computer = event_data['System_Computer']
+                    # Try NDJSON/EDR fields
+                    elif 'hostname' in event_data:
+                        computer = event_data['hostname']
+                    elif 'host' in event_data and isinstance(event_data['host'], dict):
+                        computer = event_data['host'].get('name') or event_data['host'].get('hostname')
+                    elif 'computer_name' in event_data:
+                        computer = event_data['computer_name']
+                    elif 'endpoint_id' in event_data:
+                        computer = event_data['endpoint_id']
+                    
+                    # If still no computer, try to extract from filename
+                    if not computer and filename and filename != 'Unknown':
+                        # Filename might be like "accounting-DAFFOJD_2108320.ndjson"
+                        # Try to extract computer from filename
+                        if '_' in filename:
+                            # Split on underscore and take first part
+                            computer = filename.split('_')[0].replace('.ndjson', '').replace('.evtx', '')
+                        elif '-' in filename:
+                            # Split on dash and take first parts
+                            parts = filename.split('-')
+                            if len(parts) >= 2:
+                                computer = '-'.join(parts[:-1])  # All but last part
+                    
+                    if not computer:
+                        computer = 'Unknown'
+                    
                     event_source = f"{filename}-{computer}"
                     
                     # Get IOC matches for this event
