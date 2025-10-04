@@ -792,12 +792,6 @@ create_user() {
         return 1
     fi
     
-    # Create necessary directories
-    log_step "Creating directory structure..."
-    mkdir -p /opt/casescope/{app,data,logs,bin}
-    chown -R casescope:casescope /opt/casescope
-    log_success "Directories created and ownership set"
-    
     echo
 }
 
@@ -1936,7 +1930,7 @@ except Exception as e:
 # Main installation function
 main() {
     # Determine total steps based on install type
-    local TOTAL_STEPS=11
+    local TOTAL_STEPS=12
     local CURRENT_STEP=0
     
     log "Starting caseScope installation..."
@@ -1946,14 +1940,21 @@ main() {
     get_choice
     echo
     
-    # CRITICAL: For clean install, cleanup MUST happen FIRST before any installation
+    #══════════════════════════════════════════════════════════════
+    # PHASE 1: PRE-INSTALLATION (varies by install type)
+    #══════════════════════════════════════════════════════════════
+    
+    # For clean install, cleanup MUST happen FIRST before any installation
     if [ "$INSTALL_TYPE" = "clean" ]; then
         ((CURRENT_STEP++))
         print_section $CURRENT_STEP $TOTAL_STEPS "Pre-Installation Cleanup"
-        handle_existing_data  # This does the cleanup for clean installs
+        handle_existing_data  # Stop services, remove data
     fi
     
-    # Run installation steps
+    #══════════════════════════════════════════════════════════════
+    # PHASE 2: SYSTEM PREPARATION
+    #══════════════════════════════════════════════════════════════
+    
     ((CURRENT_STEP++))
     print_section $CURRENT_STEP $TOTAL_STEPS "System Requirements Check"
     check_requirements
@@ -1963,12 +1964,21 @@ main() {
     install_dependencies
     
     ((CURRENT_STEP++))
-    print_section $CURRENT_STEP $TOTAL_STEPS "Creating User & Directory Structure"
-    create_user  # MUST create user before testing Chainsaw permissions
+    print_section $CURRENT_STEP $TOTAL_STEPS "Creating System User"
+    create_user  # Create casescope user
     
-    # Chainsaw installation is CRITICAL - fail if it doesn't work
+    ((CURRENT_STEP++))
+    print_section $CURRENT_STEP $TOTAL_STEPS "Creating Directory Structure & System Optimization"
+    create_directories  # Create all directories and apply system optimizations
+    
+    #══════════════════════════════════════════════════════════════
+    # PHASE 3: EXTERNAL TOOLS INSTALLATION
+    #══════════════════════════════════════════════════════════════
+    
     ((CURRENT_STEP++))
     print_section $CURRENT_STEP $TOTAL_STEPS "Installing External Tools (Chainsaw & evtx_dump)"
+    
+    # Chainsaw installation is CRITICAL
     if ! install_chainsaw; then
         echo -e "${RED}╔══════════════════════════════════════════════════════════════╗${NC}"
         echo -e "${RED}║           CRITICAL: Chainsaw Installation Failed!          ║${NC}"
@@ -1980,6 +1990,7 @@ main() {
         exit 1
     fi
     
+    # evtx_dump installation is CRITICAL
     if ! install_evtx_dump; then
         echo -e "${RED}╔══════════════════════════════════════════════════════════════╗${NC}"
         echo -e "${RED}║          CRITICAL: evtx_dump Installation Failed!           ║${NC}"
@@ -1991,12 +2002,20 @@ main() {
         exit 1
     fi
     
-    # Handle data for upgrade/reindex (backup, not cleanup)
+    #══════════════════════════════════════════════════════════════
+    # PHASE 4: DATA MANAGEMENT (varies by install type)
+    #══════════════════════════════════════════════════════════════
+    
+    # For upgrade/reindex, backup existing data AFTER creating directories
     if [ "$INSTALL_TYPE" != "clean" ]; then
         ((CURRENT_STEP++))
         print_section $CURRENT_STEP $TOTAL_STEPS "Backing Up Existing Data"
-        handle_existing_data
+        handle_existing_data  # Backup databases and configurations
     fi
+    
+    #══════════════════════════════════════════════════════════════
+    # PHASE 5: CORE SERVICES INSTALLATION
+    #══════════════════════════════════════════════════════════════
     
     ((CURRENT_STEP++))
     print_section $CURRENT_STEP $TOTAL_STEPS "Setting Up OpenSearch"
@@ -2010,6 +2029,10 @@ main() {
         fi
         install_opensearch  # Will skip if already installed
     fi
+    
+    #══════════════════════════════════════════════════════════════
+    # PHASE 6: APPLICATION DEPLOYMENT
+    #══════════════════════════════════════════════════════════════
     
     ((CURRENT_STEP++))
     print_section $CURRENT_STEP $TOTAL_STEPS "Deploying Application Files"
