@@ -266,7 +266,9 @@ def enrich_events_with_detections(index_name, detections_by_record_number, file_
                 "sigma_detections": detections,
                 "has_violations": True,
                 "violation_count": len(detections)
-            }
+            },
+            "doc_as_upsert": True,
+            "detect_noop": False
         }
         
         bulk_actions.append(json.dumps(action))
