@@ -1,9 +1,10 @@
 {
-  "version": "7.16.12",
+  "version": "7.16.13",
   "release_date": "2025-10-04",
-  "description": "Bugfix - Fixed Checkbox State Not Persisting After Save: FIXED checkboxes always showing unchecked after save even though settings saved successfully; ROOT CAUSE: hidden input with value='false' + checkbox with value='true' both submit with same name; request.form.get() returns FIRST value in form data which was often the hidden 'false' even when checkbox was checked; SOLUTION: changed from request.form.get() to request.form.getlist() which returns ALL values for a given form field name; check if 'true' appears in the list (checkbox was checked) otherwise use 'false'; IMPACT: checkbox states now persist correctly; Enable DFIR-IRIS Integration checkbox saves and reloads with correct state; Automatic Sync checkbox saves and reloads with correct state; System Settings page fully functional with proper state management",
+  "description": "CRITICAL BUGFIX - Fixed Boolean vs String Comparison in Checkbox State: IDENTIFIED ROOT CAUSE of checkbox state never persisting; TYPE MISMATCH: get_setting() with setting_type='boolean' returns Python boolean True/False but all checkbox state checks compared to STRING 'true'; RESULT: Python True == 'true' is ALWAYS False so checkboxes NEVER showed as checked regardless of saved value; FIXED 5 LOCATIONS: changed settings['iris_enabled'] == 'true' to just settings['iris_enabled'] (truthy check); affects: iris_enabled_checked assignment, iris_auto_sync_checked assignment, status badge class, status badge text, settings section visibility; IMPACT: checkboxes now correctly reflect saved database values; Enable DFIR-IRIS Integration persists on/off state; Automatic Sync persists on/off state; status badge shows correct ENABLED/DISABLED; settings section shows/hides correctly; System Settings page FULLY FUNCTIONAL",
   "build": "production",
   "changelog": {
+    "7.16.13": "CRITICAL FIX - Boolean vs string comparison (True != 'true') causing checkbox state loss",
     "7.16.12": "Bugfix - Fixed checkbox state persistence using request.form.getlist() instead of get()",
     "7.16.11": "Complete Rewrite - Simplified checkbox handling with event.target checking + hidden inputs",
     "7.16.10": "Bugfix - Fixed checkbox clicks and form submission (event.stopPropagation + submit handler)",
