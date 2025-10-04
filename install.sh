@@ -1405,6 +1405,13 @@ except Exception as e:
             MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT7))
         fi
         
+        # Run System Settings migration (v7.16.0)
+        if [ -f "/opt/casescope/app/migrate_system_settings.py" ]; then
+            sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_system_settings.py
+            MIGRATION_RESULT8=$?
+            MIGRATION_RESULT=$((MIGRATION_RESULT + MIGRATION_RESULT8))
+        fi
+        
         if [ $MIGRATION_RESULT -eq 0 ]; then
             log "✓ All database migrations completed"
         else

@@ -363,6 +363,21 @@ class IOCMatch(db.Model):
     def __repr__(self):
         return f'<IOCMatch IOC:{self.ioc_id} Event:{self.event_id[:8]}>'
 
+class SystemSettings(db.Model):
+    """System-wide settings for integrations and configuration"""
+    __tablename__ = 'system_settings'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    setting_key = db.Column(db.String(100), unique=True, nullable=False)
+    setting_value = db.Column(db.Text)
+    setting_type = db.Column(db.String(20), default='string')  # string, boolean, integer, json
+    description = db.Column(db.Text)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    
+    def __repr__(self):
+        return f'<SystemSettings {self.setting_key}={self.setting_value[:30]}>'
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
@@ -385,6 +400,48 @@ def log_audit(action, category, details=None, success=True, username=None):
     except Exception as e:
         print(f"[Audit Log] Error logging {action}: {e}")
         db.session.rollback()
+
+# System Settings Helper Functions
+def get_setting(key, default=None):
+    """Get a system setting value"""
+    setting = db.session.query(SystemSettings).filter_by(setting_key=key).first()
+    if not setting:
+        return default
+    
+    # Convert based on type
+    if setting.setting_type == 'boolean':
+        return setting.setting_value.lower() in ['true', '1', 'yes']
+    elif setting.setting_type == 'integer':
+        try:
+            return int(setting.setting_value)
+        except:
+            return default
+    elif setting.setting_type == 'json':
+        try:
+            import json
+            return json.loads(setting.setting_value)
+        except:
+            return default
+    else:
+        return setting.setting_value
+
+def set_setting(key, value, setting_type='string', description=None):
+    """Set a system setting value"""
+    setting = db.session.query(SystemSettings).filter_by(setting_key=key).first()
+    
+    if not setting:
+        setting = SystemSettings(setting_key=key)
+        db.session.add(setting)
+    
+    setting.setting_value = str(value)
+    setting.setting_type = setting_type
+    if description:
+        setting.description = description
+    if current_user.is_authenticated:
+        setting.updated_by = current_user.id
+    
+    db.session.commit()
+    return setting
 
 # Routes
 @app.route('/')
@@ -1547,6 +1604,111 @@ def delete_user(user_id):
         print(f"[User Management] Error deleting user: {e}")
     
     return redirect(url_for('user_management'))
+
+@app.route('/settings', methods=['GET'])
+@login_required
+def system_settings():
+    """System settings page (admin only)"""
+    if current_user.role != 'administrator':
+        flash('Access denied. Administrator privileges required.', 'error')
+        return redirect(url_for('dashboard'))
+    
+    # Get current settings or defaults
+    settings = {
+        'iris_enabled': get_setting('iris_enabled', 'false'),
+        'iris_url': get_setting('iris_url', ''),
+        'iris_api_key': get_setting('iris_api_key', ''),
+        'iris_customer_id': get_setting('iris_customer_id', '1'),
+        'iris_auto_sync': get_setting('iris_auto_sync', 'false'),
+    }
+    
+    return render_system_settings(settings)
+
+@app.route('/settings/save', methods=['POST'])
+@login_required
+def save_settings():
+    """Save system settings (admin only)"""
+    if current_user.role != 'administrator':
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    try:
+        # Get form data
+        iris_enabled = request.form.get('iris_enabled', 'false')
+        iris_url = request.form.get('iris_url', '').strip()
+        iris_api_key = request.form.get('iris_api_key', '').strip()
+        iris_customer_id = request.form.get('iris_customer_id', '1').strip()
+        iris_auto_sync = request.form.get('iris_auto_sync', 'false')
+        
+        # Validate URL if IRIS is enabled
+        if iris_enabled == 'true' and iris_url:
+            if not iris_url.startswith('http://') and not iris_url.startswith('https://'):
+                flash('DFIR-IRIS URL must start with http:// or https://', 'error')
+                return redirect(url_for('system_settings'))
+        
+        # Save settings
+        set_setting('iris_enabled', iris_enabled, 'boolean', 'Enable DFIR-IRIS integration')
+        set_setting('iris_url', iris_url, 'string', 'DFIR-IRIS server URL')
+        set_setting('iris_api_key', iris_api_key, 'string', 'DFIR-IRIS API key')
+        set_setting('iris_customer_id', iris_customer_id, 'integer', 'DFIR-IRIS customer ID')
+        set_setting('iris_auto_sync', iris_auto_sync, 'boolean', 'Auto-sync to DFIR-IRIS')
+        
+        log_audit('Settings Updated', 'system', f'Updated DFIR-IRIS integration settings')
+        
+        flash('Settings saved successfully!', 'success')
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error saving settings: {str(e)}', 'error')
+        print(f"[Settings] Error saving: {e}")
+    
+    return redirect(url_for('system_settings'))
+
+@app.route('/settings/test-iris', methods=['POST'])
+@login_required
+def test_iris_connection():
+    """Test DFIR-IRIS connection (admin only)"""
+    if current_user.role != 'administrator':
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    try:
+        import requests
+        
+        iris_url = request.form.get('iris_url', '').strip()
+        iris_api_key = request.form.get('iris_api_key', '').strip()
+        
+        if not iris_url or not iris_api_key:
+            return jsonify({'success': False, 'message': 'Please provide both URL and API Key'})
+        
+        # Test connection by getting server info
+        test_url = f"{iris_url.rstrip('/')}/api/v1/ping"
+        headers = {
+            'Authorization': f'Bearer {iris_api_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.get(test_url, headers=headers, timeout=5)
+        
+        if response.status_code == 200:
+            log_audit('IRIS Connection Test', 'system', 'Connection test successful', success=True)
+            return jsonify({
+                'success': True,
+                'message': '✅ Connected successfully to DFIR-IRIS!',
+                'details': f'Server responded with status {response.status_code}'
+            })
+        else:
+            log_audit('IRIS Connection Test', 'system', f'Connection test failed: {response.status_code}', success=False)
+            return jsonify({
+                'success': False,
+                'message': f'❌ Connection failed (HTTP {response.status_code})',
+                'details': response.text[:200]
+            })
+            
+    except requests.exceptions.Timeout:
+        return jsonify({'success': False, 'message': '❌ Connection timeout - server not responding'})
+    except requests.exceptions.ConnectionError:
+        return jsonify({'success': False, 'message': '❌ Cannot connect - check URL and network'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'❌ Error: {str(e)}'})
 
 @app.route('/audit-log', methods=['GET'])
 @login_required
@@ -2860,6 +3022,7 @@ def render_sidebar_menu(active_page=''):
 <a href="/users" class="menu-item {'active' if active_page == 'user_management' else ''}">👥 User Management</a>
 <a href="/audit-log" class="menu-item {'active' if active_page == 'audit_log' else ''}">📜 Audit Log</a>
 <a href="/sigma-rules" class="menu-item {'active' if active_page == 'sigma_rules' else ''}">📋 SIGMA Rules</a>
+<a href="/settings" class="menu-item {'active' if active_page == 'settings' else ''}">⚙️ System Settings</a>
 <a href="/update-event-ids" class="menu-item" onclick="return confirm('Updating Event IDs will add new event descriptions. After updating, you should Re-index all files to apply the new descriptions. Continue?')">🔄 Update Event ID Database</a>
     '''
 
@@ -3774,6 +3937,416 @@ def render_file_list(case, files):
                 }})
                 .catch(error => {{
                     alert('Error: ' + error.message);
+                }});
+            }}
+        </script>
+    </body>
+    </html>
+    '''
+
+def render_system_settings(settings):
+    """Render system settings page with user-friendly DFIR-IRIS configuration"""
+    from flask import get_flashed_messages
+    import html
+    
+    # Flash messages
+    flash_messages_html = ""
+    messages = get_flashed_messages(with_categories=True)
+    for category, message in messages:
+        icon = "⚠️" if category == "warning" else "❌" if category == "error" else "✅"
+        flash_messages_html += f'''
+        <div class="flash-message flash-{category}">
+            <span class="flash-icon">{icon}</span>
+            <span class="flash-text">{message}</span>
+            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+        </div>
+        '''
+    
+    # Checkbox states
+    iris_enabled_checked = 'checked' if settings['iris_enabled'] == 'true' else ''
+    iris_auto_sync_checked = 'checked' if settings['iris_auto_sync'] == 'true' else ''
+    
+    # Escape values
+    iris_url_safe = html.escape(settings['iris_url'], quote=True)
+    iris_api_key_safe = html.escape(settings['iris_api_key'], quote=True)
+    iris_customer_id_safe = html.escape(settings['iris_customer_id'], quote=True)
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>System Settings - caseScope {APP_VERSION}</title>
+        {get_theme_css()}
+        <style>
+            .settings-container {{
+                max-width: 900px;
+                margin: 0 auto;
+            }}
+            .settings-section {{
+                background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+                border: 1px solid #334155;
+                border-radius: 12px;
+                padding: 2rem;
+                margin-bottom: 2rem;
+            }}
+            .settings-section h2 {{
+                color: #60a5fa;
+                font-size: 1.5rem;
+                margin: 0 0 0.5rem 0;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }}
+            .settings-section .description {{
+                color: #94a3b8;
+                font-size: 0.95rem;
+                margin-bottom: 1.5rem;
+                line-height: 1.6;
+            }}
+            .form-group {{
+                margin-bottom: 1.5rem;
+            }}
+            .form-group label {{
+                display: block;
+                color: #e2e8f0;
+                font-weight: 600;
+                margin-bottom: 0.5rem;
+                font-size: 0.95rem;
+            }}
+            .form-group .help-text {{
+                display: block;
+                color: #94a3b8;
+                font-size: 0.85rem;
+                margin-top: 0.3rem;
+                line-height: 1.4;
+            }}
+            .form-group input[type="text"],
+            .form-group input[type="password"],
+            .form-group input[type="number"] {{
+                width: 100%;
+                padding: 0.75rem;
+                background: #0f172a;
+                border: 1px solid #334155;
+                border-radius: 6px;
+                color: white;
+                font-size: 0.95rem;
+                font-family: 'Courier New', monospace;
+            }}
+            .form-group input[type="text"]:focus,
+            .form-group input[type="password"]:focus,
+            .form-group input[type="number"]:focus {{
+                outline: none;
+                border-color: #60a5fa;
+                box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.1);
+            }}
+            .checkbox-group {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 1rem;
+                background: #0f172a;
+                border: 1px solid #334155;
+                border-radius: 6px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }}
+            .checkbox-group:hover {{
+                border-color: #60a5fa;
+                background: #1e293b;
+            }}
+            .checkbox-group input[type="checkbox"] {{
+                width: 20px;
+                height: 20px;
+                cursor: pointer;
+            }}
+            .checkbox-group label {{
+                flex: 1;
+                margin: 0 !important;
+                cursor: pointer;
+                color: #e2e8f0;
+            }}
+            .checkbox-group .help-text {{
+                display: block;
+                color: #94a3b8;
+                font-size: 0.85rem;
+                font-weight: normal;
+                margin-top: 0.3rem;
+            }}
+            .button-group {{
+                display: flex;
+                gap: 1rem;
+                margin-top: 2rem;
+            }}
+            .btn-save {{
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                color: white;
+                padding: 0.75rem 2rem;
+                border: none;
+                border-radius: 6px;
+                font-size: 1rem;
+                font-weight: bold;
+                cursor: pointer;
+                transition: all 0.2s;
+            }}
+            .btn-save:hover {{
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+            }}
+            .btn-test {{
+                background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                color: white;
+                padding: 0.75rem 2rem;
+                border: none;
+                border-radius: 6px;
+                font-size: 1rem;
+                font-weight: bold;
+                cursor: pointer;
+                transition: all 0.2s;
+            }}
+            .btn-test:hover {{
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+            }}
+            .btn-test:disabled {{
+                opacity: 0.5;
+                cursor: not-allowed;
+            }}
+            .test-result {{
+                margin-top: 1rem;
+                padding: 1rem;
+                border-radius: 6px;
+                display: none;
+            }}
+            .test-result.success {{
+                background: rgba(16, 185, 129, 0.1);
+                border: 1px solid #10b981;
+                color: #10b981;
+            }}
+            .test-result.error {{
+                background: rgba(239, 68, 68, 0.1);
+                border: 1px solid #ef4444;
+                color: #ef4444;
+            }}
+            .info-box {{
+                background: rgba(59, 130, 246, 0.1);
+                border: 1px solid #3b82f6;
+                border-radius: 8px;
+                padding: 1rem;
+                margin-bottom: 1.5rem;
+            }}
+            .info-box strong {{
+                color: #60a5fa;
+                display: block;
+                margin-bottom: 0.5rem;
+            }}
+            .info-box ul {{
+                margin: 0.5rem 0 0 1.5rem;
+                color: #94a3b8;
+                line-height: 1.8;
+            }}
+            .status-badge {{
+                display: inline-block;
+                padding: 4px 12px;
+                border-radius: 12px;
+                font-size: 0.85rem;
+                font-weight: bold;
+            }}
+            .status-enabled {{
+                background: rgba(16, 185, 129, 0.2);
+                color: #10b981;
+            }}
+            .status-disabled {{
+                background: rgba(148, 163, 184, 0.2);
+                color: #94a3b8;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                <span class="case">case</span><span class="scope">Scope</span>
+                <div class="version-badge">{APP_VERSION}</div>
+            </div>
+            
+            {render_sidebar_menu('settings')}
+        </div>
+        <div class="main-content">
+            <div class="header">
+                <div class="case-title">⚙️ System Settings</div>
+                <div class="user-info">
+                    <span>Welcome, {current_user.username} ({current_user.role})</span>
+                    <a href="/logout" class="logout-btn">Logout</a>
+                </div>
+            </div>
+            <div class="content">
+                {flash_messages_html}
+                
+                <div class="settings-container">
+                    <form method="POST" action="/settings/save" id="settingsForm">
+                        <!-- DFIR-IRIS Integration Section -->
+                        <div class="settings-section">
+                            <h2>
+                                🔗 DFIR-IRIS Integration
+                                <span class="status-badge status-{'enabled' if settings['iris_enabled'] == 'true' else 'disabled'}" id="statusBadge">
+                                    {'ENABLED' if settings['iris_enabled'] == 'true' else 'DISABLED'}
+                                </span>
+                            </h2>
+                            <p class="description">
+                                Connect caseScope to your DFIR-IRIS incident response platform. This allows you to automatically share cases, indicators of compromise (IOCs), and timeline events with your team.
+                            </p>
+                            
+                            <div class="info-box">
+                                <strong>📚 What is DFIR-IRIS?</strong>
+                                <p style="color: #94a3b8; margin: 0.5rem 0;">
+                                    DFIR-IRIS is an incident response platform that helps teams collaborate on security investigations. 
+                                    When enabled, caseScope will send your findings to DFIR-IRIS so everyone on your team can see them.
+                                </p>
+                                <strong style="margin-top: 1rem;">✅ What gets shared:</strong>
+                                <ul>
+                                    <li>Case information (name, description, priority)</li>
+                                    <li>IOCs you've identified (suspicious IPs, domains, file hashes, etc.)</li>
+                                    <li>Events you've tagged for the timeline</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="form-group">
+                                <div class="checkbox-group" onclick="toggleCheckbox('iris_enabled')">
+                                    <input type="checkbox" id="iris_enabled" name="iris_enabled" value="true" {iris_enabled_checked} onchange="updateFormState()">
+                                    <label for="iris_enabled">
+                                        Enable DFIR-IRIS Integration
+                                        <span class="help-text">Turn this on to connect to DFIR-IRIS</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div id="irisSettings" style="{'display: block;' if settings['iris_enabled'] == 'true' else 'display: none;'}">
+                                <div class="form-group">
+                                    <label for="iris_url">
+                                        DFIR-IRIS Server URL
+                                    </label>
+                                    <input type="text" id="iris_url" name="iris_url" value="{iris_url_safe}" placeholder="https://iris.yourcompany.com">
+                                    <span class="help-text">
+                                        The web address of your DFIR-IRIS server (ask your IT team if you're not sure)
+                                    </span>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="iris_api_key">
+                                        API Key (Secret Token)
+                                    </label>
+                                    <input type="password" id="iris_api_key" name="iris_api_key" value="{iris_api_key_safe}" placeholder="Enter your API key">
+                                    <span class="help-text">
+                                        A secret code that lets caseScope connect to DFIR-IRIS. Get this from your DFIR-IRIS profile settings.
+                                    </span>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="iris_customer_id">
+                                        Customer ID (Organization Number)
+                                    </label>
+                                    <input type="number" id="iris_customer_id" name="iris_customer_id" value="{iris_customer_id_safe}" placeholder="1">
+                                    <span class="help-text">
+                                        The organization number in DFIR-IRIS (usually 1, but check with your team)
+                                    </span>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div class="checkbox-group" onclick="toggleCheckbox('iris_auto_sync')">
+                                        <input type="checkbox" id="iris_auto_sync" name="iris_auto_sync" value="true" {iris_auto_sync_checked}>
+                                        <label for="iris_auto_sync">
+                                            Automatic Sync
+                                            <span class="help-text">Automatically send new IOCs and tagged events to DFIR-IRIS (recommended)</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div class="button-group">
+                                    <button type="button" class="btn-test" onclick="testConnection()">
+                                        🔍 Test Connection
+                                    </button>
+                                </div>
+                                
+                                <div id="testResult" class="test-result"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="button-group">
+                            <button type="submit" class="btn-save">
+                                💾 Save Settings
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <script>
+            function toggleCheckbox(id) {{
+                const checkbox = document.getElementById(id);
+                checkbox.checked = !checkbox.checked;
+                if (id === 'iris_enabled') {{
+                    updateFormState();
+                }}
+            }}
+            
+            function updateFormState() {{
+                const enabled = document.getElementById('iris_enabled').checked;
+                const settings = document.getElementById('irisSettings');
+                const statusBadge = document.getElementById('statusBadge');
+                
+                if (enabled) {{
+                    settings.style.display = 'block';
+                    statusBadge.className = 'status-badge status-enabled';
+                    statusBadge.textContent = 'ENABLED';
+                }} else {{
+                    settings.style.display = 'none';
+                    statusBadge.className = 'status-badge status-disabled';
+                    statusBadge.textContent = 'DISABLED';
+                }}
+            }}
+            
+            function testConnection() {{
+                const resultDiv = document.getElementById('testResult');
+                const testBtn = event.target;
+                const url = document.getElementById('iris_url').value;
+                const apiKey = document.getElementById('iris_api_key').value;
+                
+                if (!url || !apiKey) {{
+                    resultDiv.className = 'test-result error';
+                    resultDiv.style.display = 'block';
+                    resultDiv.textContent = '⚠️ Please enter both URL and API Key first';
+                    return;
+                }}
+                
+                testBtn.disabled = true;
+                testBtn.textContent = '⏳ Testing...';
+                resultDiv.style.display = 'none';
+                
+                const formData = new FormData();
+                formData.append('iris_url', url);
+                formData.append('iris_api_key', apiKey);
+                
+                fetch('/settings/test-iris', {{
+                    method: 'POST',
+                    body: formData
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    resultDiv.className = 'test-result ' + (data.success ? 'success' : 'error');
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = '<strong>' + data.message + '</strong>';
+                    if (data.details) {{
+                        resultDiv.innerHTML += '<div style="margin-top: 0.5rem; font-size: 0.85rem;">' + data.details + '</div>';
+                    }}
+                }})
+                .catch(error => {{
+                    resultDiv.className = 'test-result error';
+                    resultDiv.style.display = 'block';
+                    resultDiv.textContent = '❌ Error: ' + error.message;
+                }})
+                .finally(() => {{
+                    testBtn.disabled = false;
+                    testBtn.textContent = '🔍 Test Connection';
                 }});
             }}
         </script>
