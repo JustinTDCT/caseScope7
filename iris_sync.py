@@ -364,9 +364,21 @@ class IrisSyncService:
                     # Build event title from tag type
                     event_title = f"[{event.tag_type}] Event {event.event_id[:8]}"
                     
-                    # Format timestamp for IRIS (must have microseconds)
+                    # Format timestamp for IRIS (must have exactly 6-digit microseconds, no timezone)
                     event_timestamp = event.event_timestamp
-                    if '.' not in event_timestamp:
+                    
+                    # Remove timezone indicators (Z, +00:00, etc.)
+                    event_timestamp = event_timestamp.replace('Z', '').split('+')[0].split('-')[0] if 'T' in event_timestamp else event_timestamp
+                    
+                    # Ensure exactly 6 digits for microseconds
+                    if '.' in event_timestamp:
+                        # Split into date/time and fractional seconds
+                        base_time, fractional = event_timestamp.rsplit('.', 1)
+                        # Pad or truncate to exactly 6 digits
+                        fractional = fractional.ljust(6, '0')[:6]
+                        event_timestamp = f"{base_time}.{fractional}"
+                    else:
+                        # No fractional seconds, add .000000
                         event_timestamp = event_timestamp + '.000000'
                     
                     # Check if event already exists in IRIS timeline
