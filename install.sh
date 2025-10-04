@@ -48,6 +48,18 @@ log_warning() {
     echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] WARNING:${NC} $1"
 }
 
+# Print section header with progress indicator
+print_section() {
+    local step=$1
+    local total=$2
+    local title=$3
+    echo
+    echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║${NC}  ${GREEN}Step $step/$total:${NC} $title"
+    echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo
+}
+
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
    log_error "This script must be run as root (use sudo)"
@@ -1544,22 +1556,40 @@ except Exception as e:
 
 # Main installation function
 main() {
-    log "Starting caseScope 7.2 installation..."
+    # Determine total steps based on install type
+    local TOTAL_STEPS=11
+    local CURRENT_STEP=0
+    
+    log "Starting caseScope installation..."
+    echo
     
     # Get installation choice
     get_choice
+    echo
     
     # CRITICAL: For clean install, cleanup MUST happen FIRST before any installation
     if [ "$INSTALL_TYPE" = "clean" ]; then
+        ((CURRENT_STEP++))
+        print_section $CURRENT_STEP $TOTAL_STEPS "Pre-Installation Cleanup"
         handle_existing_data  # This does the cleanup for clean installs
     fi
     
     # Run installation steps
+    ((CURRENT_STEP++))
+    print_section $CURRENT_STEP $TOTAL_STEPS "System Requirements Check"
     check_requirements
+    
+    ((CURRENT_STEP++))
+    print_section $CURRENT_STEP $TOTAL_STEPS "Installing System Dependencies"
     install_dependencies
+    
+    ((CURRENT_STEP++))
+    print_section $CURRENT_STEP $TOTAL_STEPS "Creating User & Directory Structure"
     create_user  # MUST create user before testing Chainsaw permissions
     
     # Chainsaw installation is CRITICAL - fail if it doesn't work
+    ((CURRENT_STEP++))
+    print_section $CURRENT_STEP $TOTAL_STEPS "Installing External Tools (Chainsaw & evtx_dump)"
     if ! install_chainsaw; then
         echo -e "${RED}╔══════════════════════════════════════════════════════════════╗${NC}"
         echo -e "${RED}║           CRITICAL: Chainsaw Installation Failed!          ║${NC}"
@@ -1584,11 +1614,13 @@ main() {
     
     # Handle data for upgrade/reindex (backup, not cleanup)
     if [ "$INSTALL_TYPE" != "clean" ]; then
+        ((CURRENT_STEP++))
+        print_section $CURRENT_STEP $TOTAL_STEPS "Backing Up Existing Data"
         handle_existing_data
     fi
     
-    create_directories
-    
+    ((CURRENT_STEP++))
+    print_section $CURRENT_STEP $TOTAL_STEPS "Setting Up OpenSearch"
     # Install or update OpenSearch based on install type
     if [ "$INSTALL_TYPE" = "clean" ]; then
         install_opensearch
@@ -1600,9 +1632,20 @@ main() {
         install_opensearch  # Will skip if already installed
     fi
     
+    ((CURRENT_STEP++))
+    print_section $CURRENT_STEP $TOTAL_STEPS "Deploying Application Files"
     copy_application
+    
+    ((CURRENT_STEP++))
+    print_section $CURRENT_STEP $TOTAL_STEPS "Configuring Python Environment"
     setup_python
+    
+    ((CURRENT_STEP++))
+    print_section $CURRENT_STEP $TOTAL_STEPS "Configuring System Services"
     configure_services
+    
+    ((CURRENT_STEP++))
+    print_section $CURRENT_STEP $TOTAL_STEPS "Initializing Database"
     initialize_database
     
     # Force database creation check before starting services
@@ -1646,6 +1689,8 @@ except Exception as e:
         return 1
     fi
     
+    ((CURRENT_STEP++))
+    print_section $CURRENT_STEP $TOTAL_STEPS "Starting & Verifying Services"
     start_services
     
     # Verify services are running
