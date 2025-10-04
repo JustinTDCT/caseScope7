@@ -1693,8 +1693,9 @@ def test_iris_connection():
         if not iris_url or not iris_api_key:
             return jsonify({'success': False, 'message': 'Please provide both URL and API Key'})
         
-        # Test connection by getting server info
-        test_url = f"{iris_url.rstrip('/')}/api/v1/ping"
+        # Test connection by listing cases (basic read operation)
+        # DFIR-IRIS doesn't have a /ping endpoint, so we use /manage/cases/list instead
+        test_url = f"{iris_url.rstrip('/')}/manage/cases/list"
         headers = {
             'Authorization': f'Bearer {iris_api_key}',
             'Content-Type': 'application/json'
