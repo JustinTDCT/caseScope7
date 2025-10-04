@@ -347,9 +347,17 @@ class IrisSyncService:
         
         try:
             # Get all tagged events for this case
-            tagged_events = db_session.query(EventTag).filter_by(case_id=case.id).all()
+            from sqlalchemy import select
+            tagged_events = db_session.execute(
+                select(EventTag).where(EventTag.case_id == case.id)
+            ).scalars().all()
             
-            logger.info(f"Found {len(tagged_events)} tagged events to sync")
+            logger.info(f"Found {len(tagged_events)} tagged events to sync for case ID {case.id}")
+            
+            # Debug: Log each tagged event
+            if tagged_events:
+                for evt in tagged_events:
+                    logger.debug(f"Tagged event: ID={evt.event_id[:12]}, timestamp={evt.event_timestamp}, type={evt.tag_type}")
             
             for event in tagged_events:
                 try:
