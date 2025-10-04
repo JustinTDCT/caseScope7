@@ -843,7 +843,7 @@ def case_dashboard():
     
     # SIGMA rules statistics
     total_sigma_rules = db.session.query(SigmaRule).count()
-    enabled_sigma_rules = db.session.query(SigmaRule).filter_by(enabled=True).count()
+    enabled_sigma_rules = db.session.query(SigmaRule).filter_by(is_enabled=True).count()
     
     # IOC statistics for this case
     total_iocs = db.session.query(IOC).filter_by(case_id=case.id).count()
@@ -3387,7 +3387,7 @@ def dashboard():
     
     # SIGMA Rules statistics
     total_sigma_rules = db.session.query(SigmaRule).count()
-    enabled_sigma_rules = db.session.query(SigmaRule).filter_by(enabled=True).count()
+    enabled_sigma_rules = db.session.query(SigmaRule).filter_by(is_enabled=True).count()
     latest_rule = db.session.query(SigmaRule).order_by(SigmaRule.created_at.desc()).first()
     last_rule_update = latest_rule.created_at.strftime('%Y-%m-%d') if latest_rule else 'Never'
     
