@@ -5,9 +5,11 @@ Implements the 4-step sync workflow: Company → Case → IOCs → Timeline
 """
 
 import logging
+import json
 from datetime import datetime
 from typing import Dict, List, Tuple
 from iris_client import IrisClient
+from opensearchpy import OpenSearch
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,16 @@ class IrisSyncService:
             iris_api_key: DFIR-IRIS API key
         """
         self.client = IrisClient(iris_url, iris_api_key)
+        
+        # Initialize OpenSearch client for querying event data
+        self.opensearch_client = OpenSearch(
+            hosts=[{'host': 'localhost', 'port': 9200}],
+            http_compress=True,
+            use_ssl=False,
+            verify_certs=False,
+            timeout=30
+        )
+        
         self.stats = {
             'companies_created': 0,
             'cases_created': 0,
@@ -361,11 +373,35 @@ class IrisSyncService:
             
             for event in tagged_events:
                 try:
-                    # Build event title from tag type
-                    event_title = f"[{event.tag_type}] Event {event.event_id[:8]}"
+                    # Query OpenSearch to get full event data
+                    try:
+                        os_event = self.opensearch_client.get(index=event.index_name, id=event.event_id)
+                        event_data = os_event['_source']
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch event from OpenSearch: {event.event_id}: {str(e)}")
+                        # Fall back to minimal data from EventTag
+                        event_data = {}
+                    
+                    # Extract Event Information (event_type field from OpenSearch)
+                    event_type = event_data.get('event_type', 'Unknown Event')
+                    event_title = event_type
+                    
+                    # Extract actual event timestamp from the event source
+                    # EVTX: System.TimeCreated.@SystemTime (try both dot and underscore notation)
+                    # NDJSON: @timestamp
+                    raw_timestamp = None
+                    if 'System.TimeCreated.@SystemTime' in event_data:
+                        raw_timestamp = event_data['System.TimeCreated.@SystemTime']
+                    elif 'System_TimeCreated_SystemTime' in event_data:
+                        raw_timestamp = event_data['System_TimeCreated_SystemTime']
+                    elif '@timestamp' in event_data:
+                        raw_timestamp = event_data['@timestamp']
+                    else:
+                        # Fall back to EventTag timestamp
+                        raw_timestamp = event.event_timestamp
                     
                     # Format timestamp for IRIS (must have exactly 6-digit microseconds, no timezone)
-                    event_timestamp = event.event_timestamp
+                    event_timestamp = str(raw_timestamp)
                     
                     # Replace space with T (for timestamps like "2025-08-21 22:19:53")
                     event_timestamp = event_timestamp.replace(' ', 'T', 1)
@@ -399,22 +435,57 @@ class IrisSyncService:
                         # No fractional seconds, add .000000
                         event_timestamp = event_timestamp + '.000000'
                     
+                    # Extract filename and computer for event source
+                    # Format: {filename}-{computer}
+                    filename = event_data.get('_casescope_metadata', {}).get('filename', 'Unknown')
+                    computer = event_data.get('System.Computer', event_data.get('System_Computer', 'Unknown'))
+                    event_source = f"{filename}-{computer}"
+                    
+                    # Get IOC matches for this event
+                    # Query IOCMatch table to find IOCs linked to this event
+                    from main import IOCMatch, IOC
+                    ioc_iris_ids = []
+                    try:
+                        ioc_matches = db_session.execute(
+                            select(IOCMatch).where(IOCMatch.event_id == event.event_id)
+                        ).scalars().all()
+                        
+                        # For each matched IOC, get the corresponding IRIS IOC ID
+                        # We need to query IRIS to get the IOC ID by value
+                        for match in ioc_matches:
+                            ioc = db_session.execute(
+                                select(IOC).where(IOC.id == match.ioc_id)
+                            ).scalar_one_or_none()
+                            
+                            if ioc:
+                                # Get IRIS IOCs for this case and find matching one
+                                iris_iocs = self.client.get_case_iocs(iris_case_id)
+                                for iris_ioc in iris_iocs:
+                                    if iris_ioc.get('ioc_value') == ioc.value:
+                                        ioc_iris_ids.append(iris_ioc.get('ioc_id'))
+                                        break
+                    except Exception as e:
+                        logger.warning(f"Failed to get IOC matches for event {event.event_id}: {str(e)}")
+                    
                     # Check if event already exists in IRIS timeline
-                    # timeline_event_exists uses event_date field from API response
                     if self.client.timeline_event_exists(iris_case_id, event_timestamp, event_title):
                         logger.debug(f"Timeline event already exists: {event_title}")
                         skipped += 1
                         continue
                     
-                    # Build event content (use single newlines, not escaped)
-                    event_content = f"Tagged event from caseScope\n\n"
-                    event_content += f"Event ID: {event.event_id}\n"
+                    # Build event description (first line: "Synced from caseScope")
+                    event_content = "Synced from caseScope\n\n"
                     event_content += f"Tag Type: {event.tag_type}\n"
-                    event_content += f"Color: {event.color}\n"
+                    event_content += f"Tag Color: {event.color}\n"
                     if event.notes:
-                        event_content += f"\nNotes:\n{event.notes}\n"
+                        event_content += f"\nAnalyst Notes:\n{event.notes}\n"
                     event_content += f"\nTagged by: {event.tagged_by}\n"
+                    event_content += f"Tagged at: {event.tagged_at}\n"
+                    event_content += f"Event ID: {event.event_id}\n"
                     event_content += f"Index: {event.index_name}"
+                    
+                    # Prepare raw event data (full JSON)
+                    event_raw = json.dumps(event_data, indent=2, default=str)
                     
                     # Add to IRIS timeline
                     self.client.add_timeline_event(
@@ -422,7 +493,10 @@ class IrisSyncService:
                         event_title=event_title,
                         event_date=event_timestamp,
                         event_content=event_content,
-                        event_source="caseScope"
+                        event_source=event_source,
+                        event_raw=event_raw,
+                        event_iocs=ioc_iris_ids,
+                        event_in_summary=True
                     )
                     
                     logger.debug(f"Synced timeline event: {event_title}")

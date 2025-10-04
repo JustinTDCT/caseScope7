@@ -387,7 +387,8 @@ class IrisClient:
     
     def add_timeline_event(self, case_id: int, event_title: str, event_date: str,
                           event_content: str = "", event_source: str = "caseScope",
-                          event_category: int = 1) -> Dict[str, Any]:
+                          event_category: int = 1, event_raw: str = "", 
+                          event_iocs: List[int] = None, event_in_summary: bool = True) -> Dict[str, Any]:
         """
         Add event to case timeline
         
@@ -398,6 +399,9 @@ class IrisClient:
             event_content: Event description/details
             event_source: Event source (default: caseScope)
             event_category: Event category ID (default: 1)
+            event_raw: Raw event data (full JSON/NDJSON)
+            event_iocs: List of IRIS IOC IDs to link to this event
+            event_in_summary: Whether event should appear in summary (default: True)
             
         Returns:
             Created timeline event object
@@ -419,9 +423,14 @@ class IrisClient:
             'event_source': event_source,
             'event_category_id': event_category,
             'event_assets': [],  # Required field
-            'event_iocs': [],    # Required field
+            'event_iocs': event_iocs or [],  # Link to IOCs in IRIS
+            'event_in_summary': event_in_summary,  # Add to summary by default
             'cid': case_id
         }
+        
+        # Add raw event data if provided
+        if event_raw:
+            data['event_raw'] = event_raw
         
         response = self._request('POST', '/case/timeline/events/add', json=data)
         return response.get('data', {})
