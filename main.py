@@ -1628,13 +1628,13 @@ def system_settings():
         flash('Access denied. Administrator privileges required.', 'error')
         return redirect(url_for('dashboard'))
     
-    # Get current settings or defaults
+    # Get current settings or defaults (use proper types for defaults)
     settings = {
-        'iris_enabled': get_setting('iris_enabled', 'false'),
+        'iris_enabled': get_setting('iris_enabled', False),
         'iris_url': get_setting('iris_url', ''),
         'iris_api_key': get_setting('iris_api_key', ''),
-        'iris_customer_id': get_setting('iris_customer_id', '1'),
-        'iris_auto_sync': get_setting('iris_auto_sync', 'false'),
+        'iris_customer_id': get_setting('iris_customer_id', 1),
+        'iris_auto_sync': get_setting('iris_auto_sync', False),
     }
     
     return render_system_settings(settings)
@@ -2070,8 +2070,8 @@ def iris_sync_case():
         return jsonify({'success': False, 'message': 'Case not found'})
     
     # Check if IRIS integration is enabled
-    iris_enabled = get_setting('iris_enabled', 'false')
-    if iris_enabled != 'true':
+    iris_enabled = get_setting('iris_enabled', False)
+    if not iris_enabled:
         return jsonify({'success': False, 'message': 'DFIR-IRIS integration is not enabled. Configure it in System Settings.'})
     
     # Get IRIS settings
