@@ -1,9 +1,10 @@
 {
-  "version": "7.15.5",
+  "version": "7.15.6",
   "release_date": "2025-10-03",
-  "description": "Bugfix - Fixed IOC Matches Migration Database Path: FIXED migrate_ioc_matches.py looking for database at wrong location (/opt/casescope/casescope.db instead of /opt/casescope/data/casescope.db); migration was failing with 'Database not found' error during option 2/3 upgrades; now correctly locates database in data/ subdirectory matching application configuration; IMPACT: IOC matches migration now runs successfully on all installation types; source_filename column added properly; matched field detection and Event Date column improvements now fully deployed",
+  "description": "Critical Bugfix - Fixed IOC Hunting Field Extraction: FIXED event_timestamp and source_filename extraction not working because code only checked underscore notation but flatten_event creates DOT notation fields; event_timestamp extraction was checking 'System_TimeCreated_@SystemTime' but actual indexed field is 'System.TimeCreated.@SystemTime'; source_filename was checking '_casescope_metadata_filename' but actual field is '_casescope_metadata.filename'; SOLUTION: added all three field notations (dot/nested/underscore) to extraction code with proper fallback order; added timestamp cleanup to remove microseconds and timezone for clean display; CREATED clear_ioc_matches.py utility script allowing analysts to delete old matches and re-hunt with fixed code; IMPACT: new IOC hunts correctly populate Event Time, Source File, Event Date, and Matched Field columns; existing matches from before fix show N/A/Unknown (run utility script to clear and re-hunt)",
   "build": "production",
   "changelog": {
+    "7.15.6": "Critical Bugfix - Fixed IOC field extraction for timestamp/filename by adding dot notation support",
     "7.15.5": "Bugfix - Fixed IOC matches migration database path from /opt/casescope/ to /opt/casescope/data/",
     "7.15.4": "Enhancement - Added source filename column, improved matched field detection, changed Detected to Event Date",
     "7.15.3": "Critical Bugfix - Fixed IOC hunting missing values in nested fields by adding wildcard ALL-field query",
