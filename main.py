@@ -306,7 +306,7 @@ class IOC(db.Model):
     case_id = db.Column(db.Integer, db.ForeignKey('case.id'), nullable=False)
     
     # IOC Details
-    ioc_type = db.Column(db.String(50), nullable=False)  # ip, domain, fqdn, hostname, username, hash_md5, hash_sha1, hash_sha256, command, filename, process_name, registry_key, email, url
+    ioc_type = db.Column(db.String(50), nullable=False)  # ip, domain, fqdn, hostname, username, hash_md5, hash_sha1, hash_sha256, command, filename, process_name, malware_name, registry_key, email, url
     ioc_value = db.Column(db.String(1000), nullable=False)  # The actual indicator value
     ioc_value_normalized = db.Column(db.String(1000))  # Lowercase/normalized for matching
     
