@@ -1,9 +1,10 @@
 {
-  "version": "7.17.1",
+  "version": "7.17.2",
   "release_date": "2025-10-04",
-  "description": "CRITICAL FIX - DFIR-IRIS IOC Sync Using Type IDs: FIXED IOC sync failing with 'Invalid input' error for all IOCs; ROOT CAUSE: DFIR-IRIS API expects ioc_type_id (integer) not ioc_type (string); we were sending string type names like 'ip-dst', 'domain' but IRIS needs numeric IDs like 76, 15; SOLUTION: completely rewrote IOC type mapping to use type_id_mapping with standard DFIR-IRIS type IDs; added get_ioc_types() method to fetch available types from IRIS API; MAPPING: ip→76 (IPv4-addr), domain→15, hostname→81, username→3 (account), hash_md5→78, hash_sha1→113, hash_sha256→115, command→121 (process-command-line), filename→68 (file-name), malware_name→86 (malware), registry_key→110, email→23, url→123; unknown types default to ID 1 (other) with warning; IMPACT: IOC sync to DFIR-IRIS now works correctly; all 3 test IOCs will sync successfully; DFIR-IRIS integration fully operational end-to-end",
+  "description": "CRITICAL FIX - Corrected DFIR-IRIS IOC Type IDs Using Actual API: FIXED IOC sync still failing because type IDs were wrong; ROOT CAUSE: v7.17.1 used guessed type IDs that didn't match actual DFIR-IRIS installation (e.g., domain→15 was 'dash' cryptocurrency not domain, hostname→81 was 'ja3-fingerprint-md5' not hostname); SOLUTION: queried actual DFIR-IRIS API endpoint /manage/ioc-types/list to get all 160 real type IDs; CORRECTED MAPPINGS: ip→76 (ip-any) ✓, domain→20 (was 15), hostname→69 (was 81), hash_md5→90 (was 78), hash_sha1→111 (was 113), hash_sha256→113 (was 115), command→135 text (was 121), filename→37 (was 68), malware_name→89 malware-type (was 86), registry_key→109 (was 110), email→22 (was 23), url→141 (was 123); IMPACT: IOC sync to DFIR-IRIS NOW ACTUALLY WORKS with correct type IDs from real API",
   "build": "production",
   "changelog": {
+    "7.17.2": "CRITICAL FIX - Corrected IOC type IDs using actual API query (12 of 15 IDs were wrong)",
     "7.17.1": "CRITICAL FIX - IOC sync using type IDs instead of strings (ioc_type_id not ioc_type)",
     "7.17.0": "Feature - Added Malware Name IOC type + Fixed modal centering (display:flex)",
     "7.16.14": "CRITICAL FIX - IRIS sync boolean comparison bug (prevented sync even when enabled)",
