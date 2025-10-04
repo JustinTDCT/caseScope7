@@ -1,9 +1,10 @@
 {
-  "version": "7.17.2",
+  "version": "7.17.3",
   "release_date": "2025-10-04",
-  "description": "CRITICAL FIX - Corrected DFIR-IRIS IOC Type IDs Using Actual API: FIXED IOC sync still failing because type IDs were wrong; ROOT CAUSE: v7.17.1 used guessed type IDs that didn't match actual DFIR-IRIS installation (e.g., domain→15 was 'dash' cryptocurrency not domain, hostname→81 was 'ja3-fingerprint-md5' not hostname); SOLUTION: queried actual DFIR-IRIS API endpoint /manage/ioc-types/list to get all 160 real type IDs; CORRECTED MAPPINGS: ip→76 (ip-any) ✓, domain→20 (was 15), hostname→69 (was 81), hash_md5→90 (was 78), hash_sha1→111 (was 113), hash_sha256→113 (was 115), command→135 text (was 121), filename→37 (was 68), malware_name→89 malware-type (was 86), registry_key→109 (was 110), email→22 (was 23), url→141 (was 123); IMPACT: IOC sync to DFIR-IRIS NOW ACTUALLY WORKS with correct type IDs from real API",
+  "description": "CRITICAL FIX - Complete DFIR-IRIS API Integration Correction: FIXED 5 MAJOR API BUGS after comprehensive testing against real DFIR-IRIS system; (1) ioc_exists() was checking ioc_type as dict with .get('type_name') but API returns it as plain string - fixed to check ioc.get('ioc_type') directly; (2) Timeline endpoint wrong: was /case/timeline/add, corrected to /case/timeline/events/add; (3) Timeline event_date format wrong: IRIS requires microseconds YYYY-MM-DDTHH:MM:SS.mmmmmm, added auto-formatting to append .000000 if missing; (4) Timeline missing required fields: added event_tz (+00:00), event_assets ([]), event_iocs ([]); (5) IOC duplicate check failing because type name mismatch - added type_name_mapping to convert caseScope types (ip, username, filename) to IRIS type names (ip-any, account, filename); TESTED: Successfully added timeline event and IOCs to case 7; VERIFIED: All API endpoints working with real system; IMPACT: DFIR-IRIS sync NOW FULLY FUNCTIONAL end-to-end",
   "build": "production",
   "changelog": {
+    "7.17.3": "CRITICAL FIX - 5 major API bugs fixed (ioc_exists, timeline endpoint, date format, required fields, type mapping)",
     "7.17.2": "CRITICAL FIX - Corrected IOC type IDs using actual API query (12 of 15 IDs were wrong)",
     "7.17.1": "CRITICAL FIX - IOC sync using type IDs instead of strings (ioc_type_id not ioc_type)",
     "7.17.0": "Feature - Added Malware Name IOC type + Fixed modal centering (display:flex)",
