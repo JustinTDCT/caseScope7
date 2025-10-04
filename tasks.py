@@ -602,7 +602,9 @@ def index_evtx_file(self, file_id):
             logger.info(f"INDEXING COMPLETED: {event_count:,} events indexed from {case_file.original_filename}")
             logger.info("="*80)
             
-            # Queue SIGMA rule processing
+            # Queue SIGMA rule processing for EVTX files only
+            # SIGMA rules are Windows Event Log specific and don't apply to NDJSON/EDR data
+            logger.info("Queueing SIGMA rule processing for EVTX file...")
             process_sigma_rules.delay(file_id, index_name)
             
             # Calculate task duration
@@ -710,6 +712,18 @@ def process_sigma_rules(self, file_id, index_name):
             
             logger.info(f"Processing rules for case: {case.name}")
             
+            # SIGMA rules only work on Windows Event Logs (EVTX format)
+            # Skip SIGMA processing for NDJSON/EDR files
+            if case_file.original_filename.lower().endswith('.ndjson'):
+                logger.warning("="*80)
+                logger.warning(f"SKIPPING SIGMA PROCESSING: File is NDJSON (EDR data)")
+                logger.warning(f"SIGMA rules are Windows Event Log specific")
+                logger.warning(f"File: {case_file.original_filename}")
+                logger.warning("="*80)
+                case_file.indexing_status = 'Completed'
+                db.session.commit()
+                return {'status': 'success', 'message': 'SIGMA skipped for NDJSON file', 'violations': 0}
+            
             # Get all enabled SIGMA rules
             logger.info("Querying for enabled SIGMA rules...")
             enabled_rules = db.session.query(SigmaRule).filter_by(is_enabled=True).all()
@@ -726,6 +740,8 @@ def process_sigma_rules(self, file_id, index_name):
             # Verify EVTX file exists
             if not os.path.exists(case_file.file_path):
                 logger.error(f"EVTX file not found: {case_file.file_path}")
+                case_file.indexing_status = 'Completed'  # Mark as complete even if file missing
+                db.session.commit()
                 return {'status': 'error', 'message': f'EVTX file not found: {case_file.file_path}'}
             
             logger.info(f"EVTX file path: {case_file.file_path}")
@@ -1364,6 +1380,7 @@ def index_ndjson_file(self, file_id):
             case_file.estimated_event_count = total_events
             case_file.indexing_status = 'Completed'
             case_file.is_indexed = True
+            case_file.indexed_at = datetime.utcnow()
             db.session.commit()
             
             elapsed_time = time.time() - task_start_time
@@ -1372,6 +1389,7 @@ def index_ndjson_file(self, file_id):
             logger.info(f"Total events parsed: {total_events:,}")
             logger.info(f"Successfully indexed: {indexed_events:,}")
             logger.info(f"Elapsed time: {elapsed_time:.2f} seconds")
+            logger.info(f"NOTE: SIGMA rules NOT run (NDJSON files are EDR data, not Windows Event Logs)")
             logger.info("="*80)
             
             return {
