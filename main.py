@@ -4048,9 +4048,9 @@ def render_system_settings(settings):
         </div>
         '''
     
-    # Checkbox states
-    iris_enabled_checked = 'checked' if settings['iris_enabled'] == 'true' else ''
-    iris_auto_sync_checked = 'checked' if settings['iris_auto_sync'] == 'true' else ''
+    # Checkbox states (get_setting returns boolean True/False, not string 'true'/'false')
+    iris_enabled_checked = 'checked' if settings['iris_enabled'] else ''
+    iris_auto_sync_checked = 'checked' if settings['iris_auto_sync'] else ''
     
     # Escape values (convert to string first in case of integers/booleans)
     iris_url_safe = html.escape(str(settings['iris_url']), quote=True)
@@ -4273,8 +4273,8 @@ def render_system_settings(settings):
                         <div class="settings-section">
                             <h2>
                                 🔗 DFIR-IRIS Integration
-                                <span class="status-badge status-{'enabled' if settings['iris_enabled'] == 'true' else 'disabled'}" id="statusBadge">
-                                    {'ENABLED' if settings['iris_enabled'] == 'true' else 'DISABLED'}
+                                <span class="status-badge status-{'enabled' if settings['iris_enabled'] else 'disabled'}" id="statusBadge">
+                                    {'ENABLED' if settings['iris_enabled'] else 'DISABLED'}
                                 </span>
                             </h2>
                             <p class="description">
@@ -4306,7 +4306,7 @@ def render_system_settings(settings):
                                 </div>
                             </div>
                             
-                            <div id="irisSettings" style="{'display: block;' if settings['iris_enabled'] == 'true' else 'display: none;'}">
+                            <div id="irisSettings" style="{'display: block;' if settings['iris_enabled'] else 'display: none;'}">
                                 <div class="form-group">
                                     <label for="iris_url">
                                         DFIR-IRIS Server URL
