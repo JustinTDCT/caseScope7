@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# caseScope 7.1 Installation Script
+# caseScope 7.x Installation Script
 # Copyright (c) 2025 Justin Dube <casescope@thedubes.net>
 
 set -e
@@ -69,15 +69,13 @@ VERSION=$(get_version)
 clear
 echo -e "${BLUE}"
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║                    caseScope 7.1 Installer                  ║"
+echo "║                    caseScope $VERSION Installer                  ║"
 echo "║              Digital Forensics Case Management               ║"
 echo "║                                                              ║"
 echo "║              Copyright (c) 2025 Justin Dube                 ║"
 echo "║                casescope@thedubes.net                       ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
-echo
-echo -e "Version: ${GREEN}$VERSION${NC}"
 echo
 
 # Installation menu
@@ -1704,7 +1702,7 @@ except Exception as e:
         echo -e "${GREEN}║                 Installation Complete!                      ║${NC}"
         echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
         echo
-        echo -e "caseScope 7.1 is now installed and running!"
+        echo -e "caseScope ${VERSION} is now installed and running!"
         echo
         echo -e "${BLUE}Access Information:${NC}"
         echo -e "URL: ${GREEN}http://$(hostname -I | awk '{print $1}')${NC}"
