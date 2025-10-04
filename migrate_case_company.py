@@ -21,8 +21,8 @@ def migrate_case_company():
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # Check if columns already exist
-        cursor.execute("PRAGMA table_info(case)")
+        # Check if columns already exist (use quotes around 'case' - it's a reserved keyword)
+        cursor.execute('PRAGMA table_info("case")')
         columns = [col[1] for col in cursor.fetchall()]
         
         fields_to_add = []
@@ -46,13 +46,13 @@ def migrate_case_company():
         
         print(f"Adding {len(fields_to_add)} column(s) to case table...")
         
-        # Add each column
+        # Add each column (quote 'case' table name - it's a reserved SQL keyword)
         for col_name, col_type, description in fields_to_add:
             print(f"  Adding column '{col_name}' ({description})...")
-            cursor.execute(f"""
-                ALTER TABLE case 
+            cursor.execute(f'''
+                ALTER TABLE "case" 
                 ADD COLUMN {col_name} {col_type}
-            """)
+            ''')
             print(f"  ✓ Column '{col_name}' added")
         
         conn.commit()
