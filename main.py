@@ -2401,7 +2401,7 @@ def search():
     elif ioc_filter:
         # Coming from IOC link - search for that IOC value
         query_str = ioc_filter
-        threat_filter = 'ioc'  # Show only IOC matches
+        threat_filter = 'none'  # Search all events containing this IOC value
         # Restore time filter from session
         time_range = session.get('search_time_range', 'all')
         custom_start = session.get('search_custom_start')
