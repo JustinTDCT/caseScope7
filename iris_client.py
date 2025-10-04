@@ -260,14 +260,14 @@ class IrisClient:
         response = self._request('GET', f'/case/ioc/list?cid={case_id}')
         return response.get('data', {}).get('ioc', [])
     
-    def ioc_exists(self, case_id: int, ioc_value: str, ioc_type: str) -> bool:
+    def ioc_exists(self, case_id: int, ioc_value: str, ioc_type_name: str) -> bool:
         """
         Check if IOC already exists in case
         
         Args:
             case_id: IRIS case ID
             ioc_value: IOC value to check
-            ioc_type: IOC type
+            ioc_type_name: IOC type name (e.g., 'ip-any', 'account', 'filename')
             
         Returns:
             True if IOC exists, False otherwise
@@ -275,8 +275,9 @@ class IrisClient:
         iocs = self.get_case_iocs(case_id)
         
         for ioc in iocs:
+            # ioc_type is returned as a string directly, not an object
             if (ioc.get('ioc_value') == ioc_value and 
-                ioc.get('ioc_type', {}).get('type_name') == ioc_type):
+                ioc.get('ioc_type') == ioc_type_name):
                 return True
         
         return False
@@ -359,7 +360,7 @@ class IrisClient:
         Returns:
             List of timeline event objects
         """
-        response = self._request('GET', f'/case/timeline/list?cid={case_id}')
+        response = self._request('GET', f'/case/timeline/events/list?cid={case_id}')
         return response.get('data', {}).get('timeline', [])
     
     def timeline_event_exists(self, case_id: int, event_timestamp: str, 
@@ -393,7 +394,7 @@ class IrisClient:
         Args:
             case_id: IRIS case ID
             event_title: Event title/summary
-            event_date: Event timestamp (ISO format)
+            event_date: Event timestamp (must include microseconds: YYYY-MM-DDTHH:MM:SS.mmmmmm)
             event_content: Event description/details
             event_source: Event source (default: caseScope)
             event_category: Event category ID (default: 1)
@@ -401,16 +402,28 @@ class IrisClient:
         Returns:
             Created timeline event object
         """
+        # Ensure event_date has microseconds format: YYYY-MM-DDTHH:MM:SS.mmmmmm
+        if '.' not in event_date:
+            # Add .000000 if no microseconds present
+            if 'T' in event_date:
+                event_date = event_date + '.000000'
+            else:
+                # If it's just a date, add time and microseconds
+                event_date = event_date + 'T00:00:00.000000'
+        
         data = {
             'event_title': event_title,
             'event_date': event_date,
+            'event_tz': '+00:00',  # UTC timezone
             'event_content': event_content or 'Tagged event from caseScope',
             'event_source': event_source,
             'event_category_id': event_category,
+            'event_assets': [],  # Required field
+            'event_iocs': [],    # Required field
             'cid': case_id
         }
         
-        response = self._request('POST', '/case/timeline/add', json=data)
+        response = self._request('POST', '/case/timeline/events/add', json=data)
         return response.get('data', {})
     
     # ============================================================================

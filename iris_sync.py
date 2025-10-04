@@ -218,6 +218,25 @@ class IrisSyncService:
         """
         from main import IOC  # Import here to avoid circular imports
         
+        # Map caseScope IOC types to IRIS IOC type names (for ioc_exists check)
+        type_name_mapping = {
+            'ip': 'ip-any',
+            'domain': 'domain',
+            'fqdn': 'domain',
+            'hostname': 'hostname',
+            'username': 'account',
+            'hash_md5': 'md5',
+            'hash_sha1': 'sha1',
+            'hash_sha256': 'sha256',
+            'command': 'text',
+            'filename': 'filename',
+            'process_name': 'filename',
+            'malware_name': 'malware-type',
+            'registry_key': 'regkey',
+            'email': 'email',
+            'url': 'url'
+        }
+        
         synced = 0
         skipped = 0
         
@@ -229,8 +248,11 @@ class IrisSyncService:
             
             for ioc in iocs:
                 try:
+                    # Get IRIS type name for existence check
+                    iris_type_name = type_name_mapping.get(ioc.ioc_type, 'other')
+                    
                     # Check if IOC already exists in IRIS case
-                    if self.client.ioc_exists(iris_case_id, ioc.ioc_value, ioc.ioc_type):
+                    if self.client.ioc_exists(iris_case_id, ioc.ioc_value, iris_type_name):
                         logger.debug(f"IOC already exists: {ioc.ioc_type}={ioc.ioc_value}")
                         skipped += 1
                         continue
@@ -239,7 +261,7 @@ class IrisSyncService:
                     self.client.add_ioc(
                         case_id=iris_case_id,
                         ioc_value=ioc.ioc_value,
-                        ioc_type=ioc.ioc_type,
+                        ioc_type=ioc.ioc_type,  # add_ioc handles type mapping to type_id
                         ioc_description=ioc.notes or f"IOC synced from caseScope - Matches: {ioc.match_count}",
                         ioc_tags=f"casescope,priority-{case.priority.lower()}"
                     )
@@ -290,27 +312,33 @@ class IrisSyncService:
                     # Build event title from tag type
                     event_title = f"[{event.tag_type}] Event {event.event_id[:8]}"
                     
+                    # Format timestamp for IRIS (must have microseconds)
+                    event_timestamp = event.event_timestamp
+                    if '.' not in event_timestamp:
+                        event_timestamp = event_timestamp + '.000000'
+                    
                     # Check if event already exists in IRIS timeline
-                    if self.client.timeline_event_exists(iris_case_id, event.event_timestamp, event_title):
+                    # timeline_event_exists uses event_date field from API response
+                    if self.client.timeline_event_exists(iris_case_id, event_timestamp, event_title):
                         logger.debug(f"Timeline event already exists: {event_title}")
                         skipped += 1
                         continue
                     
-                    # Build event content
-                    event_content = f"Tagged event from caseScope\\n\\n"
-                    event_content += f"Event ID: {event.event_id}\\n"
-                    event_content += f"Tag Type: {event.tag_type}\\n"
-                    event_content += f"Color: {event.color}\\n"
+                    # Build event content (use single newlines, not escaped)
+                    event_content = f"Tagged event from caseScope\n\n"
+                    event_content += f"Event ID: {event.event_id}\n"
+                    event_content += f"Tag Type: {event.tag_type}\n"
+                    event_content += f"Color: {event.color}\n"
                     if event.notes:
-                        event_content += f"\\nNotes:\\n{event.notes}\\n"
-                    event_content += f"\\nTagged by: {event.tagged_by}\\n"
+                        event_content += f"\nNotes:\n{event.notes}\n"
+                    event_content += f"\nTagged by: {event.tagged_by}\n"
                     event_content += f"Index: {event.index_name}"
                     
                     # Add to IRIS timeline
                     self.client.add_timeline_event(
                         case_id=iris_case_id,
                         event_title=event_title,
-                        event_date=event.event_timestamp,
+                        event_date=event_timestamp,
                         event_content=event_content,
                         event_source="caseScope"
                     )
