@@ -1,9 +1,10 @@
 {
-  "version": "7.16.10",
+  "version": "7.16.11",
   "release_date": "2025-10-04",
-  "description": "Bugfix - Fixed Checkbox Interaction and Form Submission: FIXED checkboxes not responding to direct clicks and state not persisting after save; ROOT CAUSE 1: clicking checkbox triggered both native click event AND parent div onclick handler causing double-toggle (appears broken); ROOT CAUSE 2: HTML unchecked checkboxes don't send values in form submission so server always received 'false' default; SOLUTION 1: added event.stopPropagation() to checkbox onclick to prevent event bubbling and double-toggle; SOLUTION 2: added form submit handler that temporarily checks unchecked checkboxes and sets their value to 'false' ensuring proper submission; IMPACT: both Enable DFIR-IRIS Integration and Automatic Sync checkboxes now work correctly; direct checkbox clicks work; tile area clicks work; settings save with correct enabled/disabled state; System Settings page fully functional",
+  "description": "Complete Rewrite - Checkbox Handling Logic: COMPLETE REWRITE of checkbox interaction system after v7.16.10 approach didn't work; NEW APPROACH: cleaner, simpler event handling; SOLUTION 1: modified toggleCheckbox(id, event) to accept event parameter and check event.target.tagName - if target is INPUT or LABEL, function returns early (those elements handle clicks natively); SOLUTION 2: added hidden input fields with value='false' before each checkbox - HTML form submission sends hidden input value if checkbox unchecked, checkbox value='true' overrides if checked; REMOVED: event.stopPropagation() calls (not needed with target checking); REMOVED: complex form submission handler (not needed with hidden inputs); ADDED: updateFormState() call on page load for correct initial display; HOW IT WORKS: clicking checkbox directly = native behavior works; clicking label = native behavior clicks checkbox; clicking div background = toggleCheckbox checks target, only toggles if not INPUT/LABEL; IMPACT: both checkboxes now work correctly with clean predictable behavior",
   "build": "production",
   "changelog": {
+    "7.16.11": "Complete Rewrite - Simplified checkbox handling with event.target checking + hidden inputs",
     "7.16.10": "Bugfix - Fixed checkbox clicks and form submission (event.stopPropagation + submit handler)",
     "7.16.9": "Bugfix - Fixed AttributeError when loading System Settings page (int→str conversion for html.escape)",
     "7.16.8": "Critical Bugfix - Fixed 500 error saving settings by migrating to SQLAlchemy 2.0 syntax",
