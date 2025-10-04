@@ -6159,6 +6159,11 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
         # Status badge
         status_badge = '<span style="color: #4caf50;">✓ Active</span>' if ioc.is_active else '<span style="color: #757575;">✗ Inactive</span>'
         
+        # Escape values for HTML (must be done before using in match_badge)
+        import html
+        ioc_value_safe = html.escape(ioc.ioc_value, quote=True)
+        description_safe = html.escape(ioc.description or 'No description', quote=True)
+        
         # Match count badge (clickable if there are matches)
         if ioc.match_count > 0:
             match_badge = f'<a href="/search?ioc={ioc_value_safe}" style="color: #fbbf24; font-weight: bold; text-decoration: none; cursor: pointer;" title="View {ioc.match_count} matching events">🎯 {ioc.match_count}</a>'
@@ -6167,11 +6172,6 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
         
         # Last hunted info
         last_hunted = ioc.last_hunted.strftime('%Y-%m-%d %H:%M') if ioc.last_hunted else 'Never'
-        
-        # Escape values for HTML
-        import html
-        ioc_value_safe = html.escape(ioc.ioc_value, quote=True)
-        description_safe = html.escape(ioc.description or 'No description', quote=True)
         
         iocs_html += f'''
         <tr>
