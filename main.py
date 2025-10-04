@@ -166,6 +166,12 @@ class Case(db.Model):
     closed_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     template_id = db.Column(db.Integer, db.ForeignKey('case_template.id'))
     tags = db.Column(db.String(500))  # Comma-separated tags
+    company = db.Column(db.String(200))  # Company/Customer name for DFIR-IRIS
+    
+    # DFIR-IRIS Integration Fields
+    iris_company_id = db.Column(db.Integer)  # DFIR-IRIS company ID
+    iris_case_id = db.Column(db.Integer)  # DFIR-IRIS case ID
+    iris_synced_at = db.Column(db.DateTime)  # Last sync timestamp
     
     # Relationships
     creator = db.relationship('User', foreign_keys=[created_by], backref='created_cases')
@@ -486,6 +492,7 @@ def create_case():
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         description = request.form.get('description', '').strip()
+        company = request.form.get('company', '').strip()
         priority = request.form.get('priority', 'Medium')
         tags = request.form.get('tags', '').strip()
         template_id = request.form.get('template_id')
@@ -502,6 +509,7 @@ def create_case():
                 new_case = Case(
                     name=name,
                     description=description,
+                    company=company if company else None,
                     case_number=case_number,
                     priority=priority,
                     tags=tags,
@@ -568,6 +576,7 @@ def edit_case(case_id):
             # Update case details
             case.name = request.form.get('name', '').strip()
             case.description = request.form.get('description', '').strip()
+            case.company = request.form.get('company', '').strip() or None
             case.priority = request.form.get('priority', 'Medium')
             case.status = request.form.get('status', 'Open')
             case.tags = request.form.get('tags', '').strip()
@@ -6386,6 +6395,11 @@ def render_case_form(users=None):
                     <textarea id="description" name="description" placeholder="Enter case description (optional)"></textarea>
                 </div>
                 <div class="form-group">
+                    <label for="company">Company/Customer Name</label>
+                    <input type="text" id="company" name="company" placeholder="e.g., Acme Corporation, City Police Department">
+                    <small style="color: #94a3b8; display: block; margin-top: 0.3rem;">Used for DFIR-IRIS integration (optional)</small>
+                </div>
+                <div class="form-group">
                     <label for="priority">Priority</label>
                     <select id="priority" name="priority">
                         <option value="Low">Low</option>
@@ -7191,6 +7205,11 @@ def render_edit_case(case, users):
                     <div class="form-group">
                         <label for="description">Description</label>
                         <textarea id="description" name="description">{html.escape(case.description or '')}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="company">Company/Customer Name</label>
+                        <input type="text" id="company" name="company" value="{html.escape(case.company or '')}" placeholder="e.g., Acme Corporation, City Police Department">
+                        <small style="color: #94a3b8; display: block; margin-top: 0.3rem;">Used for DFIR-IRIS integration (optional)</small>
                     </div>
                     <div class="form-group">
                         <label for="priority">Priority</label>
