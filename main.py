@@ -409,8 +409,11 @@ def log_audit(action, category, details=None, success=True, username=None):
 
 # System Settings Helper Functions
 def get_setting(key, default=None):
-    """Get a system setting value"""
-    setting = db.session.query(SystemSettings).filter_by(setting_key=key).first()
+    """Get a system setting value (SQLAlchemy 2.0)"""
+    from sqlalchemy import select
+    stmt = select(SystemSettings).where(SystemSettings.setting_key == key)
+    setting = db.session.execute(stmt).scalar_one_or_none()
+    
     if not setting:
         return default
     
@@ -432,8 +435,11 @@ def get_setting(key, default=None):
         return setting.setting_value
 
 def set_setting(key, value, setting_type='string', description=None):
-    """Set a system setting value"""
-    setting = db.session.query(SystemSettings).filter_by(setting_key=key).first()
+    """Set a system setting value (SQLAlchemy 2.0)"""
+    from sqlalchemy import select
+    
+    stmt = select(SystemSettings).where(SystemSettings.setting_key == key)
+    setting = db.session.execute(stmt).scalar_one_or_none()
     
     if not setting:
         setting = SystemSettings(setting_key=key)
