@@ -2379,6 +2379,8 @@ def search():
     
     # Check for IOC filter from URL query string (for clickable IOC links)
     ioc_filter = request.args.get('ioc')
+    # Check for threat filter from URL query string (for clickable tiles)
+    threat_filter_param = request.args.get('threat_filter')
     
     if request.method == 'POST':
         query_str = request.form.get('query', '*').strip()
@@ -2400,6 +2402,13 @@ def search():
         # Coming from IOC link - search for that IOC value
         query_str = ioc_filter
         threat_filter = 'ioc'  # Show only IOC matches
+        # Restore time filter from session
+        time_range = session.get('search_time_range', 'all')
+        custom_start = session.get('search_custom_start')
+        custom_end = session.get('search_custom_end')
+    elif threat_filter_param:
+        # Coming from dashboard tile with threat filter
+        threat_filter = threat_filter_param
         # Restore time filter from session
         time_range = session.get('search_time_range', 'all')
         custom_start = session.get('search_custom_start')
@@ -6901,6 +6910,14 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                 grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
                 gap: 25px; 
             }}
+            .tile {{
+                cursor: pointer;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+            }}
+            .tile:hover {{
+                transform: translateY(-3px);
+                box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+            }}
             .actions {{ 
                 margin-top: 25px; 
                 text-align: center; 
@@ -6979,26 +6996,26 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                 </div>
                 
                 <div class="tiles">
-                    <div class="tile">
+                    <div class="tile" onclick="window.location.href='/files';" title="Click to view files">
                         <h3>📄 Files</h3>
                         <p><strong>Total Files:</strong> {total_files:,}</p>
                         <p><strong>Indexed:</strong> {indexed_files:,} / {total_files:,}</p>
                         <p><strong>Processing:</strong> {processing_files:,}</p>
                         <p><strong>Storage:</strong> {total_storage / (1024*1024*1024):.2f} GB</p>
-                        <a href="/files" class="btn btn-secondary">Manage Files</a>
+                        <a href="/files" class="btn btn-secondary" onclick="event.stopPropagation();">Manage Files</a>
                     </div>
-                    <div class="tile">
+                    <div class="tile" onclick="window.location.href='/search';" title="Click to search events">
                         <h3>📊 Events</h3>
                         <p><strong>Total Events:</strong> {total_events:,}</p>
                         <p><strong>Indexed Files:</strong> {indexed_files:,}</p>
                         <p><strong>Searchable:</strong> {'Yes' if indexed_files > 0 else 'No files indexed yet'}</p>
                         <p><strong>Event IDs:</strong> 100+ Mapped</p>
                         <div style="margin-top: 15px;">
-                            <a href="/search" class="btn btn-secondary" style="margin: 5px;">Search Events</a>
-                            <button onclick="reindexAllFiles()" class="btn" style="background: linear-gradient(145deg, #2196f3, #1976d2); box-shadow: 0 4px 8px rgba(33,150,243,0.3); margin: 5px; border: none; cursor: pointer; font-weight: 600;">🔄 Re-index All Files</button>
+                            <a href="/search" class="btn btn-secondary" style="margin: 5px;" onclick="event.stopPropagation();">Search Events</a>
+                            <button onclick="event.stopPropagation(); reindexAllFiles();" class="btn" style="background: linear-gradient(145deg, #2196f3, #1976d2); box-shadow: 0 4px 8px rgba(33,150,243,0.3); margin: 5px; border: none; cursor: pointer; font-weight: 600;">🔄 Re-index All Files</button>
                         </div>
                     </div>
-                    <div class="tile">
+                    <div class="tile" onclick="window.location.href='/search?threat_filter=sigma';" title="Click to view SIGMA violations">
                         <h3>🛡️ SIGMA Rules & IOCs</h3>
                         <p><strong>Violations Found:</strong> {total_violations:,}</p>
                         <p><strong>Files Scanned:</strong> {indexed_files:,}</p>
@@ -7006,7 +7023,7 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                         <p><strong>IOCs Tracked:</strong> {total_iocs:,} ({total_ioc_matches:,} matches)</p>
                         <p><strong>Auto-Processing:</strong> <span style="color: #4caf50; font-weight: 600;">✓ Active</span></p>
                         <div style="margin-top: 15px;">
-                            <button onclick="rerunAllRules()" class="btn" style="background: linear-gradient(145deg, #ff9800, #f57c00); box-shadow: 0 4px 8px rgba(255,152,0,0.3); border: none; cursor: pointer; font-weight: 600;">⚡ Re-run All Rules</button>
+                            <button onclick="event.stopPropagation(); rerunAllRules();" class="btn" style="background: linear-gradient(145deg, #ff9800, #f57c00); box-shadow: 0 4px 8px rgba(255,152,0,0.3); border: none; cursor: pointer; font-weight: 600;">⚡ Re-run All Rules</button>
                         </div>
                     </div>
                 </div>
