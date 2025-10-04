@@ -7110,7 +7110,7 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                             <button onclick="event.stopPropagation(); reindexAllFiles();" class="btn" style="background: linear-gradient(145deg, #2196f3, #1976d2); box-shadow: 0 4px 8px rgba(33,150,243,0.3); margin: 5px; border: none; cursor: pointer; font-weight: 600;">🔄 Re-index All Files</button>
                         </div>
                     </div>
-                    <div class="tile" onclick="window.location.href='/search?threat_filter=sigma';" title="Click to view SIGMA violations">
+                    <div class="tile" onclick="window.location.href='/search?threat_filter=either';" title="Click to view SIGMA and IOC detections">
                         <h3>🛡️ SIGMA Rules & IOCs</h3>
                         <p><strong>Violations Found:</strong> {total_violations:,}</p>
                         <p><strong>Files Scanned:</strong> {indexed_files:,}</p>
