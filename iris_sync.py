@@ -367,8 +367,26 @@ class IrisSyncService:
                     # Format timestamp for IRIS (must have exactly 6-digit microseconds, no timezone)
                     event_timestamp = event.event_timestamp
                     
-                    # Remove timezone indicators (Z, +00:00, etc.)
-                    event_timestamp = event_timestamp.replace('Z', '').split('+')[0].split('-')[0] if 'T' in event_timestamp else event_timestamp
+                    # Replace space with T (for timestamps like "2025-08-21 22:19:53")
+                    event_timestamp = event_timestamp.replace(' ', 'T', 1)
+                    
+                    # Remove timezone indicators from END of string only
+                    # Handle Z suffix
+                    if event_timestamp.endswith('Z'):
+                        event_timestamp = event_timestamp[:-1]
+                    # Handle +HH:MM or -HH:MM timezone (only at end after time)
+                    if 'T' in event_timestamp:
+                        # Split on T to separate date and time
+                        date_part, time_part = event_timestamp.split('T', 1)
+                        # Remove timezone from time part only (after the last : or after numbers)
+                        if '+' in time_part:
+                            time_part = time_part.split('+')[0]
+                        elif time_part.count('-') > 0:  # Negative timezone offset
+                            # Only remove timezone if it's after the time (contains colons before the -)
+                            parts = time_part.split('-')
+                            if len(parts) > 1 and ':' in parts[0]:  # Has time before the -
+                                time_part = parts[0]
+                        event_timestamp = f"{date_part}T{time_part}"
                     
                     # Ensure exactly 6 digits for microseconds
                     if '.' in event_timestamp:
