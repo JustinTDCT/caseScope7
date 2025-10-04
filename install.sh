@@ -89,6 +89,260 @@ print_section() {
     echo
 }
 
+#══════════════════════════════════════════════════════════════
+# VERIFICATION FUNCTIONS
+#══════════════════════════════════════════════════════════════
+
+# Verify core application files are present
+verify_application_files() {
+    local all_ok=true
+    
+    log_step "Verifying core application files..."
+    
+    local required_files=(
+        "/opt/casescope/app/main.py:Main application"
+        "/opt/casescope/app/tasks.py:Background tasks"
+        "/opt/casescope/app/celery_app.py:Task queue"
+        "/opt/casescope/app/wsgi.py:Web server interface"
+        "/opt/casescope/app/theme.py:UI stylesheet"
+        "/opt/casescope/app/requirements.txt:Dependencies"
+        "/opt/casescope/app/version.json:Version info"
+        "/opt/casescope/app/iris_client.py:DFIR-IRIS client"
+        "/opt/casescope/app/iris_sync.py:DFIR-IRIS sync"
+        "/opt/casescope/app/migrate_database.py:Database migration"
+    )
+    
+    for file_info in "${required_files[@]}"; do
+        IFS=':' read -r file desc <<< "$file_info"
+        if [ -f "$file" ]; then
+            log_success "$desc: Present"
+        else
+            log_error "$desc: MISSING ($file)"
+            all_ok=false
+        fi
+    done
+    
+    echo
+    if [ "$all_ok" = true ]; then
+        log_success "All core files verified"
+        return 0
+    else
+        log_error "Some core files are missing"
+        return 1
+    fi
+}
+
+# Verify external tool versions
+verify_external_tools() {
+    local all_ok=true
+    
+    log_step "Verifying external tools..."
+    
+    # Check Chainsaw
+    if [ -x "/opt/casescope/bin/chainsaw" ]; then
+        CHAINSAW_VER=$(sudo -u casescope /opt/casescope/bin/chainsaw --version 2>/dev/null | head -n1 || echo "unknown")
+        if [ "$CHAINSAW_VER" != "unknown" ]; then
+            log_success "Chainsaw: $CHAINSAW_VER"
+        else
+            log_error "Chainsaw: Present but not functional"
+            all_ok=false
+        fi
+    else
+        log_error "Chainsaw: Not installed"
+        all_ok=false
+    fi
+    
+    # Check evtx_dump
+    if [ -x "/opt/casescope/bin/evtx_dump" ]; then
+        EVTX_VER=$(sudo -u casescope /opt/casescope/bin/evtx_dump --version 2>/dev/null | head -n1 || echo "unknown")
+        if [ "$EVTX_VER" != "unknown" ]; then
+            log_success "evtx_dump: $EVTX_VER"
+        else
+            log_error "evtx_dump: Present but not functional"
+            all_ok=false
+        fi
+    else
+        log_error "evtx_dump: Not installed"
+        all_ok=false
+    fi
+    
+    # Check Python environment
+    if [ -x "/opt/casescope/venv/bin/python3" ]; then
+        PYTHON_VER=$(sudo -u casescope /opt/casescope/venv/bin/python3 --version 2>&1 | awk '{print $2}')
+        log_success "Python: $PYTHON_VER (venv)"
+    else
+        log_error "Python virtual environment: Not configured"
+        all_ok=false
+    fi
+    
+    # Check OpenSearch
+    if systemctl is-active --quiet opensearch; then
+        sleep 2  # Give OpenSearch a moment to be ready
+        OS_VER=$(curl -s -XGET "localhost:9200" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('version',{}).get('number','unknown'))" 2>/dev/null || echo "unknown")
+        if [ "$OS_VER" != "unknown" ]; then
+            log_success "OpenSearch: $OS_VER (running)"
+        else
+            log_warning "OpenSearch: Running but version check failed"
+        fi
+    else
+        log_error "OpenSearch: Not running"
+        all_ok=false
+    fi
+    
+    # Check Redis
+    if systemctl is-active --quiet redis-server; then
+        REDIS_VER=$(redis-cli --version 2>/dev/null | awk '{print $2}' || echo "unknown")
+        log_success "Redis: $REDIS_VER (running)"
+    else
+        log_error "Redis: Not running"
+        all_ok=false
+    fi
+    
+    # Check Nginx
+    if systemctl is-active --quiet nginx; then
+        NGINX_VER=$(nginx -v 2>&1 | awk -F'/' '{print $2}' || echo "unknown")
+        log_success "Nginx: $NGINX_VER (running)"
+    else
+        log_error "Nginx: Not running"
+        all_ok=false
+    fi
+    
+    echo
+    if [ "$all_ok" = true ]; then
+        log_success "All external tools verified"
+        return 0
+    else
+        log_error "Some external tools failed verification"
+        return 1
+    fi
+}
+
+# Verify database integrity
+verify_database() {
+    log_step "Verifying database integrity..."
+    
+    if [ ! -f "/opt/casescope/data/casescope.db" ]; then
+        log_error "Database file not found"
+        return 1
+    fi
+    
+    # Check database file permissions
+    if [ -r "/opt/casescope/data/casescope.db" ]; then
+        DB_SIZE=$(du -h /opt/casescope/data/casescope.db | cut -f1)
+        log_success "Database file: Present ($DB_SIZE)"
+    else
+        log_error "Database file: Not readable"
+        return 1
+    fi
+    
+    # Check database schema
+    log_step "Checking database schema..."
+    sudo -u casescope /opt/casescope/venv/bin/python3 -c "
+import sys
+import os
+sys.path.insert(0, '/opt/casescope/app')
+os.chdir('/opt/casescope/app')
+
+try:
+    from main import db, User, Case, CaseFile, SigmaRule, IOC, EventTag, AuditLog, SystemSettings
+    
+    # Try to query each table
+    tables = {
+        'users': User,
+        'cases': Case,
+        'case_files': CaseFile,
+        'sigma_rules': SigmaRule,
+        'iocs': IOC,
+        'event_tags': EventTag,
+        'audit_log': AuditLog,
+        'system_settings': SystemSettings
+    }
+    
+    for table_name, model in tables.items():
+        try:
+            count = db.session.query(model).count()
+            print(f'✓ Table {table_name}: {count} records')
+        except Exception as e:
+            print(f'✗ Table {table_name}: ERROR - {str(e)}')
+            sys.exit(1)
+    
+    print('✓ All database tables verified')
+    sys.exit(0)
+except Exception as e:
+    print(f'ERROR: Database verification failed: {e}')
+    sys.exit(1)
+" 2>&1 | while read line; do
+        if [[ "$line" == ✓* ]]; then
+            echo -e "  ${GREEN}$line${NC}"
+        elif [[ "$line" == ✗* ]]; then
+            echo -e "  ${RED}$line${NC}"
+        elif [[ "$line" == ERROR* ]]; then
+            echo -e "  ${RED}$line${NC}"
+        else
+            echo "  $line"
+        fi
+    done
+    
+    DB_CHECK_RESULT=${PIPESTATUS[0]}
+    
+    echo
+    if [ $DB_CHECK_RESULT -eq 0 ]; then
+        log_success "Database integrity verified"
+        return 0
+    else
+        log_error "Database verification failed"
+        return 1
+    fi
+}
+
+# Comprehensive final verification
+run_final_verification() {
+    echo
+    echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║${NC}          ${GREEN}Running Final System Verification${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo
+    
+    local verification_failed=false
+    
+    # Verify application files
+    if ! verify_application_files; then
+        verification_failed=true
+    fi
+    
+    # Verify external tools
+    if ! verify_external_tools; then
+        verification_failed=true
+    fi
+    
+    # Verify database
+    if ! verify_database; then
+        verification_failed=true
+    fi
+    
+    # Final verdict
+    echo
+    if [ "$verification_failed" = false ]; then
+        echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${GREEN}║${NC}     ${GREEN}✓ ALL SYSTEMS CHECKED AND OK ✓${NC}"
+        echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo
+        return 0
+    else
+        echo -e "${RED}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${RED}║${NC}     ${RED}✗ VERIFICATION FAILED - ISSUES DETECTED ✗${NC}"
+        echo -e "${RED}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo
+        log_warning "Installation completed with warnings. System may not function correctly."
+        log_warning "Review the errors above and fix them before using caseScope."
+        return 1
+    fi
+}
+
+#══════════════════════════════════════════════════════════════
+# INSTALLATION FUNCTIONS
+#══════════════════════════════════════════════════════════════
+
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
    log_error "This script must be run as root (use sudo)"
@@ -1837,7 +2091,17 @@ except Exception as e:
     
     echo
     
+    # Run comprehensive final verification
     if [ "$all_running" = true ]; then
+        run_final_verification
+        VERIFICATION_RESULT=$?
+    else
+        log_error "Cannot run verification - services failed to start"
+        VERIFICATION_RESULT=1
+    fi
+    
+    # Display installation result
+    if [ "$all_running" = true ] && [ $VERIFICATION_RESULT -eq 0 ]; then
         echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
         echo -e "${GREEN}║                 Installation Complete!                      ║${NC}"
         echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
