@@ -374,13 +374,38 @@ class IrisSyncService:
             for event in tagged_events:
                 try:
                     # Query OpenSearch to get full event data
+                    event_data = {}
                     try:
+                        # Try direct get with stored index name
                         os_event = self.opensearch_client.get(index=event.index_name, id=event.event_id)
                         event_data = os_event['_source']
                     except Exception as e:
-                        logger.warning(f"Failed to fetch event from OpenSearch: {event.event_id}: {str(e)}")
-                        # Fall back to minimal data from EventTag
-                        event_data = {}
+                        logger.debug(f"Direct get failed for {event.event_id} in {event.index_name}: {str(e)}")
+                        
+                        # Fallback: Search across all case indices
+                        try:
+                            # Get case number from event (stored in EventTag)
+                            search_result = self.opensearch_client.search(
+                                index=f"case{case.id}_*",  # All indices for this case
+                                body={
+                                    "query": {
+                                        "ids": {
+                                            "values": [event.event_id]
+                                        }
+                                    }
+                                },
+                                size=1
+                            )
+                            
+                            if search_result['hits']['total']['value'] > 0:
+                                event_data = search_result['hits']['hits'][0]['_source']
+                                logger.debug(f"Found event via search in index: {search_result['hits']['hits'][0]['_index']}")
+                            else:
+                                logger.warning(f"Event not found in any case index: {event.event_id}")
+                                event_data = {}
+                        except Exception as search_err:
+                            logger.warning(f"Search fallback also failed for {event.event_id}: {str(search_err)}")
+                            event_data = {}
                     
                     # Extract Event Information (event_type field from OpenSearch)
                     event_type = event_data.get('event_type', 'Unknown Event')
@@ -461,7 +486,7 @@ class IrisSyncService:
                                 # Get IRIS IOCs for this case and find matching one
                                 iris_iocs = self.client.get_case_iocs(iris_case_id)
                                 for iris_ioc in iris_iocs:
-                                    if iris_ioc.get('ioc_value') == ioc.value:
+                                    if iris_ioc.get('ioc_value') == ioc.ioc_value:
                                         ioc_iris_ids.append(iris_ioc.get('ioc_id'))
                                         break
                     except Exception as e:
