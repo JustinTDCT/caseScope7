@@ -2193,7 +2193,7 @@ def export_search():
         return redirect(url_for('case_selection'))
     
     query_str = request.form.get('query', '*')
-    violations_only = request.form.get('violations_only') == 'true'
+    threat_filter = request.form.get('threat_filter', 'none')
     
     # Get indexed files
     indexed_files = db.session.query(CaseFile).filter_by(case_id=case.id, is_indexed=True, is_deleted=False).all()
@@ -2207,8 +2207,17 @@ def export_search():
     # Build query
     query = build_opensearch_query(query_str)
     filters = []
-    if violations_only:
+    
+    # Apply threat filtering
+    if threat_filter == 'sigma':
         filters.append({"exists": {"field": "has_violations"}})
+    elif threat_filter == 'ioc':
+        filters.append({"exists": {"field": "has_ioc_matches"}})
+    elif threat_filter == 'both':
+        filters.append({"bool": {"must": [
+            {"exists": {"field": "has_violations"}},
+            {"exists": {"field": "has_ioc_matches"}}
+        ]}})
     
     search_body = {
         "query": {
@@ -2319,7 +2328,7 @@ def search():
     error_message = None
     page = 1
     per_page = 50
-    violations_only = False
+    threat_filter = 'none'
     time_range = 'all'
     custom_start = None
     custom_end = None
@@ -2329,7 +2338,7 @@ def search():
     if request.method == 'POST':
         query_str = request.form.get('query', '').strip()
         page = int(request.form.get('page', 1))
-        violations_only = request.form.get('violations_only') == 'true'
+        threat_filter = request.form.get('threat_filter', 'none')
         time_range = request.form.get('time_range', 'all')
         custom_start = request.form.get('custom_start')
         custom_end = request.form.get('custom_end')
@@ -2345,9 +2354,16 @@ def search():
                 # Build filters list
                 filters = []
                 
-                # Add violations filter if checked
-                if violations_only:
+                # Add threat filtering
+                if threat_filter == 'sigma':
                     filters.append({"exists": {"field": "has_violations"}})
+                elif threat_filter == 'ioc':
+                    filters.append({"exists": {"field": "has_ioc_matches"}})
+                elif threat_filter == 'both':
+                    filters.append({"bool": {"must": [
+                        {"exists": {"field": "has_violations"}},
+                        {"exists": {"field": "has_ioc_matches"}}
+                    ]}})
                 
                 # Add time range filter
                 if time_range != 'all':
@@ -2463,7 +2479,7 @@ def search():
                         case_id=case.id,
                         query=query_str,
                         time_range=time_range,
-                        violations_only=violations_only,
+                        violations_only=(threat_filter == 'sigma'),  # For backward compatibility
                         result_count=total_hits
                     )
                     db.session.add(history)
@@ -2591,7 +2607,7 @@ def search():
         (SavedSearch.case_id == case.id) | (SavedSearch.case_id == None)
     ).order_by(SavedSearch.last_used.desc().nullslast(), SavedSearch.created_at.desc()).all()
     
-    return render_search_page(case, query_str, results, total_hits, page, per_page, error_message, len(indexed_files), violations_only, time_range, custom_start, custom_end, recent_searches, saved_searches, sort_field, sort_order)
+    return render_search_page(case, query_str, results, total_hits, page, per_page, error_message, len(indexed_files), threat_filter, time_range, custom_start, custom_end, recent_searches, saved_searches, sort_field, sort_order)
 
 @app.route('/search/save', methods=['POST'])
 @login_required
@@ -4936,7 +4952,7 @@ def render_wazuh_style_fields(data, path=""):
     html += '</table>'
     return html
 
-def render_search_page(case, query_str, results, total_hits, page, per_page, error_message, indexed_file_count, violations_only=False, time_range='all', custom_start=None, custom_end=None, recent_searches=[], saved_searches=[], sort_field='relevance', sort_order='desc'):
+def render_search_page(case, query_str, results, total_hits, page, per_page, error_message, indexed_file_count, threat_filter='none', time_range='all', custom_start=None, custom_end=None, recent_searches=[], saved_searches=[], sort_field='relevance', sort_order='desc'):
     """Render search interface with results"""
     from flask import get_flashed_messages
     flash_messages_html = ""
@@ -5107,10 +5123,15 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                         </div>
                         
                         <div class="search-actions">
-                            <label style="display: flex; align-items: center; margin-right: 15px; color: rgba(255,255,255,0.9);">
-                                <input type="checkbox" name="violations_only" value="true" {'checked' if violations_only else ''} style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
-                                <span style="font-size: 14px;">🚨 Show only SIGMA violations</span>
-                            </label>
+                            <div style="display: flex; align-items: center; margin-right: 15px;">
+                                <label style="color: rgba(255,255,255,0.9); margin-right: 8px; font-size: 14px; font-weight: 500;">🎯 Threat Filtering:</label>
+                                <select name="threat_filter" style="padding: 6px 12px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.1); color: white; font-size: 14px; cursor: pointer;">
+                                    <option value="none" {'selected' if violations_only == 'none' else ''}>None (All Events)</option>
+                                    <option value="sigma" {'selected' if violations_only == 'sigma' else ''}>🚨 SIGMA Only</option>
+                                    <option value="ioc" {'selected' if violations_only == 'ioc' else ''}>🎯 IOC Only</option>
+                                    <option value="both" {'selected' if violations_only == 'both' else ''}>🔥 SIGMA + IOC</option>
+                                </select>
+                            </div>
                             <button type="submit" class="btn-search">🔍 Search</button>
                             <button type="button" class="btn-export" onclick="exportResults()">📥 Export CSV</button>
                             <button type="button" class="help-toggle" onclick="toggleHelp()">❓ Query Help</button>

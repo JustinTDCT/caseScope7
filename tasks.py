@@ -1677,6 +1677,47 @@ def hunt_iocs(self, case_id):
                     
                     logger.info(f"Created {ioc_match_count} new matches for IOC {ioc.ioc_value}")
                     
+                    # Enrich OpenSearch events with IOC match flags
+                    if ioc_match_count > 0:
+                        try:
+                            logger.info(f"Enriching {ioc_match_count} events with IOC match flags for {ioc.ioc_value}")
+                            
+                            # Build bulk update for all matching events
+                            bulk_actions = []
+                            for hit in hits:
+                                event_id = hit['_id']
+                                event_index = hit['_index']
+                                
+                                # Get current IOC matches for this event (could be multiple IOCs)
+                                event_ioc_matches = db.session.query(IOCMatch).filter_by(
+                                    case_id=case_id,
+                                    event_id=event_id
+                                ).all()
+                                
+                                # Build list of matched IOC values
+                                ioc_values = [match.ioc.ioc_value for match in event_ioc_matches if match.ioc]
+                                
+                                # Update document with IOC match information
+                                bulk_actions.append({
+                                    'update': {
+                                        '_index': event_index,
+                                        '_id': event_id
+                                    }
+                                })
+                                bulk_actions.append({
+                                    'doc': {
+                                        'has_ioc_matches': True,
+                                        'ioc_match_count': len(event_ioc_matches),
+                                        'matched_iocs': ioc_values
+                                    }
+                                })
+                            
+                            if bulk_actions:
+                                opensearch_client.bulk(body=bulk_actions, timeout=60)
+                                logger.info(f"✓ Enriched {len(bulk_actions)//2} events with IOC match flags")
+                        except Exception as enrich_err:
+                            logger.warning(f"Failed to enrich events with IOC flags: {enrich_err}")
+                    
                 except Exception as e:
                     logger.error(f"Error searching for IOC {ioc.ioc_value}: {e}")
                     db.session.rollback()
