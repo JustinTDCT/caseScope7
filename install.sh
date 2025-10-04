@@ -48,6 +48,35 @@ log_warning() {
     echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] WARNING:${NC} $1"
 }
 
+log_success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+log_step() {
+    echo -e "  ${BLUE}→${NC} $1"
+}
+
+log_debug() {
+    if [ "${VERBOSE:-0}" = "1" ]; then
+        echo -e "${BLUE}[DEBUG]${NC} $1"
+    fi
+}
+
+# Check a condition and log result
+check_and_log() {
+    local description=$1
+    local command=$2
+    
+    log_step "Checking $description..."
+    if eval "$command" >/dev/null 2>&1; then
+        log_success "$description: OK"
+        return 0
+    else
+        log_error "$description: FAILED"
+        return 1
+    fi
+}
+
 # Print section header with progress indicator
 print_section() {
     local step=$1
@@ -160,37 +189,66 @@ get_choice() {
 
 # System requirements check
 check_requirements() {
-    log "Checking system requirements..."
+    log_step "Verifying system compatibility..."
+    echo
     
     # Check Ubuntu version
-    if ! grep -q "Ubuntu 24" /etc/os-release 2>/dev/null; then
+    log_step "Checking operating system..."
+    if grep -q "Ubuntu 24" /etc/os-release 2>/dev/null; then
+        OS_VERSION=$(grep VERSION_ID /etc/os-release | cut -d'"' -f2)
+        log_success "Operating System: Ubuntu ${OS_VERSION} (Supported)"
+    else
+        OS_NAME=$(grep PRETTY_NAME /etc/os-release | cut -d'"' -f2 || echo "Unknown")
+        log_warning "Operating System: ${OS_NAME}"
         log_warning "Ubuntu 24.04 LTS is recommended for optimal performance"
     fi
     
     # Check available memory
+    log_step "Checking system memory..."
     TOTAL_MEM=$(free -m | awk 'NR==2{printf "%.0f", $2}')
-    if [ "$TOTAL_MEM" -lt 8192 ]; then
-        log_warning "Less than 8GB RAM detected. 8GB+ recommended for optimal performance."
+    TOTAL_MEM_GB=$(echo "scale=1; $TOTAL_MEM/1024" | bc)
+    if [ "$TOTAL_MEM" -ge 8192 ]; then
+        log_success "System Memory: ${TOTAL_MEM_GB}GB (Sufficient)"
+    else
+        log_warning "System Memory: ${TOTAL_MEM_GB}GB (8GB+ recommended)"
     fi
     
     # Check available disk space
+    log_step "Checking disk space..."
     AVAILABLE_SPACE=$(df / | awk 'NR==2 {print $4}')
-    if [ "$AVAILABLE_SPACE" -lt 10485760 ]; then  # 10GB in KB
-        log_warning "Less than 10GB free space available. More space recommended for case files."
+    AVAILABLE_GB=$(echo "scale=1; $AVAILABLE_SPACE/1024/1024" | bc)
+    if [ "$AVAILABLE_SPACE" -ge 10485760 ]; then  # 10GB in KB
+        log_success "Available Disk Space: ${AVAILABLE_GB}GB (Sufficient)"
+    else
+        log_warning "Available Disk Space: ${AVAILABLE_GB}GB (10GB+ recommended)"
     fi
     
-    log "System requirements check completed"
+    # Check if running as root
+    log_step "Checking privileges..."
+    if [ "$EUID" -eq 0 ]; then
+        log_success "Running with root privileges: OK"
+    fi
+    
+    echo
+    log_success "System requirements check completed"
+    echo
 }
 
 # Install system dependencies
 install_dependencies() {
-    log "Installing system dependencies..."
+    log_step "Updating package repositories..."
+    if apt-get update -qq 2>&1 | grep -q "Failed"; then
+        log_error "Failed to update package repositories"
+        log_error "Check your internet connection and try again"
+        return 1
+    fi
+    log_success "Package repositories updated"
+    echo
     
-    # Update package list
-    apt-get update
+    log_step "Installing system packages..."
+    log_debug "Installing: Python 3, build tools, web server, cache server, utilities"
     
-    # Install required packages
-    apt-get install -y \
+    if apt-get install -y -qq \
         python3 \
         python3-venv \
         python3-pip \
@@ -205,32 +263,55 @@ install_dependencies() {
         htop \
         tree \
         jq \
-        openjdk-11-jdk
+        openjdk-11-jdk 2>&1 | tee /tmp/apt-install.log | grep -i "error\|failed" > /tmp/apt-errors.log; then
+        
+        if [ -s /tmp/apt-errors.log ]; then
+            log_error "Some packages failed to install. Errors:"
+            cat /tmp/apt-errors.log
+            return 1
+        fi
+    fi
     
-    log "System dependencies installed successfully"
+    # Verify key packages
+    log_step "Verifying installations..."
+    check_and_log "Python 3" "python3 --version"
+    check_and_log "Pip" "pip3 --version"
+    check_and_log "Nginx" "nginx -v"
+    check_and_log "Redis" "redis-server --version"
+    check_and_log "Git" "git --version"
+    check_and_log "Java (OpenJDK)" "java -version"
+    
+    # Clean up temp files
+    rm -f /tmp/apt-install.log /tmp/apt-errors.log
+    
+    echo
+    log_success "All system dependencies installed successfully"
+    echo
 }
 
 # Install Chainsaw for SIGMA rule processing
 install_chainsaw() {
-    log "Installing Chainsaw SIGMA processor..."
+    log_step "Checking for existing Chainsaw installation..."
     
     if [ -f "/opt/casescope/bin/chainsaw" ]; then
-        log "Chainsaw already installed"
-        /opt/casescope/bin/chainsaw --version 2>/dev/null || {
-            log_warning "Chainsaw binary exists but is not executable, reinstalling..."
-            rm -f /opt/casescope/bin/chainsaw
-        }
-        
-        # If chainsaw is working, skip installation
-        if [ -f "/opt/casescope/bin/chainsaw" ]; then
+        log_step "Testing existing Chainsaw binary..."
+        if /opt/casescope/bin/chainsaw --version 2>/dev/null; then
+            CHAINSAW_CURRENT=$(/opt/casescope/bin/chainsaw --version | head -n1)
+            log_success "Chainsaw already installed: $CHAINSAW_CURRENT"
             return 0
+        else
+            log_warning "Chainsaw binary exists but is not functional, reinstalling..."
+            rm -f /opt/casescope/bin/chainsaw
         fi
     fi
     
     # Create bin directory
+    log_step "Creating installation directory..."
     mkdir -p /opt/casescope/bin
+    log_success "Directory created: /opt/casescope/bin"
     
     # Download Chainsaw release for x86_64 Linux
+    log_step "Downloading Chainsaw ${CHAINSAW_VERSION}..."
     cd /tmp
     log "Downloading Chainsaw ${CHAINSAW_VERSION} from GitHub..."
     
@@ -433,14 +514,37 @@ install_evtx_dump() {
 
 # Create system user
 create_user() {
-    log "Creating casescope system user..."
+    log_step "Checking for casescope system user..."
     
     if ! id "casescope" &>/dev/null; then
-        useradd -r -s /bin/bash -d /opt/casescope -m casescope
-        log "Created casescope user"
+        log_step "Creating casescope system user..."
+        if useradd -r -s /bin/bash -d /opt/casescope -m casescope 2>/dev/null; then
+            log_success "User 'casescope' created successfully"
+        else
+            log_error "Failed to create casescope user"
+            return 1
+        fi
     else
-        log "casescope user already exists"
+        log_success "User 'casescope' already exists"
     fi
+    
+    # Verify user was created properly
+    log_step "Verifying user configuration..."
+    if id casescope &>/dev/null; then
+        USER_INFO=$(id casescope)
+        log_success "User verified: $USER_INFO"
+    else
+        log_error "User verification failed"
+        return 1
+    fi
+    
+    # Create necessary directories
+    log_step "Creating directory structure..."
+    mkdir -p /opt/casescope/{app,data,logs,bin}
+    chown -R casescope:casescope /opt/casescope
+    log_success "Directories created and ownership set"
+    
+    echo
 }
 
 # Create directory structure
@@ -1007,18 +1111,39 @@ copy_application() {
 
 # Setup Python environment
 setup_python() {
-    log "Setting up Python virtual environment..."
+    log_step "Creating Python virtual environment..."
+    if sudo -u casescope python3 -m venv /opt/casescope/venv 2>/dev/null; then
+        log_success "Virtual environment created at /opt/casescope/venv"
+    else
+        log_error "Failed to create virtual environment"
+        return 1
+    fi
     
-    # Create virtual environment
-    sudo -u casescope python3 -m venv /opt/casescope/venv
-    
-    # Install requirements
-    sudo -u casescope /opt/casescope/venv/bin/pip install --upgrade pip
+    log_step "Upgrading pip to latest version..."
+    if sudo -u casescope /opt/casescope/venv/bin/pip install --upgrade pip -q 2>&1 | grep -i "error"; then
+        log_warning "Pip upgrade had warnings (non-fatal)"
+    else
+        PIP_VERSION=$(sudo -u casescope /opt/casescope/venv/bin/pip --version | awk '{print $2}')
+        log_success "Pip upgraded to version $PIP_VERSION"
+    fi
     
     # Check if requirements.txt exists and install dependencies
     if [ -f "/opt/casescope/app/requirements.txt" ]; then
-        log "Installing Python dependencies from requirements.txt..."
-        sudo -u casescope /opt/casescope/venv/bin/pip install -r /opt/casescope/app/requirements.txt
+        log_step "Installing Python dependencies from requirements.txt..."
+        DEP_COUNT=$(wc -l < /opt/casescope/app/requirements.txt)
+        log_step "Found $DEP_COUNT package dependencies to install..."
+        
+        if sudo -u casescope /opt/casescope/venv/bin/pip install -r /opt/casescope/app/requirements.txt -q 2>&1 | tee /tmp/pip-install.log | grep -i "error\|failed" > /tmp/pip-errors.log; then
+            if [ -s /tmp/pip-errors.log ]; then
+                log_error "Some Python packages failed to install:"
+                cat /tmp/pip-errors.log
+                rm -f /tmp/pip-install.log /tmp/pip-errors.log
+                return 1
+            fi
+        fi
+        
+        log_success "All Python dependencies installed successfully"
+        rm -f /tmp/pip-install.log /tmp/pip-errors.log
     else
         log_warning "requirements.txt not found, installing basic dependencies..."
         sudo -u casescope /opt/casescope/venv/bin/pip install \
