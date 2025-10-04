@@ -1648,11 +1648,16 @@ def save_settings():
     
     try:
         # Get form data
-        iris_enabled = request.form.get('iris_enabled', 'false')
+        # For checkboxes: if 'true' appears in the values, checkbox was checked
+        iris_enabled_values = request.form.getlist('iris_enabled')
+        iris_enabled = 'true' if 'true' in iris_enabled_values else 'false'
+        
         iris_url = request.form.get('iris_url', '').strip()
         iris_api_key = request.form.get('iris_api_key', '').strip()
         iris_customer_id = request.form.get('iris_customer_id', '1').strip()
-        iris_auto_sync = request.form.get('iris_auto_sync', 'false')
+        
+        iris_auto_sync_values = request.form.getlist('iris_auto_sync')
+        iris_auto_sync = 'true' if 'true' in iris_auto_sync_values else 'false'
         
         # Validate URL if IRIS is enabled
         if iris_enabled == 'true' and iris_url:
