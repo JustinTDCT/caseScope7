@@ -1459,16 +1459,26 @@ def hunt_iocs(self, case_id):
                         index_name = hit['_index']
                         source = hit['_source']
                         
-                        # Extract timestamp
-                        event_timestamp = source.get('System', {}).get('TimeCreated', {}).get('@SystemTime') or \
-                                        source.get('System_TimeCreated_@SystemTime') or \
-                                        source.get('@timestamp') or \
-                                        'N/A'
+                        # Extract timestamp - try all possible field notations
+                        event_timestamp = (
+                            source.get('System.TimeCreated.@SystemTime') or  # Flattened dot notation (current)
+                            source.get('System', {}).get('TimeCreated', {}).get('@SystemTime') or  # Nested dict
+                            source.get('System_TimeCreated_@SystemTime') or  # Old underscore notation
+                            source.get('@timestamp') or  # Generic timestamp
+                            None
+                        )
+                        # Clean up timestamp - remove microseconds and timezone for display
+                        if event_timestamp and event_timestamp != 'N/A':
+                            # Format: "2025-09-25 05:07:08.123456+00:00" -> "2025-09-25 05:07:08"
+                            event_timestamp = event_timestamp.split('.')[0] if '.' in event_timestamp else event_timestamp
                         
-                        # Extract source filename
-                        source_filename = source.get('_casescope_metadata', {}).get('filename') or \
-                                        source.get('_casescope_metadata_filename') or \
-                                        'Unknown'
+                        # Extract source filename - try all possible field notations
+                        source_filename = (
+                            source.get('_casescope_metadata.filename') or  # Flattened dot notation
+                            source.get('_casescope_metadata', {}).get('filename') or  # Nested dict
+                            source.get('_casescope_metadata_filename') or  # Old underscore notation
+                            'Unknown'
+                        )
                         
                         # Find which field matched - recursive search through all fields
                         matched_field = 'unknown'
