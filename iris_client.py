@@ -281,6 +281,16 @@ class IrisClient:
         
         return False
     
+    def get_ioc_types(self) -> List[Dict[str, Any]]:
+        """
+        Get available IOC types from IRIS
+        
+        Returns:
+            List of IOC type objects with id and type_name
+        """
+        response = self._request('GET', '/manage/ioc-types/list')
+        return response.get('data', [])
+    
     def add_ioc(self, case_id: int, ioc_value: str, ioc_type: str, 
                 ioc_description: str = "", ioc_tags: str = "", 
                 ioc_tlp: int = 2) -> Dict[str, Any]:
@@ -290,7 +300,7 @@ class IrisClient:
         Args:
             case_id: IRIS case ID
             ioc_value: IOC value (IP, domain, hash, etc.)
-            ioc_type: IOC type (must match IRIS IOC types)
+            ioc_type: IOC type from caseScope (will be mapped to IRIS type ID)
             ioc_description: IOC description (optional)
             ioc_tags: Comma-separated tags (optional)
             ioc_tlp: TLP level (0=white, 1=green, 2=amber, 3=red)
@@ -298,29 +308,34 @@ class IrisClient:
         Returns:
             Created IOC object
         """
-        # Map caseScope IOC types to IRIS IOC types
-        type_mapping = {
-            'ip': 'ip-dst',
-            'domain': 'domain',
-            'fqdn': 'domain',
-            'hostname': 'hostname',
-            'username': 'username',
-            'hash_md5': 'md5',
-            'hash_sha1': 'sha1',
-            'hash_sha256': 'sha256',
-            'command': 'command-line',
-            'filename': 'filename',
-            'process_name': 'process-name',
-            'registry_key': 'regkey',
-            'email': 'email-addr',
-            'url': 'url'
+        # Map caseScope IOC types to IRIS IOC type IDs
+        # These IDs are standard in DFIR-IRIS installations
+        type_id_mapping = {
+            'ip': 76,                  # IPv4-addr
+            'domain': 15,              # domain
+            'fqdn': 15,                # domain
+            'hostname': 81,            # hostname
+            'username': 3,             # account
+            'hash_md5': 78,            # md5
+            'hash_sha1': 113,          # sha1
+            'hash_sha256': 115,        # sha256
+            'command': 121,            # process-command-line
+            'filename': 68,            # file-name
+            'process_name': 68,        # file-name
+            'malware_name': 86,        # malware
+            'registry_key': 110,       # windows-registry-key
+            'email': 23,               # email-addr
+            'url': 123                 # url
         }
         
-        iris_type = type_mapping.get(ioc_type, ioc_type)
+        ioc_type_id = type_id_mapping.get(ioc_type)
+        if not ioc_type_id:
+            logger.warning(f"Unknown IOC type '{ioc_type}', defaulting to 'other' (ID: 1)")
+            ioc_type_id = 1  # 'other' type
         
         data = {
             'ioc_value': ioc_value,
-            'ioc_type': iris_type,
+            'ioc_type_id': ioc_type_id,
             'ioc_description': ioc_description or f'Synced from caseScope',
             'ioc_tags': ioc_tags,
             'ioc_tlp_id': ioc_tlp,
