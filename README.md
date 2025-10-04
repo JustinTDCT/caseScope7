@@ -1,7 +1,23 @@
-# caseScope 7.16 - Digital Forensics EVTX Analysis Platform
+# caseScope 7.19 - Digital Forensics EVTX Analysis Platform
 
-**Version:** 7.16.6  
+**Version:** 7.19.2  
 **Copyright:** (c) 2025 Justin Dube <casescope@thedubes.net>
+
+---
+
+## ⚠️ ALPHA VERSION NOTICE
+
+**This is an actively developed ALPHA version of caseScope 7.x.**
+
+- ✅ **Core Features Working**: EVTX/NDJSON ingestion, search, SIGMA rules, IOC hunting
+- ⚠️ **Some Features May Not Work Perfectly**: This software is under heavy development
+- 🐛 **Expect Bugs**: Not all features have been fully tested in production environments
+- 🔄 **Frequent Updates**: New features and fixes are pushed regularly
+- 📧 **Report Issues**: Please report bugs to casescope@thedubes.net
+
+**Not recommended for production use without thorough testing in your environment.**
+
+---
 
 ## Overview
 
@@ -319,6 +335,12 @@ sudo -u casescope /opt/casescope/venv/bin/python3 migrate_audit_log.py
 
 ## Version History
 
+- **7.19.2** (2025-10-04): Bugfix - DFIR-IRIS timeline sync for NDJSON/EDR events (event title + computer name extraction)
+- **7.19.1** (2025-10-04): Bugfix - Skip SIGMA processing for NDJSON/EDR files + better status handling
+- **7.19.0** (2025-10-04): MAJOR - Replaced python-evtx with evtx_dump (Rust) for 50x faster EVTX processing
+- **7.18.1** (2025-10-04): Critical bugfix - IOC field name + intelligent index search fallback
+- **7.18.0** (2025-10-04): MAJOR - Complete timeline sync enhancement (real timestamps, Event Information, IOC linking)
+- **7.17.x** (2025-10-04): DFIR-IRIS API fixes (IOC sync, timeline timestamps, cached ID verification)
 - **7.16.6** (2025-10-04): Bugfix - Fixed SQL syntax error in case company migration
 - **7.16.5** (2025-10-04): Critical fix - SSL certificate handling for DFIR-IRIS (self-signed cert support)
 - **7.16.4** (2025-10-04): MAJOR - Complete DFIR-IRIS sync implementation
