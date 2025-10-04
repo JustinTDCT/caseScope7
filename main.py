@@ -840,7 +840,16 @@ def case_dashboard():
     total_violations = db.session.query(db.func.sum(CaseFile.violation_count)).filter_by(case_id=case.id, is_deleted=False).scalar() or 0
     total_storage = db.session.query(db.func.sum(CaseFile.file_size)).filter_by(case_id=case.id, is_deleted=False).scalar() or 0
     
-    return render_case_dashboard(case, total_files, indexed_files, processing_files, total_events, total_violations, total_storage)
+    # SIGMA rules statistics
+    total_sigma_rules = db.session.query(SigmaRule).count()
+    enabled_sigma_rules = db.session.query(SigmaRule).filter_by(enabled=True).count()
+    
+    # IOC statistics for this case
+    total_iocs = db.session.query(IOC).filter_by(case_id=case.id).count()
+    total_ioc_matches = db.session.query(IOCMatch).filter_by(case_id=case.id).count()
+    
+    return render_case_dashboard(case, total_files, indexed_files, processing_files, total_events, total_violations, total_storage, 
+                                 total_sigma_rules, enabled_sigma_rules, total_iocs, total_ioc_matches)
 
 @app.route('/upload', methods=['GET', 'POST'])
 @login_required
@@ -6778,7 +6787,8 @@ def render_case_selection(cases, active_case_id):
     </html>
     '''
 
-def render_case_dashboard(case, total_files, indexed_files, processing_files, total_events, total_violations, total_storage):
+def render_case_dashboard(case, total_files, indexed_files, processing_files, total_events, total_violations, total_storage,
+                          total_sigma_rules, enabled_sigma_rules, total_iocs, total_ioc_matches):
     """Render case-specific dashboard with integrated layout"""
     # Get flash messages
     from flask import get_flashed_messages
@@ -6922,11 +6932,12 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                         </div>
                     </div>
                     <div class="tile">
-                        <h3>🛡️ SIGMA Rules</h3>
+                        <h3>🛡️ SIGMA Rules & IOCs</h3>
                         <p><strong>Violations Found:</strong> {total_violations:,}</p>
                         <p><strong>Files Scanned:</strong> {indexed_files:,}</p>
-                        <p><strong>Rule Database:</strong> Coming Soon</p>
-                        <p><strong>Auto-Processing:</strong> In Development</p>
+                        <p><strong>SIGMA Rules:</strong> <span style="color: #4caf50; font-weight: 600;">{enabled_sigma_rules:,}</span> / {total_sigma_rules:,} enabled</p>
+                        <p><strong>IOCs Tracked:</strong> {total_iocs:,} ({total_ioc_matches:,} matches)</p>
+                        <p><strong>Auto-Processing:</strong> <span style="color: #4caf50; font-weight: 600;">✓ Active</span></p>
                         <div style="margin-top: 15px;">
                             <button onclick="rerunAllRules()" class="btn" style="background: linear-gradient(145deg, #ff9800, #f57c00); box-shadow: 0 4px 8px rgba(255,152,0,0.3); border: none; cursor: pointer; font-weight: 600;">⚡ Re-run All Rules</button>
                         </div>
