@@ -2355,7 +2355,7 @@ def search():
     
     results = []
     total_hits = 0
-    query_str = ""
+    query_str = "*"  # Default to show all events
     error_message = None
     page = 1
     per_page = 50
@@ -2367,7 +2367,7 @@ def search():
     sort_order = 'desc'
     
     if request.method == 'POST':
-        query_str = request.form.get('query', '').strip()
+        query_str = request.form.get('query', '*').strip()
         page = int(request.form.get('page', 1))
         threat_filter = request.form.get('threat_filter', 'none')
         time_range = request.form.get('time_range', 'all')
@@ -2375,8 +2375,9 @@ def search():
         custom_end = request.form.get('custom_end')
         sort_field = request.form.get('sort', 'relevance')
         sort_order = request.form.get('sort_order', 'desc')
-        
-        if query_str:
+    
+    # Always perform search (both GET and POST)
+    if query_str:
             try:
                 # Build OpenSearch query from user input (this transforms the query)
                 # But we keep query_str unchanged for display
