@@ -2426,7 +2426,7 @@ def search():
         custom_end = session.get('search_custom_end')
     
     # Always perform search (both GET and POST)
-        if query_str:
+    if query_str:
             try:
                 # Build OpenSearch query from user input (this transforms the query)
                 # But we keep query_str unchanged for display
