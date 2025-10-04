@@ -327,6 +327,79 @@ install_chainsaw() {
     fi
 }
 
+install_evtx_dump() {
+    log "Installing evtx_dump for fast EVTX parsing..."
+    
+    if [ -f "/opt/casescope/bin/evtx_dump" ]; then
+        log "evtx_dump already installed"
+        /opt/casescope/bin/evtx_dump --version 2>/dev/null || {
+            log_warning "evtx_dump binary exists but is not executable, reinstalling..."
+            rm -f /opt/casescope/bin/evtx_dump
+        }
+        
+        # If evtx_dump is working, skip installation
+        if [ -f "/opt/casescope/bin/evtx_dump" ]; then
+            return 0
+        fi
+    fi
+    
+    # Create bin directory if not exists
+    mkdir -p /opt/casescope/bin
+    
+    # Download evtx_dump release for x86_64 Linux
+    cd /tmp
+    log "Downloading evtx_dump from GitHub..."
+    EVTX_VERSION="v0.8.2"  # Stable release version
+    
+    # Remove old downloads if exist
+    rm -f evtx_dump-*-linux-gnu
+    
+    wget --show-progress https://github.com/omerbenamram/evtx/releases/download/${EVTX_VERSION}/evtx_dump-${EVTX_VERSION}-x86_64-unknown-linux-gnu
+    
+    if [ $? -ne 0 ] || [ ! -f "evtx_dump-${EVTX_VERSION}-x86_64-unknown-linux-gnu" ]; then
+        log_error "Failed to download evtx_dump from GitHub"
+        log_error "URL: https://github.com/omerbenamram/evtx/releases/download/${EVTX_VERSION}/evtx_dump-${EVTX_VERSION}-x86_64-unknown-linux-gnu"
+        return 1
+    fi
+    
+    log "Download successful ($(du -h evtx_dump-${EVTX_VERSION}-x86_64-unknown-linux-gnu | cut -f1)), installing..."
+    
+    # Move binary to casescope bin
+    mv "evtx_dump-${EVTX_VERSION}-x86_64-unknown-linux-gnu" /opt/casescope/bin/evtx_dump
+    chmod +x /opt/casescope/bin/evtx_dump
+    
+    # Verify it's actually there and executable
+    if [ ! -f /opt/casescope/bin/evtx_dump ]; then
+        log_error "Failed to move evtx_dump binary to /opt/casescope/bin/evtx_dump"
+        return 1
+    fi
+    
+    if [ ! -x /opt/casescope/bin/evtx_dump ]; then
+        log_error "evtx_dump binary is not executable"
+        ls -la /opt/casescope/bin/evtx_dump
+        return 1
+    fi
+    
+    # Set ownership
+    chown casescope:casescope /opt/casescope/bin/evtx_dump
+    
+    # Test execution as casescope user
+    log "Testing evtx_dump execution..."
+    if sudo -u casescope /opt/casescope/bin/evtx_dump --version 2>/dev/null; then
+        log "✓ evtx_dump $(sudo -u casescope /opt/casescope/bin/evtx_dump --version 2>/dev/null | head -n1)"
+    else
+        log_error "evtx_dump verification failed"
+        ls -la /opt/casescope/bin/evtx_dump
+        sudo -u casescope /opt/casescope/bin/evtx_dump --version || true
+        return 1
+    fi
+    
+    # Cleanup
+    rm -f /tmp/evtx_dump-*
+    
+    log "evtx_dump installed successfully"
+}
+
 # Create system user
 create_user() {
     log "Creating casescope system user..."
@@ -857,7 +930,7 @@ copy_application() {
     log "Checking for critical application files..."
     
     # Core application files (required for all install types)
-    for file in main.py requirements.txt version.json wsgi.py celery_app.py tasks.py theme.py iris_client.py iris_sync.py; do
+    for file in main.py requirements.txt version.json wsgi.py celery_app.py tasks.py theme.py iris_client.py iris_sync.py ConvertEVTXtoJSON.sh; do
         if [ -f "$APP_SOURCE_DIR/$file" ]; then
             log "✓ Found $file in source directory"
             cp "$APP_SOURCE_DIR/$file" /opt/casescope/app/ 2>/dev/null || log_error "Failed to copy $file"
@@ -1502,6 +1575,17 @@ main() {
         echo -e "${RED}╚══════════════════════════════════════════════════════════════╝${NC}"
         echo
         echo -e "${RED}Chainsaw is required for SIGMA rule processing.${NC}"
+        echo -e "${YELLOW}Installation cannot continue without it.${NC}"
+        echo
+        exit 1
+    fi
+    
+    if ! install_evtx_dump; then
+        echo -e "${RED}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${RED}║          CRITICAL: evtx_dump Installation Failed!           ║${NC}"
+        echo -e "${RED}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo
+        echo -e "${RED}evtx_dump is required for fast EVTX parsing.${NC}"
         echo -e "${YELLOW}Installation cannot continue without it.${NC}"
         echo
         exit 1

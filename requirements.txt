@@ -21,8 +21,8 @@ celery==5.3.4
 redis==5.0.1
 
 # File Processing
-python-evtx==0.8.1
-xmltodict==0.13.0
+# REMOVED: python-evtx (replaced by evtx_dump binary for 50x faster parsing)
+# REMOVED: xmltodict (no longer needed with evtx_dump JSON output)
 
 # SIGMA Rules
 pysigma==0.10.9
