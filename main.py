@@ -2038,6 +2038,65 @@ def ioc_hunt():
     
     return redirect(url_for('ioc_list'))
 
+@app.route('/iris/sync', methods=['POST'])
+@login_required
+def iris_sync_case():
+    """Sync current case to DFIR-IRIS"""
+    # Check for active case
+    case_id = session.get('active_case_id')
+    if not case_id:
+        return jsonify({'success': False, 'message': 'No active case selected'})
+    
+    case = db.session.get(Case, case_id)
+    if not case:
+        return jsonify({'success': False, 'message': 'Case not found'})
+    
+    # Check if IRIS integration is enabled
+    iris_enabled = get_setting('iris_enabled', 'false')
+    if iris_enabled != 'true':
+        return jsonify({'success': False, 'message': 'DFIR-IRIS integration is not enabled. Configure it in System Settings.'})
+    
+    # Get IRIS settings
+    iris_url = get_setting('iris_url')
+    iris_api_key = get_setting('iris_api_key')
+    
+    if not iris_url or not iris_api_key:
+        return jsonify({'success': False, 'message': 'DFIR-IRIS connection not configured. Please configure in System Settings.'})
+    
+    try:
+        # Import sync service
+        from iris_sync import IrisSyncService
+        
+        # Create sync service
+        sync_service = IrisSyncService(iris_url, iris_api_key)
+        
+        # Perform sync
+        result = sync_service.sync_case_to_iris(case, db.session)
+        
+        # Log audit
+        if result['success']:
+            log_audit(
+                'iris_sync',
+                'integration',
+                f"Synced case '{case.name}' to DFIR-IRIS: {result.get('iocs_synced', 0)} IOCs, {result.get('timeline_synced', 0)} events",
+                success=True
+            )
+        else:
+            log_audit(
+                'iris_sync_failed',
+                'integration',
+                f"Failed to sync case '{case.name}' to DFIR-IRIS: {result.get('message', 'Unknown error')}",
+                success=False
+            )
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        error_msg = f"Sync failed: {str(e)}"
+        logger.error(f"[IRIS Sync] Error: {e}")
+        log_audit('iris_sync_failed', 'integration', error_msg, success=False)
+        return jsonify({'success': False, 'message': error_msg})
+
 @app.route('/ioc/matches', methods=['GET'])
 @login_required
 def ioc_matches():
@@ -6681,6 +6740,7 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                 
                 <div class="actions">
                     <a href="/upload" class="btn">📤 Upload Files</a>
+                    <button onclick="syncToIris()" class="btn" style="background: linear-gradient(145deg, #9c27b0, #7b1fa2); box-shadow: 0 4px 8px rgba(156,39,176,0.3); border: none; cursor: pointer; font-weight: 600;">🔗 Sync to DFIR-IRIS</button>
                     <a href="/case/select" class="btn btn-secondary">🔄 Switch Case</a>
                     <a href="/dashboard" class="btn btn-secondary">🏠 Main Dashboard</a>
                 </div>
@@ -6737,6 +6797,71 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                 }})
                 .catch(error => {{
                     alert('Error: ' + error.message);
+                }});
+            }}
+            
+            function syncToIris() {{
+                // Show confirmation
+                const confirmMsg = 'This will sync this case to DFIR-IRIS:\\n\\n' +
+                                  '1. Create/update company in IRIS\\n' +
+                                  '2. Create/update case in IRIS\\n' +
+                                  '3. Sync all IOCs\\n' +
+                                  '4. Sync timeline events\\n\\n' +
+                                  'This may take a minute. Continue?';
+                
+                if (!confirm(confirmMsg)) {{
+                    return;
+                }}
+                
+                // Disable button and show progress
+                const btn = event.target;
+                const originalText = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '⏳ Syncing...';
+                btn.style.opacity = '0.6';
+                
+                fetch('/iris/sync', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                    }}
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) {{
+                        // Build success message with stats
+                        let msg = '✅ Sync completed successfully!\\n\\n';
+                        if (data.iris_case_id) {{
+                            msg += 'IRIS Case ID: ' + data.iris_case_id + '\\n';
+                        }}
+                        if (data.iocs_synced !== undefined) {{
+                            msg += 'IOCs synced: ' + data.iocs_synced + ' new';
+                            if (data.iocs_skipped) {{
+                                msg += ', ' + data.iocs_skipped + ' already exist';
+                            }}
+                            msg += '\\n';
+                        }}
+                        if (data.timeline_synced !== undefined) {{
+                            msg += 'Timeline events: ' + data.timeline_synced + ' new';
+                            if (data.timeline_skipped) {{
+                                msg += ', ' + data.timeline_skipped + ' already exist';
+                            }}
+                            msg += '\\n';
+                        }}
+                        alert(msg);
+                        location.reload();
+                    }} else {{
+                        alert('❌ Sync failed:\\n\\n' + (data.message || 'Unknown error'));
+                        btn.disabled = false;
+                        btn.innerHTML = originalText;
+                        btn.style.opacity = '1';
+                    }}
+                }})
+                .catch(error => {{
+                    alert('❌ Error: ' + error.message);
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                    btn.style.opacity = '1';
                 }});
             }}
         </script>
