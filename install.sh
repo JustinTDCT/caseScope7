@@ -856,7 +856,8 @@ copy_application() {
     # Check for critical files and provide detailed diagnostics
     log "Checking for critical application files..."
     
-    for file in main.py requirements.txt version.json wsgi.py; do
+    # Core application files (required for all install types)
+    for file in main.py requirements.txt version.json wsgi.py celery_app.py tasks.py theme.py iris_client.py iris_sync.py; do
         if [ -f "$APP_SOURCE_DIR/$file" ]; then
             log "✓ Found $file in source directory"
             cp "$APP_SOURCE_DIR/$file" /opt/casescope/app/ 2>/dev/null || log_error "Failed to copy $file"
