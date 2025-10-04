@@ -245,9 +245,9 @@ sys.path.insert(0, '/opt/casescope/app')
 os.chdir('/opt/casescope/app')
 
 try:
-    from main import db, User, Case, CaseFile, SigmaRule, IOC, EventTag, AuditLog, SystemSettings
+    from main import app, db, User, Case, CaseFile, SigmaRule, IOC, EventTag, AuditLog, SystemSettings
     
-    # Try to query each table
+    # Try to query each table within app context
     tables = {
         'users': User,
         'cases': Case,
@@ -259,15 +259,16 @@ try:
         'system_settings': SystemSettings
     }
     
-    for table_name, model in tables.items():
-        try:
-            count = db.session.query(model).count()
-            print(f'✓ Table {table_name}: {count} records')
-        except Exception as e:
-            print(f'✗ Table {table_name}: ERROR - {str(e)}')
-            sys.exit(1)
-    
-    print('✓ All database tables verified')
+    with app.app_context():
+        for table_name, model in tables.items():
+            try:
+                count = db.session.query(model).count()
+                print(f'✓ Table {table_name}: {count} records')
+            except Exception as e:
+                print(f'✗ Table {table_name}: ERROR - {str(e)}')
+                sys.exit(1)
+        
+        print('✓ All database tables verified')
     sys.exit(0)
 except Exception as e:
     print(f'ERROR: Database verification failed: {e}')

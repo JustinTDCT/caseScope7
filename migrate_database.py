@@ -33,7 +33,8 @@ def log_warning(message):
 
 def check_column_exists(cursor, table, column):
     """Check if a column exists in a table"""
-    cursor.execute(f"PRAGMA table_info({table})")
+    # Quote table name to handle reserved keywords like 'case'
+    cursor.execute(f'PRAGMA table_info("{table}")')
     columns = [row[1] for row in cursor.fetchall()]
     return column in columns
 
