@@ -2496,15 +2496,15 @@ def search():
                         
                         # Use range query on the .date field (which has proper date type mapping)
                         # This is much more efficient than wildcards and handles all date ranges
-                            time_filter = {
+                        time_filter = {
                             "range": {
                                 "System.TimeCreated.@SystemTime.date": {
                                     "gte": start_iso,
                                     "lte": end_iso,
                                     "format": "strict_date_optional_time"
                                 }
-                                }
                             }
+                        }
                         
                         filters.append(time_filter)
                 
