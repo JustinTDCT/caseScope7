@@ -313,12 +313,24 @@ class IrisSyncService:
                         skipped += 1
                         continue
                     
+                    # Build IOC description for IRIS
+                    # Use caseScope description field + import note at bottom
+                    ioc_description = ""
+                    if ioc.description:
+                        ioc_description = ioc.description
+                    else:
+                        # Fallback if no description
+                        ioc_description = f"IOC: {ioc.ioc_type} - Matches: {ioc.match_count}"
+                    
+                    # Add import note at the bottom
+                    ioc_description += f"\n\n---\nImported from caseScope"
+                    
                     # Add IOC to IRIS case
                     self.client.add_ioc(
                         case_id=iris_case_id,
                         ioc_value=ioc.ioc_value,
                         ioc_type=ioc.ioc_type,  # add_ioc handles type mapping to type_id
-                        ioc_description=ioc.notes or f"IOC synced from caseScope - Matches: {ioc.match_count}",
+                        ioc_description=ioc_description,
                         ioc_tags=f"casescope,priority-{case.priority.lower()}"
                     )
                     
