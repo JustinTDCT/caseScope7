@@ -820,6 +820,7 @@ def delete_case(case_id):
 @login_required
 def case_dashboard():
     """Case-specific dashboard"""
+    clear_search_filters()  # Clear search filters when leaving search page
     active_case_id = session.get('active_case_id')
     if not active_case_id:
         flash('Please select a case first.', 'warning')
@@ -855,6 +856,7 @@ def case_dashboard():
 @login_required
 def upload_files():
     """File upload for active case"""
+    clear_search_filters()  # Clear search filters when leaving search page
     import hashlib
     import mimetypes
     
@@ -1001,6 +1003,7 @@ def upload_files():
 @login_required
 def list_files():
     """List files in active case"""
+    clear_search_filters()  # Clear search filters when leaving search page
     active_case_id = session.get('active_case_id')
     if not active_case_id:
         flash('Please select a case first.', 'warning')
@@ -1795,6 +1798,7 @@ def audit_log():
 @login_required
 def violations():
     """View SIGMA rule violations for active case"""
+    clear_search_filters()  # Clear search filters when leaving search page
     # Check for active case
     case_id = session.get('active_case_id')
     if not case_id:
@@ -1883,6 +1887,7 @@ def review_violation(violation_id):
 @login_required
 def ioc_list():
     """IOC Management - View and manage Indicators of Compromise"""
+    clear_search_filters()  # Clear search filters when leaving search page
     # Check for active case
     case_id = session.get('active_case_id')
     if not case_id:
@@ -2323,6 +2328,12 @@ def export_search():
         flash(f'Export error: {str(e)}', 'error')
         return redirect(url_for('search'))
 
+def clear_search_filters():
+    """Clear search filter session data when leaving search page"""
+    session.pop('search_time_range', None)
+    session.pop('search_custom_start', None)
+    session.pop('search_custom_end', None)
+
 @app.route('/search', methods=['GET', 'POST'])
 @login_required
 def search():
@@ -2366,15 +2377,38 @@ def search():
     sort_field = 'relevance'
     sort_order = 'desc'
     
+    # Check for IOC filter from URL query string (for clickable IOC links)
+    ioc_filter = request.args.get('ioc')
+    
     if request.method == 'POST':
         query_str = request.form.get('query', '*').strip()
         page = int(request.form.get('page', 1))
         threat_filter = request.form.get('threat_filter', 'none')
-        time_range = request.form.get('time_range', 'all')
-        custom_start = request.form.get('custom_start')
-        custom_end = request.form.get('custom_end')
+        time_range = request.form.get('time_range', session.get('search_time_range', 'all'))
+        custom_start = request.form.get('custom_start', session.get('search_custom_start'))
+        custom_end = request.form.get('custom_end', session.get('search_custom_end'))
         sort_field = request.form.get('sort', 'relevance')
         sort_order = request.form.get('sort_order', 'desc')
+        
+        # Save time filter to session for persistence
+        session['search_time_range'] = time_range
+        if custom_start:
+            session['search_custom_start'] = custom_start
+        if custom_end:
+            session['search_custom_end'] = custom_end
+    elif ioc_filter:
+        # Coming from IOC link - search for that IOC value
+        query_str = ioc_filter
+        threat_filter = 'ioc'  # Show only IOC matches
+        # Restore time filter from session
+        time_range = session.get('search_time_range', 'all')
+        custom_start = session.get('search_custom_start')
+        custom_end = session.get('search_custom_end')
+    else:
+        # GET request - restore time filter from session
+        time_range = session.get('search_time_range', 'all')
+        custom_start = session.get('search_custom_start')
+        custom_end = session.get('search_custom_end')
     
     # Always perform search (both GET and POST)
     if query_str:
@@ -3330,6 +3364,7 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
+    clear_search_filters()  # Clear search filters when leaving search page
     # Get real system statistics
     total_cases = db.session.query(Case).count()
     total_files = db.session.query(CaseFile).filter_by(is_deleted=False).count()
@@ -5120,14 +5155,16 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             doc_id = result.get('doc_id', '')
             escaped_doc_id = html.escape(doc_id, quote=True)
             
-            # Get IOC matches for this event
+            # Get IOC matches for this event (clickable)
             ioc_badges = ''
             if result.get('ioc_matches'):
                 ioc_list = []
                 for ioc_match in result['ioc_matches']:
                     ioc_type = ioc_match.get('type', 'unknown')
-                    ioc_value = ioc_match.get('value', '')[:20]
-                    ioc_list.append(f'<span style="background: #fbbf24; color: #0f172a; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-right: 4px;" title="{ioc_type}: {ioc_match.get("value", "")}">{ioc_type.upper()}</span>')
+                    ioc_value = ioc_match.get('value', '')
+                    ioc_value_display = ioc_value[:20]
+                    ioc_value_escaped = html.escape(ioc_value, quote=True)
+                    ioc_list.append(f'<a href="/search?ioc={ioc_value_escaped}" style="background: #fbbf24; color: #0f172a; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-right: 4px; text-decoration: none; cursor: pointer; display: inline-block;" title="Click to search for: {ioc_value_escaped}" onclick="event.stopPropagation();">{ioc_type.upper()}</a>')
                 ioc_badges = ''.join(ioc_list)
             
             if not ioc_badges:
@@ -6106,8 +6143,11 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
         # Status badge
         status_badge = '<span style="color: #4caf50;">✓ Active</span>' if ioc.is_active else '<span style="color: #757575;">✗ Inactive</span>'
         
-        # Match count badge
-        match_badge = f'<span style="color: #fbbf24; font-weight: bold;">🎯 {ioc.match_count}</span>' if ioc.match_count > 0 else '<span style="color: #94a3b8;">0</span>'
+        # Match count badge (clickable if there are matches)
+        if ioc.match_count > 0:
+            match_badge = f'<a href="/search?ioc={ioc_value_safe}" style="color: #fbbf24; font-weight: bold; text-decoration: none; cursor: pointer;" title="View {ioc.match_count} matching events">🎯 {ioc.match_count}</a>'
+        else:
+            match_badge = '<span style="color: #94a3b8;">0</span>'
         
         # Last hunted info
         last_hunted = ioc.last_hunted.strftime('%Y-%m-%d %H:%M') if ioc.last_hunted else 'Never'
