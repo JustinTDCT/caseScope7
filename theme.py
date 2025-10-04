@@ -1506,6 +1506,10 @@ def get_theme_css():
                 padding: 1rem;
                 border-radius: 6px;
                 overflow-x: auto;
+                overflow-wrap: break-word;
+                word-wrap: break-word;
+                word-break: break-word;
+                white-space: pre-wrap;
                 color: #cbd5e1;
                 font-size: 0.9rem;
                 line-height: 1.5;

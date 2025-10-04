@@ -2420,7 +2420,7 @@ def search():
         custom_end = session.get('search_custom_end')
     
     # Always perform search (both GET and POST)
-    if query_str:
+        if query_str:
             try:
                 # Build OpenSearch query from user input (this transforms the query)
                 # But we keep query_str unchanged for display
@@ -2490,15 +2490,15 @@ def search():
                         
                         # Use range query on the .date field (which has proper date type mapping)
                         # This is much more efficient than wildcards and handles all date ranges
-                        time_filter = {
+                            time_filter = {
                             "range": {
                                 "System.TimeCreated.@SystemTime.date": {
                                     "gte": start_iso,
                                     "lte": end_iso,
                                     "format": "strict_date_optional_time"
                                 }
+                                }
                             }
-                        }
                         
                         filters.append(time_filter)
                 
@@ -5241,7 +5241,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
         if is_limited:
             pagination_html += f'<span class="page-info" style="color: #fbbf24;">⚠️ Page {page} of {max_accessible_page} ({total_hits:,}+ results - OpenSearch limits to first {opensearch_limit:,})</span>'
         else:
-            pagination_html += f'<span class="page-info">Page {page} of {total_pages} ({total_hits:,} results)</span>'
+        pagination_html += f'<span class="page-info">Page {page} of {total_pages} ({total_hits:,} results)</span>'
         
         if page < max_accessible_page:
             pagination_html += f'<button class="page-btn" onclick="searchPage({page + 1})">Next →</button>'
@@ -5956,9 +5956,14 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
                 <button class="btn-action btn-view" onclick="viewViolation({v.id})" title="View Details">👁️</button>
                 {f'<button class="btn-action btn-review" onclick="showReviewModal({v.id})" title="Mark Reviewed">✓</button>' if not v.is_reviewed else ''}
             </td>
+            <td style="text-align: center;">
+                <button class="tag-btn" data-event-id="{v.event_id}" data-timestamp="{timestamp}" onclick="event.stopPropagation(); toggleTag(this);" title="Tag for timeline">
+                    <span class="tag-icon">☆</span>
+                </button>
+            </td>
         </tr>
         <tr id="violation-details-{v.id}" class="violation-details" style="display: none;">
-            <td colspan="8">
+            <td colspan="9">
                 <div class="violation-detail-panel">
                     <h4>Violation Details</h4>
                     <div class="detail-grid">
@@ -6085,10 +6090,11 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
                             <th>Timestamp</th>
                             <th>Status</th>
                             <th>Actions</th>
+                            <th>Tag</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {violations_html if violations_html else '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #aaa;">No violations found with current filters.</td></tr>'}
+                        {violations_html if violations_html else '<tr><td colspan="9" style="text-align: center; padding: 40px; color: #aaa;">No violations found with current filters.</td></tr>'}
                     </tbody>
                 </table>
                 
@@ -6121,6 +6127,82 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
                     form.submit();
                 }}
             }}
+            
+            // Timeline tagging
+            function toggleTag(button) {{
+                const eventId = button.getAttribute('data-event-id');
+                const timestamp = button.getAttribute('data-timestamp');
+                const icon = button.querySelector('.tag-icon');
+                const isTagged = icon.textContent === '★';
+                
+                if (isTagged) {{
+                    // Untag
+                    fetch('/api/event/untag', {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/json'}},
+                        body: JSON.stringify({{event_id: eventId}})
+                    }})
+                    .then(response => response.json())
+                    .then(data => {{
+                        if (data.success) {{
+                            icon.textContent = '☆';
+                            button.style.color = '#94a3b8';
+                        }} else {{
+                            alert('Failed to untag event: ' + (data.error || 'Unknown error'));
+                        }}
+                    }})
+                    .catch(error => {{
+                        console.error('Error:', error);
+                        alert('Failed to untag event');
+                    }});
+                }} else {{
+                    // Tag
+                    fetch('/api/event/tag', {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/json'}},
+                        body: JSON.stringify({{
+                            event_id: eventId,
+                            timestamp: timestamp,
+                            tag_type: 'timeline',
+                            color: 'blue',
+                            notes: ''
+                        }})
+                    }})
+                    .then(response => response.json())
+                    .then(data => {{
+                        if (data.success) {{
+                            icon.textContent = '★';
+                            button.style.color = '#fbbf24';
+                        }} else {{
+                            alert('Failed to tag event: ' + (data.error || 'Unknown error'));
+                        }}
+                    }})
+                    .catch(error => {{
+                        console.error('Error:', error);
+                        alert('Failed to tag event');
+                    }});
+                }}
+            }}
+            
+            // Load existing tags on page load
+            document.addEventListener('DOMContentLoaded', function() {{
+                fetch('/api/event/tags?tag_type=timeline')
+                    .then(response => response.json())
+                    .then(data => {{
+                        if (data.success) {{
+                            const taggedEventIds = new Set(data.tags.map(t => t.event_id));
+                            document.querySelectorAll('.tag-btn').forEach(button => {{
+                                const eventId = button.getAttribute('data-event-id');
+                                if (taggedEventIds.has(eventId)) {{
+                                    const icon = button.querySelector('.tag-icon');
+                                    icon.textContent = '★';
+                                    button.style.color = '#fbbf24';
+                                }}
+                            }});
+                        }}
+                    }})
+                    .catch(error => console.error('Error loading tags:', error));
+            }});
         </script>
     </body>
     </html>
@@ -6992,7 +7074,7 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                 {flash_messages_html}
                 <div class="case-info">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <h2>Case Details</h2>
+                    <h2>Case Details</h2>
                         {'<span class="sync-badge sync-badge-synced">✓ Synced to IRIS</span>' if case.iris_synced_at else '<span class="sync-badge sync-badge-not-synced">⚠ Not Synced</span>'}
                     </div>
                     <p><strong>Case Number:</strong> {case.case_number}</p>
