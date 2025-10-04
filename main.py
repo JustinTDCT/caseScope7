@@ -1942,6 +1942,21 @@ def ioc_list():
             
             log_audit('add_ioc', 'ioc_management', f'Added IOC: {ioc_type}={ioc_value}', success=True)
             flash(f'✓ IOC added: {ioc_value}', 'success')
+            
+            # Auto-sync to DFIR-IRIS if enabled
+            try:
+                settings = db.session.query(SystemSettings).first()
+                if settings and settings.iris_enabled and settings.iris_auto_sync:
+                    # Trigger async sync (fire and forget)
+                    from iris_sync import sync_case_to_iris
+                    import threading
+                    sync_thread = threading.Thread(target=sync_case_to_iris, args=(case_id,), daemon=True)
+                    sync_thread.start()
+                    print(f"[Auto-Sync] IOC added - triggered DFIR-IRIS sync for case {case_id}")
+            except Exception as e:
+                # Don't fail the IOC add if auto-sync fails
+                print(f"[Auto-Sync] Failed to trigger sync after IOC add: {e}")
+            
             return redirect(url_for('ioc_list'))
     
     # Get filter parameters
@@ -2224,6 +2239,11 @@ def export_search():
         filters.append({"exists": {"field": "has_violations"}})
     elif threat_filter == 'ioc':
         filters.append({"exists": {"field": "has_ioc_matches"}})
+    elif threat_filter == 'either':
+        filters.append({"bool": {"should": [
+            {"exists": {"field": "has_violations"}},
+            {"exists": {"field": "has_ioc_matches"}}
+        ], "minimum_should_match": 1}})
     elif threat_filter == 'both':
         filters.append({"bool": {"must": [
             {"exists": {"field": "has_violations"}},
@@ -2370,6 +2390,11 @@ def search():
                     filters.append({"exists": {"field": "has_violations"}})
                 elif threat_filter == 'ioc':
                     filters.append({"exists": {"field": "has_ioc_matches"}})
+                elif threat_filter == 'either':
+                    filters.append({"bool": {"should": [
+                        {"exists": {"field": "has_violations"}},
+                        {"exists": {"field": "has_ioc_matches"}}
+                    ], "minimum_should_match": 1}})
                 elif threat_filter == 'both':
                     filters.append({"bool": {"must": [
                         {"exists": {"field": "has_violations"}},
@@ -5237,7 +5262,8 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                                     <option value="none" {'selected' if violations_only == 'none' else ''}>None (All Events)</option>
                                     <option value="sigma" {'selected' if violations_only == 'sigma' else ''}>🚨 SIGMA Only</option>
                                     <option value="ioc" {'selected' if violations_only == 'ioc' else ''}>🎯 IOC Only</option>
-                                    <option value="both" {'selected' if violations_only == 'both' else ''}>🔥 SIGMA + IOC</option>
+                                    <option value="either" {'selected' if violations_only == 'either' else ''}>⚡ SIGMA or IOC</option>
+                                    <option value="both" {'selected' if violations_only == 'both' else ''}>🔥 SIGMA + IOC (Both)</option>
                                 </select>
                             </div>
                             <button type="submit" class="btn-search">🔍 Search</button>
@@ -8121,6 +8147,20 @@ def tag_event():
             details=f'Tagged event {data["event_id"][:16]} for timeline in case {case_id}',
             success=True
         )
+        
+        # Auto-sync to DFIR-IRIS if enabled
+        try:
+            settings = db.session.query(SystemSettings).first()
+            if settings and settings.iris_enabled and settings.iris_auto_sync:
+                # Trigger async sync (fire and forget)
+                from iris_sync import sync_case_to_iris
+                import threading
+                sync_thread = threading.Thread(target=sync_case_to_iris, args=(case_id,), daemon=True)
+                sync_thread.start()
+                print(f"[Auto-Sync] Event tagged - triggered DFIR-IRIS sync for case {case_id}")
+        except Exception as e:
+            # Don't fail the tagging if auto-sync fails
+            print(f"[Auto-Sync] Failed to trigger sync after event tag: {e}")
         
         return jsonify({
             'success': True,
