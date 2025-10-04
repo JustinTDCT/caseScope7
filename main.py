@@ -5313,11 +5313,11 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                             <div style="display: flex; align-items: center; margin-right: 15px;">
                                 <label style="color: rgba(255,255,255,0.9); margin-right: 8px; font-size: 14px; font-weight: 500;">🎯 Threat Filtering:</label>
                                 <select name="threat_filter" style="padding: 6px 12px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.1); color: white; font-size: 14px; cursor: pointer;">
-                                    <option value="none" {'selected' if violations_only == 'none' else ''}>None (All Events)</option>
-                                    <option value="sigma" {'selected' if violations_only == 'sigma' else ''}>🚨 SIGMA Only</option>
-                                    <option value="ioc" {'selected' if violations_only == 'ioc' else ''}>🎯 IOC Only</option>
-                                    <option value="either" {'selected' if violations_only == 'either' else ''}>⚡ SIGMA or IOC</option>
-                                    <option value="both" {'selected' if violations_only == 'both' else ''}>🔥 SIGMA + IOC (Both)</option>
+                                    <option value="none" {'selected' if threat_filter == 'none' else ''}>None (All Events)</option>
+                                    <option value="sigma" {'selected' if threat_filter == 'sigma' else ''}>🚨 SIGMA Only</option>
+                                    <option value="ioc" {'selected' if threat_filter == 'ioc' else ''}>🎯 IOC Only</option>
+                                    <option value="either" {'selected' if threat_filter == 'either' else ''}>⚡ SIGMA or IOC</option>
+                                    <option value="both" {'selected' if threat_filter == 'both' else ''}>🔥 SIGMA + IOC (Both)</option>
                                 </select>
                             </div>
                             <button type="submit" class="btn-search">🔍 Search</button>
@@ -7009,7 +7009,7 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                         <p><strong>Indexed:</strong> {indexed_files:,} / {total_files:,}</p>
                         <p><strong>Processing:</strong> {processing_files:,}</p>
                         <p><strong>Storage:</strong> {total_storage / (1024*1024*1024):.2f} GB</p>
-                        <a href="/files" class="btn btn-secondary" onclick="event.stopPropagation();">Manage Files</a>
+                        <button onclick="event.stopPropagation(); window.location.href='/files';" class="btn" style="background: linear-gradient(145deg, #607d8b, #455a64); box-shadow: 0 4px 8px rgba(96,125,139,0.3); border: none; cursor: pointer; font-weight: 600;">📁 Manage Files</button>
                     </div>
                     <div class="tile" onclick="window.location.href='/search';" title="Click to search events">
                         <h3>📊 Events</h3>
@@ -7018,7 +7018,7 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                         <p><strong>Searchable:</strong> {'Yes' if indexed_files > 0 else 'No files indexed yet'}</p>
                         <p><strong>Event IDs:</strong> 100+ Mapped</p>
                         <div style="margin-top: 15px;">
-                            <a href="/search" class="btn btn-secondary" style="margin: 5px;" onclick="event.stopPropagation();">Search Events</a>
+                            <button onclick="event.stopPropagation(); window.location.href='/search';" class="btn" style="background: linear-gradient(145deg, #4caf50, #388e3c); box-shadow: 0 4px 8px rgba(76,175,80,0.3); margin: 5px; border: none; cursor: pointer; font-weight: 600;">🔍 Search Events</button>
                             <button onclick="event.stopPropagation(); reindexAllFiles();" class="btn" style="background: linear-gradient(145deg, #2196f3, #1976d2); box-shadow: 0 4px 8px rgba(33,150,243,0.3); margin: 5px; border: none; cursor: pointer; font-weight: 600;">🔄 Re-index All Files</button>
                         </div>
                     </div>
@@ -7036,10 +7036,10 @@ def render_case_dashboard(case, total_files, indexed_files, processing_files, to
                 </div>
                 
                 <div class="actions">
-                    <a href="/upload" class="btn">📤 Upload Files</a>
+                    <button onclick="window.location.href='/upload';" class="btn" style="background: linear-gradient(145deg, #00bcd4, #0097a7); box-shadow: 0 4px 8px rgba(0,188,212,0.3); border: none; cursor: pointer; font-weight: 600;">📤 Upload Files</button>
                     <button onclick="syncToIris()" class="btn" style="background: linear-gradient(145deg, #9c27b0, #7b1fa2); box-shadow: 0 4px 8px rgba(156,39,176,0.3); border: none; cursor: pointer; font-weight: 600;">🔗 Sync to DFIR-IRIS</button>
-                    <a href="/case/select" class="btn btn-secondary">🔄 Switch Case</a>
-                    <a href="/dashboard" class="btn btn-secondary">🏠 Main Dashboard</a>
+                    <button onclick="window.location.href='/case/select';" class="btn" style="background: linear-gradient(145deg, #607d8b, #455a64); box-shadow: 0 4px 8px rgba(96,125,139,0.3); border: none; cursor: pointer; font-weight: 600;">🔄 Switch Case</button>
+                    <button onclick="window.location.href='/dashboard';" class="btn" style="background: linear-gradient(145deg, #607d8b, #455a64); box-shadow: 0 4px 8px rgba(96,125,139,0.3); border: none; cursor: pointer; font-weight: 600;">🏠 Main Dashboard</button>
                 </div>
             </div>
         </div>
