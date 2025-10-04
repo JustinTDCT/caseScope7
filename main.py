@@ -2436,20 +2436,29 @@ def search():
                 filters = []
                 
                 # Add threat filtering
+                print(f"[Search] Threat filter selected: {threat_filter}")
                 if threat_filter == 'sigma':
-                    filters.append({"exists": {"field": "has_violations"}})
+                    threat_query = {"exists": {"field": "has_violations"}}
+                    filters.append(threat_query)
+                    print(f"[Search] Added SIGMA filter: {threat_query}")
                 elif threat_filter == 'ioc':
-                    filters.append({"exists": {"field": "has_ioc_matches"}})
+                    threat_query = {"exists": {"field": "has_ioc_matches"}}
+                    filters.append(threat_query)
+                    print(f"[Search] Added IOC filter: {threat_query}")
                 elif threat_filter == 'either':
-                    filters.append({"bool": {"should": [
+                    threat_query = {"bool": {"should": [
                         {"exists": {"field": "has_violations"}},
                         {"exists": {"field": "has_ioc_matches"}}
-                    ], "minimum_should_match": 1}})
+                    ], "minimum_should_match": 1}}
+                    filters.append(threat_query)
+                    print(f"[Search] Added SIGMA or IOC filter: {threat_query}")
                 elif threat_filter == 'both':
-                    filters.append({"bool": {"must": [
+                    threat_query = {"bool": {"must": [
                         {"exists": {"field": "has_violations"}},
                         {"exists": {"field": "has_ioc_matches"}}
-                    ]}})
+                    ]}}
+                    filters.append(threat_query)
+                    print(f"[Search] Added SIGMA + IOC filter: {threat_query}")
                 
                 # Add time range filter
                 if time_range != 'all':
@@ -2516,8 +2525,10 @@ def search():
                             "filter": filters
                         }
                     }
+                    print(f"[Search] Final query with filters: {os_query}")
                 else:
                     os_query = base_query
+                    print(f"[Search] Query without filters: {os_query}")
                 
                 # Search across all indices for this case
                 from_offset = (page - 1) * per_page
