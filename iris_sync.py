@@ -115,6 +115,7 @@ class IrisSyncService:
     def _sync_company(self, case, db_session) -> Dict[str, any]:
         """
         Step 1: Ensure company exists in DFIR-IRIS
+        Verifies cached company ID still exists, creates new if not
         
         Args:
             case: caseScope Case object
@@ -132,12 +133,33 @@ class IrisSyncService:
             else:
                 company_name = case.company
             
-            # Check if we already have IRIS company ID
+            # VERIFY cached company ID still exists in IRIS
             if case.iris_company_id:
-                logger.info(f"Using cached IRIS company ID: {case.iris_company_id}")
-                return {'success': True, 'company_id': case.iris_company_id}
+                logger.info(f"Verifying cached IRIS company ID: {case.iris_company_id}")
+                try:
+                    # Get all companies and check if our cached ID exists
+                    companies = self.client.get_customers()
+                    cached_company = next((c for c in companies if c.get('customer_id') == case.iris_company_id), None)
+                    
+                    if cached_company:
+                        # Verify the name matches (in case it was renamed)
+                        cached_name = cached_company.get('customer_name', '')
+                        if cached_name.lower() == company_name.lower():
+                            logger.info(f"✓ Cached company ID {case.iris_company_id} still valid")
+                            return {'success': True, 'company_id': case.iris_company_id}
+                        else:
+                            logger.warning(f"Company name mismatch: cached='{cached_name}', current='{company_name}'")
+                            logger.info("Clearing cached company ID and looking up by name")
+                            case.iris_company_id = None
+                    else:
+                        logger.warning(f"Cached company ID {case.iris_company_id} not found in IRIS (deleted?)")
+                        logger.info("Clearing cached company ID and creating new")
+                        case.iris_company_id = None
+                except Exception as e:
+                    logger.warning(f"Failed to verify cached company ID: {str(e)}")
+                    case.iris_company_id = None
             
-            # Get or create company in IRIS
+            # Get or create company in IRIS (by name)
             company = self.client.get_or_create_customer(company_name)
             
             if 'customer_id' in company:
@@ -162,6 +184,7 @@ class IrisSyncService:
     def _sync_case(self, case, iris_company_id: int, db_session) -> Dict[str, any]:
         """
         Step 2: Ensure case exists in DFIR-IRIS and is bound to company
+        Verifies cached case ID still exists, creates new if not
         
         Args:
             case: caseScope Case object
@@ -172,12 +195,33 @@ class IrisSyncService:
             Result dict with case_id
         """
         try:
-            # Check if we already have IRIS case ID
+            # VERIFY cached case ID still exists in IRIS
             if case.iris_case_id:
-                logger.info(f"Using cached IRIS case ID: {case.iris_case_id}")
-                return {'success': True, 'case_id': case.iris_case_id}
+                logger.info(f"Verifying cached IRIS case ID: {case.iris_case_id}")
+                try:
+                    # Get all cases and check if our cached ID exists
+                    cases = self.client.get_cases()
+                    cached_case = next((c for c in cases if c.get('case_id') == case.iris_case_id), None)
+                    
+                    if cached_case:
+                        # Verify the SOC ID matches
+                        cached_soc_id = cached_case.get('case_soc_id', '')
+                        if cached_soc_id == case.case_number:
+                            logger.info(f"✓ Cached case ID {case.iris_case_id} still valid")
+                            return {'success': True, 'case_id': case.iris_case_id}
+                        else:
+                            logger.warning(f"Case SOC ID mismatch: cached='{cached_soc_id}', current='{case.case_number}'")
+                            logger.info("Clearing cached case ID and looking up by SOC ID")
+                            case.iris_case_id = None
+                    else:
+                        logger.warning(f"Cached case ID {case.iris_case_id} not found in IRIS (deleted?)")
+                        logger.info("Clearing cached case ID and creating new")
+                        case.iris_case_id = None
+                except Exception as e:
+                    logger.warning(f"Failed to verify cached case ID: {str(e)}")
+                    case.iris_case_id = None
             
-            # Get or create case in IRIS
+            # Get or create case in IRIS (by SOC ID)
             iris_case = self.client.get_or_create_case(
                 soc_id=case.case_number,
                 name=case.name,
