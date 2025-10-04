@@ -795,52 +795,76 @@ create_user() {
     echo
 }
 
-# Create directory structure
+# Create directory structure and apply system optimizations
 create_directories() {
-    log "Creating directory structure..."
+    log_step "Creating complete directory structure..."
     
     # Main directories
-    mkdir -p /opt/casescope/{app,data,uploads,logs,rules,config,tmp}
+    local directories=(
+        "/opt/casescope/app:Application code"
+        "/opt/casescope/data:Database and case data"
+        "/opt/casescope/data/backups:Data backups"
+        "/opt/casescope/uploads:Uploaded files"
+        "/opt/casescope/logs:Application logs"
+        "/opt/casescope/logs/app:App logs"
+        "/opt/casescope/logs/nginx:Web server logs"
+        "/opt/casescope/logs/system:System logs"
+        "/opt/casescope/bin:External binaries"
+        "/opt/casescope/rules:SIGMA rules"
+        "/opt/casescope/config:Configuration files"
+        "/opt/casescope/tmp:Temporary files"
+    )
     
-    # Data subdirectories
-    mkdir -p /opt/casescope/data/{database,backups}
-    
-    # Log subdirectories
-    mkdir -p /opt/casescope/logs/{app,nginx,system}
+    for dir_info in "${directories[@]}"; do
+        IFS=':' read -r dir desc <<< "$dir_info"
+        mkdir -p "$dir" 2>/dev/null
+    done
+    log_success "All directories created"
     
     # Set ownership
+    log_step "Setting directory ownership and permissions..."
     chown -R casescope:casescope /opt/casescope
-    
-    # Set permissions
     chmod 755 /opt/casescope
     chmod 750 /opt/casescope/data
     chmod 755 /opt/casescope/uploads
     chmod 755 /opt/casescope/logs
+    log_success "Ownership and permissions configured"
     
-    # System optimizations for faster OpenSearch startup
-    log "Applying system optimizations for faster OpenSearch startup..."
+    # System optimizations for OpenSearch and performance
+    log_step "Applying system optimizations..."
     
-    # Increase virtual memory map limit for OpenSearch
+    # Increase virtual memory map limit for OpenSearch (required)
     if ! grep -q "vm.max_map_count" /etc/sysctl.conf; then
         echo 'vm.max_map_count=262144' >> /etc/sysctl.conf
+        log_success "Added vm.max_map_count to sysctl.conf"
     fi
-    sysctl -w vm.max_map_count=262144
+    sysctl -w vm.max_map_count=262144 >/dev/null 2>&1
+    log_success "Virtual memory map count: 262144"
     
-    # Optimize file descriptor limits
+    # Optimize file descriptor limits for casescope user
     if ! grep -q "casescope.*nofile" /etc/security/limits.conf; then
-        echo 'casescope soft nofile 65536' >> /etc/security/limits.conf
-        echo 'casescope hard nofile 65536' >> /etc/security/limits.conf
-        echo 'casescope soft nproc 4096' >> /etc/security/limits.conf
-        echo 'casescope hard nproc 4096' >> /etc/security/limits.conf
+        cat >> /etc/security/limits.conf << EOF
+casescope soft nofile 65536
+casescope hard nofile 65536
+casescope soft nproc 4096
+casescope hard nproc 4096
+EOF
+        log_success "File descriptor limits configured"
+    else
+        log_success "File descriptor limits already configured"
     fi
     
-    # Optimize swappiness for better Java performance
+    # Optimize swappiness for better Java/OpenSearch performance
     if ! grep -q "vm.swappiness" /etc/sysctl.conf; then
         echo 'vm.swappiness=1' >> /etc/sysctl.conf
+        log_success "Added vm.swappiness to sysctl.conf"
     fi
-    sysctl -w vm.swappiness=1
+    sysctl -w vm.swappiness=1 >/dev/null 2>&1
+    log_success "Swappiness optimized for Java workloads"
     
-    log "Directory structure created and system optimized"
+    echo
+    log_success "Directory structure and system optimizations completed"
+    echo
 }
 
 # Handle data based on installation type
