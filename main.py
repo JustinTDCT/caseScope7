@@ -4047,10 +4047,10 @@ def render_system_settings(settings):
     iris_enabled_checked = 'checked' if settings['iris_enabled'] == 'true' else ''
     iris_auto_sync_checked = 'checked' if settings['iris_auto_sync'] == 'true' else ''
     
-    # Escape values
-    iris_url_safe = html.escape(settings['iris_url'], quote=True)
-    iris_api_key_safe = html.escape(settings['iris_api_key'], quote=True)
-    iris_customer_id_safe = html.escape(settings['iris_customer_id'], quote=True)
+    # Escape values (convert to string first in case of integers/booleans)
+    iris_url_safe = html.escape(str(settings['iris_url']), quote=True)
+    iris_api_key_safe = html.escape(str(settings['iris_api_key']), quote=True)
+    iris_customer_id_safe = html.escape(str(settings['iris_customer_id']), quote=True)
     
     return f'''
     <!DOCTYPE html>
