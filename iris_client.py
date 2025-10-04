@@ -1,0 +1,409 @@
+#!/usr/bin/env python3
+"""
+DFIR-IRIS API Client
+Handles all communication with DFIR-IRIS API for case/IOC/timeline synchronization
+"""
+
+import requests
+import logging
+from typing import Optional, Dict, List, Any
+
+logger = logging.getLogger(__name__)
+
+
+class IrisClient:
+    """
+    Client for interacting with DFIR-IRIS API
+    
+    DFIR-IRIS API Reference: https://docs.dfir-iris.org/
+    """
+    
+    def __init__(self, base_url: str, api_key: str):
+        """
+        Initialize IRIS client
+        
+        Args:
+            base_url: DFIR-IRIS server URL (e.g., https://iris.company.com)
+            api_key: API authentication key
+        """
+        self.base_url = base_url.rstrip('/')
+        self.api_key = api_key
+        self.session = requests.Session()
+        self.session.headers.update({
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        })
+    
+    def _request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
+        """
+        Make API request with error handling
+        
+        Args:
+            method: HTTP method (GET, POST, PUT, DELETE)
+            endpoint: API endpoint path
+            **kwargs: Additional arguments for requests
+            
+        Returns:
+            Response JSON data
+            
+        Raises:
+            Exception: On API errors
+        """
+        url = f"{self.base_url}{endpoint}"
+        
+        try:
+            response = self.session.request(method, url, timeout=30, **kwargs)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.Timeout:
+            logger.error(f"IRIS API timeout: {method} {endpoint}")
+            raise Exception("DFIR-IRIS connection timeout")
+        except requests.exceptions.ConnectionError:
+            logger.error(f"IRIS API connection error: {method} {endpoint}")
+            raise Exception("Cannot connect to DFIR-IRIS server")
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"IRIS API HTTP error: {e.response.status_code} - {e.response.text}")
+            raise Exception(f"DFIR-IRIS API error: {e.response.status_code}")
+        except Exception as e:
+            logger.error(f"IRIS API error: {str(e)}")
+            raise
+    
+    # ============================================================================
+    # COMPANY/CUSTOMER OPERATIONS
+    # ============================================================================
+    
+    def get_customers(self) -> List[Dict[str, Any]]:
+        """
+        Get list of all customers/companies
+        
+        Returns:
+            List of customer objects
+        """
+        response = self._request('GET', '/manage/customers/list')
+        return response.get('data', [])
+    
+    def get_customer_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        """
+        Find customer by name (case-insensitive)
+        
+        Args:
+            name: Customer name to search for
+            
+        Returns:
+            Customer object if found, None otherwise
+        """
+        customers = self.get_customers()
+        name_lower = name.lower()
+        
+        for customer in customers:
+            if customer.get('customer_name', '').lower() == name_lower:
+                return customer
+        
+        return None
+    
+    def create_customer(self, name: str, description: str = "") -> Dict[str, Any]:
+        """
+        Create new customer/company in DFIR-IRIS
+        
+        Args:
+            name: Customer name
+            description: Customer description (optional)
+            
+        Returns:
+            Created customer object with customer_id
+        """
+        data = {
+            'customer_name': name,
+            'customer_description': description or f'Auto-created from caseScope for {name}'
+        }
+        
+        response = self._request('POST', '/manage/customers/add', json=data)
+        return response.get('data', {})
+    
+    def get_or_create_customer(self, name: str) -> Dict[str, Any]:
+        """
+        Get existing customer or create if doesn't exist
+        
+        Args:
+            name: Customer name
+            
+        Returns:
+            Customer object with customer_id
+        """
+        # Try to find existing
+        customer = self.get_customer_by_name(name)
+        if customer:
+            logger.info(f"Found existing IRIS customer: {name} (ID: {customer['customer_id']})")
+            return customer
+        
+        # Create new
+        logger.info(f"Creating new IRIS customer: {name}")
+        customer = self.create_customer(name)
+        logger.info(f"Created IRIS customer: {name} (ID: {customer['customer_id']})")
+        return customer
+    
+    # ============================================================================
+    # CASE OPERATIONS
+    # ============================================================================
+    
+    def get_cases(self, customer_id: int = None) -> List[Dict[str, Any]]:
+        """
+        Get list of cases, optionally filtered by customer
+        
+        Args:
+            customer_id: Filter by customer ID (optional)
+            
+        Returns:
+            List of case objects
+        """
+        response = self._request('GET', '/manage/cases/list')
+        cases = response.get('data', [])
+        
+        if customer_id:
+            cases = [c for c in cases if c.get('customer_id') == customer_id]
+        
+        return cases
+    
+    def get_case_by_soc_id(self, soc_id: str, customer_id: int = None) -> Optional[Dict[str, Any]]:
+        """
+        Find case by SOC ID (case number)
+        
+        Args:
+            soc_id: Case SOC ID to search for
+            customer_id: Filter by customer ID (optional)
+            
+        Returns:
+            Case object if found, None otherwise
+        """
+        cases = self.get_cases(customer_id)
+        
+        for case in cases:
+            if case.get('case_soc_id') == soc_id:
+                return case
+        
+        return None
+    
+    def create_case(self, soc_id: str, name: str, customer_id: int, 
+                   description: str = "", classification: int = 1) -> Dict[str, Any]:
+        """
+        Create new case in DFIR-IRIS
+        
+        Args:
+            soc_id: Case SOC ID (case number)
+            name: Case name
+            customer_id: Customer ID to associate case with
+            description: Case description (optional)
+            classification: Case classification (default: 1)
+            
+        Returns:
+            Created case object with case_id
+        """
+        data = {
+            'case_soc_id': soc_id,
+            'case_name': name,
+            'case_customer': customer_id,
+            'case_description': description or f'Synced from caseScope: {name}',
+            'case_classification': classification
+        }
+        
+        response = self._request('POST', '/manage/cases/add', json=data)
+        return response.get('data', {})
+    
+    def get_or_create_case(self, soc_id: str, name: str, customer_id: int, 
+                          description: str = "") -> Dict[str, Any]:
+        """
+        Get existing case or create if doesn't exist
+        
+        Args:
+            soc_id: Case SOC ID
+            name: Case name
+            customer_id: Customer ID
+            description: Case description
+            
+        Returns:
+            Case object with case_id
+        """
+        # Try to find existing
+        case = self.get_case_by_soc_id(soc_id, customer_id)
+        if case:
+            logger.info(f"Found existing IRIS case: {soc_id} (ID: {case['case_id']})")
+            return case
+        
+        # Create new
+        logger.info(f"Creating new IRIS case: {soc_id}")
+        case = self.create_case(soc_id, name, customer_id, description)
+        logger.info(f"Created IRIS case: {soc_id} (ID: {case['case_id']})")
+        return case
+    
+    # ============================================================================
+    # IOC OPERATIONS
+    # ============================================================================
+    
+    def get_case_iocs(self, case_id: int) -> List[Dict[str, Any]]:
+        """
+        Get all IOCs for a specific case
+        
+        Args:
+            case_id: IRIS case ID
+            
+        Returns:
+            List of IOC objects
+        """
+        response = self._request('GET', f'/case/ioc/list?cid={case_id}')
+        return response.get('data', {}).get('ioc', [])
+    
+    def ioc_exists(self, case_id: int, ioc_value: str, ioc_type: str) -> bool:
+        """
+        Check if IOC already exists in case
+        
+        Args:
+            case_id: IRIS case ID
+            ioc_value: IOC value to check
+            ioc_type: IOC type
+            
+        Returns:
+            True if IOC exists, False otherwise
+        """
+        iocs = self.get_case_iocs(case_id)
+        
+        for ioc in iocs:
+            if (ioc.get('ioc_value') == ioc_value and 
+                ioc.get('ioc_type', {}).get('type_name') == ioc_type):
+                return True
+        
+        return False
+    
+    def add_ioc(self, case_id: int, ioc_value: str, ioc_type: str, 
+                ioc_description: str = "", ioc_tags: str = "", 
+                ioc_tlp: int = 2) -> Dict[str, Any]:
+        """
+        Add IOC to case
+        
+        Args:
+            case_id: IRIS case ID
+            ioc_value: IOC value (IP, domain, hash, etc.)
+            ioc_type: IOC type (must match IRIS IOC types)
+            ioc_description: IOC description (optional)
+            ioc_tags: Comma-separated tags (optional)
+            ioc_tlp: TLP level (0=white, 1=green, 2=amber, 3=red)
+            
+        Returns:
+            Created IOC object
+        """
+        # Map caseScope IOC types to IRIS IOC types
+        type_mapping = {
+            'ip': 'ip-dst',
+            'domain': 'domain',
+            'fqdn': 'domain',
+            'hostname': 'hostname',
+            'username': 'username',
+            'hash_md5': 'md5',
+            'hash_sha1': 'sha1',
+            'hash_sha256': 'sha256',
+            'command': 'command-line',
+            'filename': 'filename',
+            'process_name': 'process-name',
+            'registry_key': 'regkey',
+            'email': 'email-addr',
+            'url': 'url'
+        }
+        
+        iris_type = type_mapping.get(ioc_type, ioc_type)
+        
+        data = {
+            'ioc_value': ioc_value,
+            'ioc_type': iris_type,
+            'ioc_description': ioc_description or f'Synced from caseScope',
+            'ioc_tags': ioc_tags,
+            'ioc_tlp_id': ioc_tlp,
+            'cid': case_id
+        }
+        
+        response = self._request('POST', '/case/ioc/add', json=data)
+        return response.get('data', {})
+    
+    # ============================================================================
+    # TIMELINE OPERATIONS
+    # ============================================================================
+    
+    def get_timeline_events(self, case_id: int) -> List[Dict[str, Any]]:
+        """
+        Get timeline events for a case
+        
+        Args:
+            case_id: IRIS case ID
+            
+        Returns:
+            List of timeline event objects
+        """
+        response = self._request('GET', f'/case/timeline/list?cid={case_id}')
+        return response.get('data', {}).get('timeline', [])
+    
+    def timeline_event_exists(self, case_id: int, event_timestamp: str, 
+                             event_title: str) -> bool:
+        """
+        Check if timeline event already exists (by timestamp and title)
+        
+        Args:
+            case_id: IRIS case ID
+            event_timestamp: Event timestamp
+            event_title: Event title
+            
+        Returns:
+            True if event exists, False otherwise
+        """
+        events = self.get_timeline_events(case_id)
+        
+        for event in events:
+            if (event.get('event_date') == event_timestamp and 
+                event.get('event_title') == event_title):
+                return True
+        
+        return False
+    
+    def add_timeline_event(self, case_id: int, event_title: str, event_date: str,
+                          event_content: str = "", event_source: str = "caseScope",
+                          event_category: int = 1) -> Dict[str, Any]:
+        """
+        Add event to case timeline
+        
+        Args:
+            case_id: IRIS case ID
+            event_title: Event title/summary
+            event_date: Event timestamp (ISO format)
+            event_content: Event description/details
+            event_source: Event source (default: caseScope)
+            event_category: Event category ID (default: 1)
+            
+        Returns:
+            Created timeline event object
+        """
+        data = {
+            'event_title': event_title,
+            'event_date': event_date,
+            'event_content': event_content or 'Tagged event from caseScope',
+            'event_source': event_source,
+            'event_category_id': event_category,
+            'cid': case_id
+        }
+        
+        response = self._request('POST', '/case/timeline/add', json=data)
+        return response.get('data', {})
+    
+    # ============================================================================
+    # HEALTH CHECK
+    # ============================================================================
+    
+    def ping(self) -> bool:
+        """
+        Test connection to DFIR-IRIS
+        
+        Returns:
+            True if connected, False otherwise
+        """
+        try:
+            self._request('GET', '/api/ping')
+            return True
+        except:
+            return False
+
