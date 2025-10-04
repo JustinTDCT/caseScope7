@@ -1711,7 +1711,9 @@ def hunt_iocs(self, case_id):
                                         'has_ioc_matches': True,
                                         'ioc_match_count': len(event_ioc_matches),
                                         'matched_iocs': ioc_values
-                                    }
+                                    },
+                                    'doc_as_upsert': True,
+                                    'detect_noop': False
                                 })
                             
                             if bulk_actions:
