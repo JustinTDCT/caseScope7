@@ -1,9 +1,10 @@
 {
-  "version": "7.16.8",
+  "version": "7.16.9",
   "release_date": "2025-10-04",
-  "description": "Critical Bugfix - Migrated SystemSettings Queries to SQLAlchemy 2.0: FIXED Internal Server Error (500) when saving system settings; ROOT CAUSE: get_setting() and set_setting() helper functions were using deprecated SQLAlchemy 1.x query syntax (db.session.query().filter_by().first()) causing database access errors; SOLUTION: migrated both functions to SQLAlchemy 2.0 syntax using db.session.execute(select()) with .scalar_one_or_none(); IMPACT: System Settings page now saves correctly; DFIR-IRIS configuration (URL, API key, customer ID, auto-sync) can be saved without errors; completes SQLAlchemy 2.0 migration for all database operations",
+  "description": "Bugfix - Fixed AttributeError in System Settings Page Load: FIXED AttributeError 'int' object has no attribute 'replace' when loading System Settings page after saving; ROOT CAUSE: html.escape() function expects strings but iris_customer_id was being returned as integer type by get_setting() due to setting_type='integer'; SOLUTION: added str() conversion for all setting values (iris_url, iris_api_key, iris_customer_id) before calling html.escape() to ensure type compatibility; IMPACT: System Settings page now loads correctly after saving; prevents type mismatches between integer/boolean settings and HTML escaping functions; System Settings fully functional for DFIR-IRIS configuration",
   "build": "production",
   "changelog": {
+    "7.16.9": "Bugfix - Fixed AttributeError when loading System Settings page (int→str conversion for html.escape)",
     "7.16.8": "Critical Bugfix - Fixed 500 error saving settings by migrating to SQLAlchemy 2.0 syntax",
     "7.16.7": "Bugfix - Fixed DFIR-IRIS test connection using wrong endpoint (/api/v1/ping → /manage/cases/list)",
     "7.16.6": "Bugfix - Fixed SQL syntax error in case company migration (quoted reserved keyword)",
