@@ -15,6 +15,7 @@ import bcrypt
 from datetime import datetime
 from opensearchpy import OpenSearch
 import re
+from sqlalchemy import select, delete
 
 # Import dark flat theme CSS
 from theme import get_theme_css
