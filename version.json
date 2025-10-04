@@ -1,9 +1,10 @@
 {
-  "version": "7.16.6",
+  "version": "7.16.7",
   "release_date": "2025-10-04",
-  "description": "Bugfix - Fixed Case Company Migration SQL Syntax Error: FIXED migrate_case_company.py failing with 'near case: syntax error' during option 2/3 installations; ROOT CAUSE: 'case' is a reserved SQL keyword in SQLite and must be quoted when used as table name; SOLUTION: added double quotes around all references to case table in PRAGMA and ALTER TABLE statements; changed PRAGMA table_info(case) to PRAGMA table_info(\"case\"); changed ALTER TABLE case to ALTER TABLE \"case\"; IMPACT: migration now runs successfully on all installation types; properly adds company, iris_company_id, iris_case_id, and iris_synced_at columns to case table; DFIR-IRIS integration fully functional on fresh upgrades; applies to all future installations",
+  "description": "Bugfix - Fixed DFIR-IRIS Test Connection Endpoint: FIXED test connection failing with HTTP 404 'Resource not found' error; ROOT CAUSE: test was trying to hit /api/v1/ping endpoint which doesn't exist in DFIR-IRIS API; SOLUTION: changed test endpoint from /api/v1/ping to /manage/cases/list (valid DFIR-IRIS API endpoint); /manage/cases/list is a basic read operation that properly tests URL, API key authentication, and network connectivity; IMPACT: Test Connection button now works correctly with all DFIR-IRIS servers; users can verify their settings before enabling integration; proper validation of URL and API key before attempting sync operations",
   "build": "production",
   "changelog": {
+    "7.16.7": "Bugfix - Fixed DFIR-IRIS test connection using wrong endpoint (/api/v1/ping → /manage/cases/list)",
     "7.16.6": "Bugfix - Fixed SQL syntax error in case company migration (quoted reserved keyword)",
     "7.16.5": "Critical Fix - SSL certificate handling for DFIR-IRIS (works with self-signed certs now)",
     "7.16.4": "MAJOR - Complete DFIR-IRIS sync: API client + sync service + UI integration with one-click sync",
