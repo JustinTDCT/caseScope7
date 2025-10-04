@@ -1,9 +1,10 @@
 {
-  "version": "7.17.0",
+  "version": "7.17.1",
   "release_date": "2025-10-04",
-  "description": "Feature Release - Added Malware Name IOC Type + Fixed Modal Centering: ADDED new 'malware_name' IOC type for tracking malware families, samples, and variants (e.g., Emotet, TrickBot, Ryuk, APT29 toolset); allows analysts to hunt for specific malware names across all indexed events; added to all 3 IOC type lists (IOC Management page, IOC Matches page, filter dropdowns); FIXED IOC modal not centered on screen; ROOT CAUSE: JavaScript showed modals with display='block' but theme CSS requires display='flex' for flexbox centering (align-items:center, justify-content:center); SOLUTION: changed showAddIOCModal() and showEditIOCModal() from display='block' to display='flex'; IMPACT: Add IOC and Edit IOC modals now properly centered on screen; Malware Name available as IOC type for threat hunting workflows",
+  "description": "CRITICAL FIX - DFIR-IRIS IOC Sync Using Type IDs: FIXED IOC sync failing with 'Invalid input' error for all IOCs; ROOT CAUSE: DFIR-IRIS API expects ioc_type_id (integer) not ioc_type (string); we were sending string type names like 'ip-dst', 'domain' but IRIS needs numeric IDs like 76, 15; SOLUTION: completely rewrote IOC type mapping to use type_id_mapping with standard DFIR-IRIS type IDs; added get_ioc_types() method to fetch available types from IRIS API; MAPPING: ip→76 (IPv4-addr), domain→15, hostname→81, username→3 (account), hash_md5→78, hash_sha1→113, hash_sha256→115, command→121 (process-command-line), filename→68 (file-name), malware_name→86 (malware), registry_key→110, email→23, url→123; unknown types default to ID 1 (other) with warning; IMPACT: IOC sync to DFIR-IRIS now works correctly; all 3 test IOCs will sync successfully; DFIR-IRIS integration fully operational end-to-end",
   "build": "production",
   "changelog": {
+    "7.17.1": "CRITICAL FIX - IOC sync using type IDs instead of strings (ioc_type_id not ioc_type)",
     "7.17.0": "Feature - Added Malware Name IOC type + Fixed modal centering (display:flex)",
     "7.16.14": "CRITICAL FIX - IRIS sync boolean comparison bug (prevented sync even when enabled)",
     "7.16.13": "CRITICAL FIX - Boolean vs string comparison (True != 'true') causing checkbox state loss",
