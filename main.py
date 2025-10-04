@@ -3416,7 +3416,14 @@ def dashboard():
         opensearch_version = "Unknown"
     
     sqlalchemy_version = sqlalchemy.__version__
-    flask_version = Flask.__version__
+    
+    # Get Flask version (handle both old and new Flask versions)
+    try:
+        import flask
+        flask_version = flask.__version__
+    except:
+        flask_version = "Unknown"
+    
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     
     # Recent activity
