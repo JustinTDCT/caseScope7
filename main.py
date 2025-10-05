@@ -47,8 +47,29 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'casescope-7.1-productio
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:////opt/casescope/data/casescope.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# SQLite-specific configuration for better concurrency
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'connect_args': {
+        'timeout': 30,  # Wait up to 30 seconds for locks
+        'check_same_thread': False  # Allow SQLite to be used across threads
+    },
+    'pool_pre_ping': True,  # Verify connections before using
+    'pool_recycle': 3600  # Recycle connections after 1 hour
+}
+
 # Initialize Extensions
 db = SQLAlchemy(app)
+
+# Enable SQLite WAL mode for better concurrency (allows concurrent reads during writes)
+@app.before_request
+def _db_enable_wal():
+    """Enable Write-Ahead Logging mode for SQLite (once per connection)"""
+    if not hasattr(_db_enable_wal, 'initialized'):
+        with db.engine.connect() as conn:
+            conn.execute(db.text('PRAGMA journal_mode=WAL'))
+            conn.execute(db.text('PRAGMA busy_timeout=30000'))  # 30 second timeout
+            conn.commit()
+        _db_enable_wal.initialized = True
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
