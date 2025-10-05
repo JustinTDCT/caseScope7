@@ -939,7 +939,7 @@ def upload_files():
                 with open(file_path, 'wb') as f:
                     f.write(file_data)
                 
-                # Create database record
+                # Create database record with Queued status
                 case_file = CaseFile(
                     case_id=case.id,
                     filename=safe_filename,
@@ -949,7 +949,7 @@ def upload_files():
                     file_hash=sha256_hash,
                     mime_type=mime_type,
                     uploaded_by=current_user.id,
-                    indexing_status='Uploaded'
+                    indexing_status='Queued'  # Changed from 'Uploaded' to show queue status
                 )
                 
                 db.session.add(case_file)
@@ -966,30 +966,31 @@ def upload_files():
                 db.session.commit()
                 log_audit('file_upload', 'file_operation', f'Uploaded {success_count} file(s) to case {case.name}')
                 
-                # Trigger background indexing for each uploaded file
+                # Trigger complete file processing (queued with 2 concurrent limit)
                 try:
                     # Get the files we just uploaded
                     recent_files = db.session.query(CaseFile).filter_by(
                         case_id=case.id,
-                        indexing_status='Uploaded'
+                        indexing_status='Queued'
                     ).order_by(CaseFile.uploaded_at.desc()).limit(success_count).all()
                     
                     for uploaded_file in recent_files:
                         if celery_app:
+                            # Use new queued processing task (index + SIGMA + IOC)
                             celery_app.send_task(
-                                'tasks.start_file_indexing',
+                                'tasks.process_file_complete',
                                 args=[uploaded_file.id],
                                 queue='celery',
                                 priority=0,
                             )
-                            print(f"[Upload] Queued indexing for file ID {uploaded_file.id}: {uploaded_file.original_filename}")
+                            print(f"[Upload] Queued complete processing for file ID {uploaded_file.id}: {uploaded_file.original_filename}")
                         else:
                             print(f"[Upload] WARNING: Celery not available, task not queued for file ID {uploaded_file.id}")
                     
-                    flash(f'Successfully uploaded {success_count} file(s). Indexing started.', 'success')
+                    flash(f'Successfully uploaded {success_count} file(s). Processing queued (max 2 concurrent).', 'success')
                 except Exception as e:
-                    print(f"[Upload] Warning: Failed to queue indexing tasks: {e}")
-                    flash(f'Successfully uploaded {success_count} file(s). Manual indexing may be required.', 'warning')
+                    print(f"[Upload] Warning: Failed to queue processing tasks: {e}")
+                    flash(f'Successfully uploaded {success_count} file(s). Manual processing may be required.', 'warning')
                 
             except Exception as e:
                 db.session.rollback()
