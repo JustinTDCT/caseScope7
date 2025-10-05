@@ -4140,14 +4140,8 @@ def render_file_list(case, files):
                     setInterval(updateFileProgress, 2000); // Update every 2 seconds
                 }}
                 
-                // Auto-refresh page every 5 seconds if there are active files
-                // This ensures status changes are reflected (Uploaded -> Indexing, etc.)
-                if (activeFiles.length > 0) {{
-                    setInterval(function() {{
-                        console.log('Auto-refreshing page to update file statuses...');
-                        window.location.reload();
-                    }}, 5000); // Refresh every 5 seconds
-                }}
+                // Note: Removed auto-refresh to prevent scroll-to-top
+                // Progress updates via AJAX are sufficient
             }});
             
             function updateFileProgress() {{
@@ -4180,16 +4174,29 @@ def render_file_list(case, files):
                                     const totalEvents = data.estimated_event_count.toLocaleString();
                                     eventsText.textContent = currentEvents + ' / ' + totalEvents + ' events';
                                 }}
+                                if (statusElem) {{
+                                    statusElem.textContent = 'Indexing (' + currentEvents + ' / ' + totalEvents + ')';
+                                }}
                             }} else if (data.status === 'Running Rules') {{
-                                // No progress bar needed, just status text
-                            }} else if (data.status === 'Completed') {{
-                                // Reload page to show final status
-                                console.log('File completed, reloading page...');
-                                window.location.reload();
-                            }} else if (data.status === 'Failed') {{
-                                // Reload page to show failure
-                                console.log('File failed, reloading page...');
-                                window.location.reload();
+                                // Show SIGMA progress if available
+                                if (statusElem) {{
+                                    if (data.rules_processed && data.total_rules) {{
+                                        statusElem.textContent = 'Running Rules (' + data.rules_processed + ' / ' + data.total_rules + ')';
+                                    }} else {{
+                                        statusElem.textContent = 'Running Rules...';
+                                    }}
+                                }}
+                            }} else if (data.status === 'Completed' || data.status === 'Failed') {{
+                                // Update status in-place instead of reloading
+                                if (statusElem) {{
+                                    statusElem.textContent = data.status;
+                                    statusElem.className = data.status === 'Completed' ? 'status-completed' : 'status-failed';
+                                }}
+                                // Remove from active files list
+                                const index = activeFiles.indexOf(fileId);
+                                if (index > -1) {{
+                                    activeFiles.splice(index, 1);
+                                }}
                             }}
                         }})
                         .catch(err => console.error('Error fetching progress:', err));

@@ -854,6 +854,16 @@ def process_sigma_rules(self, file_id, index_name):
                 db.session.commit()
                 return {'status': 'success', 'message': 'SIGMA skipped for NDJSON file', 'violations': 0}
             
+            # Delete existing violations for this file (handles re-index and re-run scenarios)
+            logger.info("Checking for existing violations...")
+            existing_violations = db.session.query(SigmaViolation).filter_by(file_id=file_id).all()
+            if existing_violations:
+                logger.info(f"Deleting {len(existing_violations)} existing violation(s) for file ID {file_id}")
+                for violation in existing_violations:
+                    db.session.delete(violation)
+                commit_with_retry(db.session, logger_instance=logger)
+                logger.info("✓ Existing violations cleared")
+            
             # Get all enabled SIGMA rules
             logger.info("Querying for enabled SIGMA rules...")
             enabled_rules = db.session.query(SigmaRule).filter_by(is_enabled=True).all()
@@ -953,8 +963,24 @@ def process_sigma_rules(self, file_id, index_name):
                 # Chainsaw v2.12.2 JSON format: Each object is a rule match
                 # Structure: {name, id, level, document: {event data}, group, kind, authors, tags, etc.}
                 # Disable autoflush to prevent lock contention during violation creation loop
+                total_detections = len(chainsaw_results)
+                processed_count = 0
+                
                 with db.session.no_autoflush:
                     for detection in chainsaw_results:
+                        processed_count += 1
+                        
+                        # Update progress every 10 detections
+                        if processed_count % 10 == 0:
+                            self.update_state(
+                                state='PROGRESS',
+                                meta={{
+                                    'current': processed_count,
+                                    'total': total_detections,
+                                    'status': f'Processing SIGMA detections ({processed_count}/{total_detections})',
+                                    'violations': total_violations
+                                }}
+                            )
                         try:
                             # Each detection IS a rule match - extract rule metadata directly
                             rule_name = detection.get('name', 'Unknown Rule')
