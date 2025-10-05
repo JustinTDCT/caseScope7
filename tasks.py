@@ -971,13 +971,15 @@ def process_sigma_rules(self, file_id, index_name):
                         processed_count += 1
                         
                         # Update progress every 10 detections
+                        # Note: Shows detections processed, but user sees "X / Y events scanned"
                         if processed_count % 10 == 0:
                             self.update_state(
                                 state='PROGRESS',
                                 meta={
                                     'current': processed_count,
                                     'total': total_detections,
-                                    'status': f'Processing SIGMA detections ({processed_count}/{total_detections})',
+                                    'event_count': case_file.event_count or 0,
+                                    'status': f'Processing SIGMA results',
                                     'violations': total_violations
                                 }
                             )

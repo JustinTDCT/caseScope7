@@ -76,7 +76,7 @@ def process_file_complete(self, file_id):
             # Step 2: Run SIGMA rules (EVTX only)
             if filename.endswith('.evtx'):
                 logger.info("Starting SIGMA rule processing...")
-                case_file.indexing_status = 'Running Rules'
+                case_file.indexing_status = 'Running SIGMA'
                 db.session.commit()
                 
                 from tasks import process_sigma_rules

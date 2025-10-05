@@ -219,7 +219,7 @@ class CaseFile(db.Model):
     event_count = db.Column(db.Integer, default=0)
     estimated_event_count = db.Column(db.Integer, default=0)  # Estimated total events for progress
     violation_count = db.Column(db.Integer, default=0)
-    indexing_status = db.Column(db.String(20), default='Uploaded')  # Uploaded, Indexing, Running Rules, Completed, Failed
+    indexing_status = db.Column(db.String(20), default='Uploaded')  # Uploaded, Pending, Indexing, Running SIGMA, Hunting IOCs, Completed, Failed
     celery_task_id = db.Column(db.String(100), nullable=True)  # Current Celery task ID for progress tracking
     
     # Relationships
@@ -841,7 +841,7 @@ def case_dashboard():
     total_files = db.session.query(CaseFile).filter_by(case_id=case.id, is_deleted=False).count()
     indexed_files = db.session.query(CaseFile).filter_by(case_id=case.id, is_deleted=False, is_indexed=True).count()
     processing_files = db.session.query(CaseFile).filter_by(case_id=case.id, is_deleted=False).filter(
-        CaseFile.indexing_status.in_(['Counting Events', 'Indexing', 'Running Rules', 'Preparing to Index'])
+        CaseFile.indexing_status.in_(['Counting Events', 'Indexing', 'Running SIGMA', 'Hunting IOCs', 'Preparing to Index'])
     ).count()
     total_events = db.session.query(db.func.sum(CaseFile.event_count)).filter_by(case_id=case.id, is_deleted=False).scalar() or 0
     total_violations = db.session.query(db.func.sum(CaseFile.violation_count)).filter_by(case_id=case.id, is_deleted=False).scalar() or 0
@@ -1114,10 +1114,10 @@ def rerun_rules(file_id):
                 db.session.delete(violation)
         
         # Reset violation status
-        case_file.indexing_status = 'Running Rules'
         case_file.violation_count = 0
+        case_file.indexing_status = 'Running SIGMA'
         db.session.commit()
-        print(f"[Re-run Rules] Reset status to 'Running Rules' for file ID {file_id}")
+        print(f"[Re-run Rules] Reset status to 'Running SIGMA' for file ID {file_id}")
         
         # Queue SIGMA rule processing
         try:
@@ -1264,7 +1264,7 @@ def api_rerun_all_rules():
                         db.session.delete(violation)
                 
                 # Reset violation status
-                case_file.indexing_status = 'Running Rules'
+                case_file.indexing_status = 'Running SIGMA'
                 case_file.violation_count = 0
                 db.session.commit()
                 
@@ -3954,12 +3954,18 @@ def render_file_list(case, files):
             </div>'''.format(file.id, current_events, estimated)
             status_display = status_html
             status_class = 'indexing'
-        elif file.indexing_status == 'Running Rules':
+        elif file.indexing_status == 'Running SIGMA':
             status_html = '''<div id="status-{0}" class="status-text" data-file-id="{0}">
-                <div style="font-weight: 600; color: #ff9800;">Running Rules...</div>
+                <div style="font-weight: 600; color: #ff9800;">Running SIGMA...</div>
             </div>'''.format(file.id)
             status_display = status_html
-            status_class = 'running-rules'
+            status_class = 'running-sigma'
+        elif file.indexing_status == 'Hunting IOCs':
+            status_html = '''<div id="status-{0}" class="status-text" data-file-id="{0}">
+                <div style="font-weight: 600; color: #9c27b0;">Hunting IOCs...</div>
+            </div>'''.format(file.id)
+            status_display = status_html
+            status_class = 'hunting-iocs'
         elif file.indexing_status == 'Completed':
             status_display = '<div id="status-{0}" class="status-text">Completed</div>'.format(file.id)
             status_class = 'completed'
@@ -3989,7 +3995,7 @@ def render_file_list(case, files):
         actions_list.append(f'<button class="btn-action btn-reindex" onclick="confirmReindex({file.id})">🔄 Re-index</button>')
         
         # Re-run Rules only available for indexed files
-        if file.is_indexed and file.indexing_status in ['Running Rules', 'Completed', 'Failed']:
+        if file.is_indexed and file.indexing_status in ['Running SIGMA', 'Hunting IOCs', 'Completed', 'Failed']:
             actions_list.append(f'<button class="btn-action btn-rules" onclick="confirmRerunRules({file.id})">⚡ Re-run Rules</button>')
         
         if current_user.role == 'administrator':
@@ -4117,7 +4123,7 @@ def render_file_list(case, files):
                     }}
                 }});
                 
-                // Also check for Uploaded/Pending/Counting/Preparing/Indexing/Running Rules status
+                // Also check for Uploaded/Pending/Counting/Preparing/Indexing/Running SIGMA/Hunting IOCs status
                 const statusElements = document.querySelectorAll('[id^="status-"]');
                 statusElements.forEach(function(elem) {{
                     const fileId = elem.id.split('-')[1];
@@ -4127,7 +4133,8 @@ def render_file_list(case, files):
                          statusText.includes('Counting') || 
                          statusText.includes('Preparing') ||
                          statusText.includes('Indexing') ||
-                         statusText.includes('Running Rules')) && 
+                         statusText.includes('Running SIGMA') ||
+                         statusText.includes('Hunting IOCs')) && 
                         !activeFiles.includes(fileId)) {{
                         activeFiles.push(fileId);
                     }}
@@ -4189,16 +4196,21 @@ def render_file_list(case, files):
                                                           '<div style="font-size: 0.9em; color: rgba(255,255,255,0.8); margin-top: 4px;">' + 
                                                           currentEvents + ' / ' + totalEvents + ' events</div>';
                                 }}
-                            }} else if (data.status === 'Running Rules') {{
-                                // Show SIGMA progress if available with color
+                            }} else if (data.status === 'Running SIGMA') {{
+                                // Show SIGMA progress - event-based
                                 if (statusElem) {{
-                                    if (data.rules_processed && data.total_rules) {{
-                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #ff9800;">Running Rules...</div>' +
-                                                              '<div style="font-size: 0.9em; color: rgba(255,255,255,0.8); margin-top: 4px;">' +
-                                                              data.rules_processed + ' / ' + data.total_rules + ' detections</div>';
+                                    if (data.event_count) {{
+                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #ff9800;">Running SIGMA...</div>' +
+                                                              '<div style="font-size: 0.9em; color: rgba(255,255,255,0.8); margin-top: 4px;">Scanning ' +
+                                                              data.event_count.toLocaleString() + ' events</div>';
                                     }} else {{
-                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #ff9800;">Running Rules...</div>';
+                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #ff9800;">Running SIGMA...</div>';
                                     }}
+                                }}
+                            }} else if (data.status === 'Hunting IOCs') {{
+                                // Show IOC hunting progress
+                                if (statusElem) {{
+                                    statusElem.innerHTML = '<div style="font-weight: 600; color: #9c27b0;">Hunting IOCs...</div>';
                                 }}
                             }} else if (data.status === 'Completed' || data.status === 'Failed') {{
                                 // Update status in-place instead of reloading with color coding
@@ -7588,9 +7600,13 @@ def file_progress(file_id):
         elif case_file.indexing_status == 'Failed':
             response['progress'] = 0
             response['message'] = 'Failed'
-        elif case_file.indexing_status == 'Running Rules':
+        elif case_file.indexing_status == 'Running SIGMA':
             response['progress'] = 50
-            response['message'] = 'Running Rules (no task tracking)'
+            response['event_count'] = case_file.event_count or 0
+            response['message'] = 'Running SIGMA (scanning events)'
+        elif case_file.indexing_status == 'Hunting IOCs':
+            response['progress'] = 75
+            response['message'] = 'Hunting IOCs'
         else:
             response['progress'] = 0
             response['message'] = case_file.indexing_status
@@ -8028,9 +8044,12 @@ def render_file_management(files, cases):
             estimated = file.estimated_event_count or int((file.file_size / 1048576) * 1000)
             status_display = f'<div class="status-text">Indexing... ({current_events:,} / {estimated:,} events)</div>'
             status_class = 'indexing'
-        elif file.indexing_status == 'Running Rules':
-            status_display = '<div class="status-text">Running Rules...</div>'
-            status_class = 'running-rules'
+        elif file.indexing_status == 'Running SIGMA':
+            status_display = '<div class="status-text">Running SIGMA...</div>'
+            status_class = 'running-sigma'
+        elif file.indexing_status == 'Hunting IOCs':
+            status_display = '<div class="status-text">Hunting IOCs...</div>'
+            status_class = 'hunting-iocs'
         elif file.indexing_status == 'Completed':
             status_display = '<div class="status-text">Completed</div>'
             status_class = 'completed'
@@ -8048,7 +8067,7 @@ def render_file_management(files, cases):
         actions_list = []
         actions_list.append(f'<button class="btn-action" onclick="reindexFile({file.id})" style="background: linear-gradient(145deg, #2196f3, #1976d2);">🔄 Re-index</button>')
         
-        if file.is_indexed and file.indexing_status in ['Running Rules', 'Completed', 'Failed']:
+        if file.is_indexed and file.indexing_status in ['Running SIGMA', 'Hunting IOCs', 'Completed', 'Failed']:
             actions_list.append(f'<button class="btn-action" onclick="rerunRules({file.id})" style="background: linear-gradient(145deg, #ff9800, #f57c00);">⚡ Re-run Rules</button>')
         
         if current_user.role == 'administrator':
@@ -8117,7 +8136,8 @@ def render_file_management(files, cases):
                         <option value="">All Statuses</option>
                         <option value="Uploaded">Uploaded</option>
                         <option value="Indexing">Indexing</option>
-                        <option value="Running Rules">Running Rules</option>
+                        <option value="Running SIGMA">Running SIGMA</option>
+                        <option value="Hunting IOCs">Hunting IOCs</option>
                         <option value="Completed">Completed</option>
                         <option value="Failed">Failed</option>
                     </select>
