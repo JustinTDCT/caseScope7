@@ -2526,7 +2526,7 @@ def search():
                             "filter": filters
                         }
                     }
-                print(f"[Search] Final query with filters: {os_query}")
+                    print(f"[Search] Final query with filters: {os_query}")
                 else:
                     os_query = base_query
                 print(f"[Search] Query without filters: {os_query}")
