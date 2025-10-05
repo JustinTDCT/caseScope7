@@ -4168,29 +4168,37 @@ def render_file_list(case, files):
                             }}
                             
                             if (data.status === 'Indexing') {{
-                                // Update count text (no progress bar)
+                                // Update count text (no progress bar) with color
+                                const currentEvents = data.event_count.toLocaleString();
+                                const totalEvents = data.estimated_event_count.toLocaleString();
+                                
                                 if (eventsText) {{
-                                    const currentEvents = data.event_count.toLocaleString();
-                                    const totalEvents = data.estimated_event_count.toLocaleString();
                                     eventsText.textContent = currentEvents + ' / ' + totalEvents + ' events';
                                 }}
                                 if (statusElem) {{
-                                    statusElem.textContent = 'Indexing (' + currentEvents + ' / ' + totalEvents + ')';
+                                    statusElem.innerHTML = '<div style="font-weight: 600; color: #4caf50;">Indexing...</div>' +
+                                                          '<div style="font-size: 0.9em; color: rgba(255,255,255,0.8); margin-top: 4px;">' + 
+                                                          currentEvents + ' / ' + totalEvents + ' events</div>';
                                 }}
                             }} else if (data.status === 'Running Rules') {{
-                                // Show SIGMA progress if available
+                                // Show SIGMA progress if available with color
                                 if (statusElem) {{
                                     if (data.rules_processed && data.total_rules) {{
-                                        statusElem.textContent = 'Running Rules (' + data.rules_processed + ' / ' + data.total_rules + ')';
+                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #ff9800;">Running Rules...</div>' +
+                                                              '<div style="font-size: 0.9em; color: rgba(255,255,255,0.8); margin-top: 4px;">' +
+                                                              data.rules_processed + ' / ' + data.total_rules + ' detections</div>';
                                     }} else {{
-                                        statusElem.textContent = 'Running Rules...';
+                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #ff9800;">Running Rules...</div>';
                                     }}
                                 }}
                             }} else if (data.status === 'Completed' || data.status === 'Failed') {{
-                                // Update status in-place instead of reloading
+                                // Update status in-place instead of reloading with color coding
                                 if (statusElem) {{
-                                    statusElem.textContent = data.status;
-                                    statusElem.className = data.status === 'Completed' ? 'status-completed' : 'status-failed';
+                                    if (data.status === 'Completed') {{
+                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #4caf50;">Completed</div>';
+                                    }} else {{
+                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #f44336;">Failed</div>';
+                                    }}
                                 }}
                                 // Remove from active files list
                                 const index = activeFiles.indexOf(fileId);

@@ -974,12 +974,12 @@ def process_sigma_rules(self, file_id, index_name):
                         if processed_count % 10 == 0:
                             self.update_state(
                                 state='PROGRESS',
-                                meta={{
+                                meta={
                                     'current': processed_count,
                                     'total': total_detections,
                                     'status': f'Processing SIGMA detections ({processed_count}/{total_detections})',
                                     'violations': total_violations
-                                }}
+                                }
                             )
                         try:
                             # Each detection IS a rule match - extract rule metadata directly
