@@ -2529,7 +2529,7 @@ def search():
                     print(f"[Search] Final query with filters: {os_query}")
                 else:
                     os_query = base_query
-                print(f"[Search] Query without filters: {os_query}")
+                    print(f"[Search] Query without filters: {os_query}")
                 
                 # Search across all indices for this case
                 from_offset = (page - 1) * per_page
