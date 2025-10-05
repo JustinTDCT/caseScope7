@@ -2687,11 +2687,11 @@ def search():
                     'ioc_matches': ioc_matches
                     })
                 
-            except Exception as e:
-                import traceback
-                error_message = f"Search error: {str(e)}"
-                print(f"[Search] Error: {e}")
-                traceback.print_exc()
+        except Exception as e:
+            import traceback
+            error_message = f"Search error: {str(e)}"
+            print(f"[Search] Error: {e}")
+            traceback.print_exc()
     
     # Get search history for this case (last 10)
     recent_searches = db.session.query(SearchHistory).filter_by(
