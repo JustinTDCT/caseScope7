@@ -2427,15 +2427,15 @@ def search():
         custom_end = session.get('search_custom_end')
     
     # Always perform search (both GET and POST)
-    if query_str:
-        try:
-            # Build OpenSearch query from user input (this transforms the query)
-            # But we keep query_str unchanged for display
-            base_query = build_opensearch_query(query_str)
-            
-            # Build filters list
-            filters = []
-            
+        if query_str:
+            try:
+                # Build OpenSearch query from user input (this transforms the query)
+                # But we keep query_str unchanged for display
+                base_query = build_opensearch_query(query_str)
+                
+                # Build filters list
+                filters = []
+                
             # Add threat filtering
             print(f"[Search] Threat filter selected: {threat_filter}")
             if threat_filter == 'sigma':
@@ -2460,43 +2460,43 @@ def search():
                 ]}}
                 filters.append(threat_query)
                 print(f"[Search] Added SIGMA + IOC filter: {threat_query}")
-            
-            # Add time range filter
-            if time_range != 'all':
-                from datetime import timedelta
-                now = datetime.utcnow()
                 
-                start_time = None
-                end_time = None
-                
-                if time_range == '24h':
-                    start_time = now - timedelta(hours=24)
-                    end_time = now
-                elif time_range == '7d':
-                    start_time = now - timedelta(days=7)
-                    end_time = now
-                elif time_range == '30d':
-                    start_time = now - timedelta(days=30)
-                    end_time = now
-                elif time_range == 'custom' and custom_start:
-                    from datetime import datetime as dt
-                    # Parse custom datetime strings from HTML datetime-local input (YYYY-MM-DDTHH:MM format)
-                    try:
-                        if 'T' in custom_start:
-                            # Format: 2025-08-25T12:00
-                            start_time = dt.strptime(custom_start, '%Y-%m-%dT%H:%M') if custom_start else None
-                            end_time = dt.strptime(custom_end, '%Y-%m-%dT%H:%M') if custom_end else now
-                        else:
-                            # Fallback: try ISO format
-                            start_time = dt.fromisoformat(custom_start) if custom_start else None
-                            end_time = dt.fromisoformat(custom_end) if custom_end else now
-                    except Exception as e:
-                        print(f"[Search] Error parsing custom datetime: {e}, start='{custom_start}', end='{custom_end}'")
-                        start_time = None
-                        end_time = None
-                
+                # Add time range filter
+                if time_range != 'all':
+                    from datetime import timedelta
+                    now = datetime.utcnow()
+                    
+                    start_time = None
+                    end_time = None
+                    
+                    if time_range == '24h':
+                        start_time = now - timedelta(hours=24)
+                        end_time = now
+                    elif time_range == '7d':
+                        start_time = now - timedelta(days=7)
+                        end_time = now
+                    elif time_range == '30d':
+                        start_time = now - timedelta(days=30)
+                        end_time = now
+                    elif time_range == 'custom' and custom_start:
+                        from datetime import datetime as dt
+                        # Parse custom datetime strings from HTML datetime-local input (YYYY-MM-DDTHH:MM format)
+                        try:
+                            if 'T' in custom_start:
+                                # Format: 2025-08-25T12:00
+                                start_time = dt.strptime(custom_start, '%Y-%m-%dT%H:%M') if custom_start else None
+                                end_time = dt.strptime(custom_end, '%Y-%m-%dT%H:%M') if custom_end else now
+                            else:
+                                # Fallback: try ISO format
+                                start_time = dt.fromisoformat(custom_start) if custom_start else None
+                                end_time = dt.fromisoformat(custom_end) if custom_end else now
+                        except Exception as e:
+                            print(f"[Search] Error parsing custom datetime: {e}, start='{custom_start}', end='{custom_end}'")
+                            start_time = None
+                            end_time = None
+                    
                 # Date range filtering using proper date range queries on .date field
-                if start_time:
+                    if start_time:
                     # Format timestamps for OpenSearch date range query
                     # Convert to ISO format (YYYY-MM-DDTHH:MM:SS)
                     start_iso = start_time.strftime('%Y-%m-%dT%H:%M:%S')
@@ -2506,33 +2506,33 @@ def search():
                     
                     # Use range query on the .date field (which has proper date type mapping)
                     # This is much more efficient than wildcards and handles all date ranges
-                    time_filter = {
+                            time_filter = {
                         "range": {
                             "System.TimeCreated.@SystemTime.date": {
                                 "gte": start_iso,
                                 "lte": end_iso,
                                 "format": "strict_date_optional_time"
                             }
+                                }
+                            }
+                        
+                        filters.append(time_filter)
+                
+                # Combine base query with filters
+                if filters:
+                    os_query = {
+                        "bool": {
+                            "must": [base_query],
+                            "filter": filters
                         }
                     }
-                    
-                    filters.append(time_filter)
-            
-            # Combine base query with filters
-            if filters:
-                os_query = {
-                    "bool": {
-                        "must": [base_query],
-                        "filter": filters
-                    }
-                }
                 print(f"[Search] Final query with filters: {os_query}")
-            else:
-                os_query = base_query
+                else:
+                    os_query = base_query
                 print(f"[Search] Query without filters: {os_query}")
-            
-            # Search across all indices for this case
-            from_offset = (page - 1) * per_page
+                
+                # Search across all indices for this case
+                from_offset = (page - 1) * per_page
             
             # Build sort configuration
             print(f"[Search] Sort parameters: field={sort_field}, order={sort_order}")
@@ -2553,103 +2553,103 @@ def search():
                 sort_config = ["_score"]
                 print(f"[Search] Using relevance sort")
             
-            search_body = {
-                "query": os_query,
-                "from": from_offset,
-                "size": per_page,
+                search_body = {
+                    "query": os_query,
+                    "from": from_offset,
+                    "size": per_page,
                 "sort": sort_config,
-                "_source": True
-            }
-            
-            response = opensearch_client.search(
-                index=','.join(indices),
+                    "_source": True
+                }
+                
+                response = opensearch_client.search(
+                    index=','.join(indices),
                 body=search_body,
                 ignore_unavailable=True
-            )
-            
-            total_hits = response['hits']['total']['value']
-            log_audit('search', 'search', f'Searched case {case.name} for "{query_str}" - {total_hits} results')
-            
-            # Add to search history
-            try:
-                history = SearchHistory(
-                    user_id=current_user.id,
-                    case_id=case.id,
-                    query=query_str,
-                    time_range=time_range,
-                    violations_only=(threat_filter == 'sigma'),  # For backward compatibility
-                    result_count=total_hits
                 )
-                db.session.add(history)
-                db.session.commit()
-            except:
-                db.session.rollback()
-            
-            for hit in response['hits']['hits']:
-                source = hit['_source']
                 
-                # Get timestamp from various possible fields (XML attribute notation)
-                timestamp = source.get('System.TimeCreated.@SystemTime') or \
-                           source.get('System.TimeCreated.SystemTime') or \
-                           source.get('System_TimeCreated_SystemTime') or \
-                           source.get('@timestamp') or \
-                           'N/A'
+                total_hits = response['hits']['total']['value']
+                log_audit('search', 'search', f'Searched case {case.name} for "{query_str}" - {total_hits} results')
                 
-                # Get Event ID (XML text node notation)
-                event_id = source.get('System.EventID.#text') or \
-                          source.get('System.EventID') or \
-                          source.get('System_EventID') or \
-                          source.get('EventID') or \
-                          'N/A'
+                # Add to search history
+                try:
+                    history = SearchHistory(
+                        user_id=current_user.id,
+                        case_id=case.id,
+                        query=query_str,
+                        time_range=time_range,
+                    violations_only=(threat_filter == 'sigma'),  # For backward compatibility
+                        result_count=total_hits
+                    )
+                    db.session.add(history)
+                    db.session.commit()
+                except:
+                    db.session.rollback()
                 
-                # Get source filename from metadata
-                metadata = source.get('_casescope_metadata', {})
-                source_file = metadata.get('filename', 'Unknown')
-                
-                # Get computer name (EVTX or EDR)
-                computer = source.get('System.Computer') or \
-                          source.get('System_Computer') or \
-                          source.get('Computer') or \
-                          source.get('host', {}).get('hostname') or \
-                          source.get('host', {}).get('name') or \
-                          'N/A'
-                
-                # Get channel (EVTX only)
-                channel = source.get('System.Channel') or \
-                         source.get('System_Channel') or \
-                         'N/A'
-                
-                # Get provider (EVTX XML attribute notation)
-                provider = source.get('System.Provider.@Name') or \
-                          source.get('System.Provider.Name') or \
-                          source.get('System_Provider_Name') or \
-                          'N/A'
-                
-                # Determine source type and get appropriate event description
-                source_type = metadata.get('source_type', 'evtx')
-                
-                if source_type == 'ndjson':
-                    # EDR telemetry - use command_line as Event Type
-                    process_data = source.get('process', {})
-                    command_line = process_data.get('command_line', '')
+                for hit in response['hits']['hits']:
+                    source = hit['_source']
                     
-                    # Use command_line as the event description/type
-                    if command_line:
-                        event_description = command_line
+                    # Get timestamp from various possible fields (XML attribute notation)
+                    timestamp = source.get('System.TimeCreated.@SystemTime') or \
+                               source.get('System.TimeCreated.SystemTime') or \
+                               source.get('System_TimeCreated_SystemTime') or \
+                               source.get('@timestamp') or \
+                               'N/A'
+                    
+                    # Get Event ID (XML text node notation)
+                    event_id = source.get('System.EventID.#text') or \
+                              source.get('System.EventID') or \
+                              source.get('System_EventID') or \
+                              source.get('EventID') or \
+                              'N/A'
+                    
+                    # Get source filename from metadata
+                    metadata = source.get('_casescope_metadata', {})
+                    source_file = metadata.get('filename', 'Unknown')
+                    
+                    # Get computer name (EVTX or EDR)
+                    computer = source.get('System.Computer') or \
+                              source.get('System_Computer') or \
+                              source.get('Computer') or \
+                              source.get('host', {}).get('hostname') or \
+                              source.get('host', {}).get('name') or \
+                              'N/A'
+                    
+                    # Get channel (EVTX only)
+                    channel = source.get('System.Channel') or \
+                             source.get('System_Channel') or \
+                             'N/A'
+                    
+                    # Get provider (EVTX XML attribute notation)
+                    provider = source.get('System.Provider.@Name') or \
+                              source.get('System.Provider.Name') or \
+                              source.get('System_Provider_Name') or \
+                              'N/A'
+                    
+                    # Determine source type and get appropriate event description
+                    source_type = metadata.get('source_type', 'evtx')
+                    
+                    if source_type == 'ndjson':
+                        # EDR telemetry - use command_line as Event Type
+                        process_data = source.get('process', {})
+                        command_line = process_data.get('command_line', '')
+                        
+                        # Use command_line as the event description/type
+                        if command_line:
+                            event_description = command_line
+                        else:
+                            # Fallback to process name if no command line
+                            process_name = process_data.get('name', 'Unknown Process')
+                            event_description = f"Process: {process_name}"
+                        
+                        event_id = 'EDR'  # Tag EDR events
                     else:
-                        # Fallback to process name if no command line
-                        process_name = process_data.get('name', 'Unknown Process')
-                        event_description = f"Process: {process_name}"
+                        # EVTX - use traditional event description
+                        event_description = get_event_description(event_id, channel, provider, source)
                     
-                    event_id = 'EDR'  # Tag EDR events
-                else:
-                    # EVTX - use traditional event description
-                    event_description = get_event_description(event_id, channel, provider, source)
-                
-                # Get SIGMA violations if present
-                sigma_violations = source.get('sigma_detections', [])
-                has_violations = source.get('has_violations', False)
-                
+                    # Get SIGMA violations if present
+                    sigma_violations = source.get('sigma_detections', [])
+                    has_violations = source.get('has_violations', False)
+                    
                 # Check for IOC matches for this event
                 ioc_matches = []
                 try:
@@ -2669,25 +2669,25 @@ def search():
                 except Exception as e:
                     print(f"[Search] Error checking IOC matches: {e}")
                 
-                results.append({
-                    'index': hit['_index'],
-                    'id': hit['_id'],
+                    results.append({
+                        'index': hit['_index'],
+                        'id': hit['_id'],
                     'doc_id': hit['_id'],  # OpenSearch document ID for tagging
-                    'score': hit['_score'],
-                    'timestamp': timestamp,
-                    'event_id': event_id,
-                    'event_type': event_description,
-                    'source_file': source_file,
-                    'computer': computer,
-                    'channel': channel,
-                    'provider': provider,
-                    'full_data': source,
-                    'sigma_violations': sigma_violations,
+                        'score': hit['_score'],
+                        'timestamp': timestamp,
+                        'event_id': event_id,
+                        'event_type': event_description,
+                        'source_file': source_file,
+                        'computer': computer,
+                        'channel': channel,
+                        'provider': provider,
+                        'full_data': source,
+                        'sigma_violations': sigma_violations,
                     'has_violations': has_violations,
                     'ioc_matches': ioc_matches
-                })
-            
-        except Exception as e:
+                    })
+                
+            except Exception as e:
                 import traceback
                 error_message = f"Search error: {str(e)}"
                 print(f"[Search] Error: {e}")
@@ -4167,10 +4167,19 @@ def render_file_list(case, files):
                                 violationCountElem.textContent = data.violation_count.toLocaleString();
                             }}
                             
-                            if (data.status === 'Indexing') {{
+                            if (data.status === 'Uploaded' || data.status === 'Counting Events' || data.status === 'Preparing to Index') {{
+                                // Show status without progress
+                                if (statusElem) {{
+                                    if (data.estimated_event_count > 0) {{
+                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #2196f3;">Preparing to Index...</div>';
+                                    }} else {{
+                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #2196f3;">Counting Events...</div>';
+                                    }}
+                                }}
+                            }} else if (data.status === 'Indexing') {{
                                 // Update count text (no progress bar) with color
-                                const currentEvents = data.event_count.toLocaleString();
-                                const totalEvents = data.estimated_event_count.toLocaleString();
+                                    const currentEvents = data.event_count.toLocaleString();
+                                    const totalEvents = data.estimated_event_count.toLocaleString();
                                 
                                 if (eventsText) {{
                                     eventsText.textContent = currentEvents + ' / ' + totalEvents + ' events';
@@ -5274,7 +5283,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
         if is_limited:
             pagination_html += f'<span class="page-info" style="color: #fbbf24;">⚠️ Page {page} of {max_accessible_page} ({total_hits:,}+ results - OpenSearch limits to first {opensearch_limit:,})</span>'
         else:
-            pagination_html += f'<span class="page-info">Page {page} of {total_pages} ({total_hits:,} results)</span>'
+        pagination_html += f'<span class="page-info">Page {page} of {total_pages} ({total_hits:,} results)</span>'
         
         if page < max_accessible_page:
             pagination_html += f'<button class="page-btn" onclick="searchPage({page + 1})">Next →</button>'
