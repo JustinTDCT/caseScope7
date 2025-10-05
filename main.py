@@ -2496,7 +2496,7 @@ def search():
                             end_time = None
                     
                 # Date range filtering using proper date range queries on .date field
-                    if start_time:
+                if start_time:
                     # Format timestamps for OpenSearch date range query
                     # Convert to ISO format (YYYY-MM-DDTHH:MM:SS)
                     start_iso = start_time.strftime('%Y-%m-%dT%H:%M:%S')
@@ -2506,7 +2506,7 @@ def search():
                     
                     # Use range query on the .date field (which has proper date type mapping)
                     # This is much more efficient than wildcards and handles all date ranges
-                            time_filter = {
+                    time_filter = {
                         "range": {
                             "System.TimeCreated.@SystemTime.date": {
                                 "gte": start_iso,
