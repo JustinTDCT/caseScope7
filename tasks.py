@@ -910,91 +910,93 @@ def process_sigma_rules(self, file_id, index_name):
                 
                 # Chainsaw v2.12.2 JSON format: Each object is a rule match
                 # Structure: {name, id, level, document: {event data}, group, kind, authors, tags, etc.}
-                for detection in chainsaw_results:
-                    try:
-                        # Each detection IS a rule match - extract rule metadata directly
-                        rule_name = detection.get('name', 'Unknown Rule')
-                        rule_id_from_yaml = detection.get('id', '')
-                        rule_level = detection.get('level', 'medium')
-                        doc = detection.get('document', {})
-                        
-                        if not doc:
-                            logger.warning(f"Detection has no document: {rule_name}")
-                            continue
-                        
-                        # Extract event identifiers from the matched event document
-                        # Chainsaw document structure: {kind, path, data: {Event: {System, EventData}}}
-                        data = doc.get('data', {})
-                        event = data.get('Event', {})
-                        system = event.get('System', {})
-                        
-                        # EventRecordID is in System - can be a string or int
-                        event_record_id = system.get('EventRecordID')
-                        
-                        if not event_record_id:
-                            # Debug: Show document structure to find correct path
-                            logger.warning(f"Could not extract EventRecordID from detection for rule {rule_name}")
-                            logger.info(f"DEBUG: Document keys: {list(doc.keys())}")
-                            logger.info(f"DEBUG: System keys: {list(system.keys())[:10] if system else 'No System'}")
-                            logger.info(f"DEBUG: Document sample: {json.dumps(doc, indent=2)[:500]}")
-                            continue
-                        
-                        # Create a unique event ID (same format as indexing uses)
-                        import hashlib
-                        event_id = hashlib.sha256(f"{file_id}_{event_record_id}".encode()).hexdigest()[:16]
-                        
-                        # Find matching SigmaRule in database by comparing rule name or YAML ID
-                        matching_rule = None
-                        for db_rule in enabled_rules:
-                            # Match by title (exact) or YAML ID
-                            if db_rule.title == rule_name or rule_id_from_yaml in db_rule.rule_yaml:
-                                matching_rule = db_rule
-                                break
-                        
-                        if not matching_rule:
-                            logger.warning(f"Could not find database rule for Chainsaw detection: {rule_name} (ID: {rule_id_from_yaml})")
-                            continue
-                        
-                        # Check if violation already exists
-                        existing = db.session.query(SigmaViolation).filter_by(
-                            file_id=file_id,
-                            rule_id=matching_rule.id,
-                            event_id=event_id
-                        ).first()
-                        
-                        if not existing:
-                            # Create new violation record
-                            violation = SigmaViolation(
-                                case_id=case.id,
+                # Disable autoflush to prevent lock contention during violation creation loop
+                with db.session.no_autoflush:
+                    for detection in chainsaw_results:
+                        try:
+                            # Each detection IS a rule match - extract rule metadata directly
+                            rule_name = detection.get('name', 'Unknown Rule')
+                            rule_id_from_yaml = detection.get('id', '')
+                            rule_level = detection.get('level', 'medium')
+                            doc = detection.get('document', {})
+                            
+                            if not doc:
+                                logger.warning(f"Detection has no document: {rule_name}")
+                                continue
+                            
+                            # Extract event identifiers from the matched event document
+                            # Chainsaw document structure: {kind, path, data: {Event: {System, EventData}}}
+                            data = doc.get('data', {})
+                            event = data.get('Event', {})
+                            system = event.get('System', {})
+                            
+                            # EventRecordID is in System - can be a string or int
+                            event_record_id = system.get('EventRecordID')
+                            
+                            if not event_record_id:
+                                # Debug: Show document structure to find correct path
+                                logger.warning(f"Could not extract EventRecordID from detection for rule {rule_name}")
+                                logger.info(f"DEBUG: Document keys: {list(doc.keys())}")
+                                logger.info(f"DEBUG: System keys: {list(system.keys())[:10] if system else 'No System'}")
+                                logger.info(f"DEBUG: Document sample: {json.dumps(doc, indent=2)[:500]}")
+                                continue
+                            
+                            # Create a unique event ID (same format as indexing uses)
+                            import hashlib
+                            event_id = hashlib.sha256(f"{file_id}_{event_record_id}".encode()).hexdigest()[:16]
+                            
+                            # Find matching SigmaRule in database by comparing rule name or YAML ID
+                            matching_rule = None
+                            for db_rule in enabled_rules:
+                                # Match by title (exact) or YAML ID
+                                if db_rule.title == rule_name or rule_id_from_yaml in db_rule.rule_yaml:
+                                    matching_rule = db_rule
+                                    break
+                            
+                            if not matching_rule:
+                                logger.warning(f"Could not find database rule for Chainsaw detection: {rule_name} (ID: {rule_id_from_yaml})")
+                                continue
+                            
+                            # Check if violation already exists
+                            existing = db.session.query(SigmaViolation).filter_by(
                                 file_id=file_id,
                                 rule_id=matching_rule.id,
-                                event_id=event_id,
-                                event_data=json.dumps(data),  # Store the actual event data, not the wrapper
-                                matched_fields=json.dumps({
-                                    'rule_name': rule_name,
-                                    'rule_id': rule_id_from_yaml,
-                                    'level': rule_level,
-                                    'tags': detection.get('tags', []),
-                                    'authors': detection.get('authors', [])
-                                }),
-                                severity=rule_level
-                            )
-                            db.session.add(violation)
-                            total_violations += 1
+                                event_id=event_id
+                            ).first()
                             
-                            # Track detections for enrichment by EventRecordID
-                            if event_record_id not in detections_by_record_number:
-                                detections_by_record_number[event_record_id] = []
-                            detections_by_record_number[event_record_id].append({
-                                'rule_name': rule_name,
-                                'rule_id': matching_rule.id,
-                                'level': rule_level,
-                                'sigma_id': rule_id_from_yaml
-                            })
-                        
-                    except Exception as e:
-                        logger.warning(f"Error processing Chainsaw detection: {e}")
-                        continue
+                            if not existing:
+                                # Create new violation record
+                                violation = SigmaViolation(
+                                    case_id=case.id,
+                                    file_id=file_id,
+                                    rule_id=matching_rule.id,
+                                    event_id=event_id,
+                                    event_data=json.dumps(data),  # Store the actual event data, not the wrapper
+                                    matched_fields=json.dumps({
+                                        'rule_name': rule_name,
+                                        'rule_id': rule_id_from_yaml,
+                                        'level': rule_level,
+                                        'tags': detection.get('tags', []),
+                                        'authors': detection.get('authors', [])
+                                    }),
+                                    severity=rule_level
+                                )
+                                db.session.add(violation)
+                                total_violations += 1
+                                
+                                # Track detections for enrichment by EventRecordID
+                                if event_record_id not in detections_by_record_number:
+                                    detections_by_record_number[event_record_id] = []
+                                detections_by_record_number[event_record_id].append({
+                                    'rule_name': rule_name,
+                                    'rule_id': matching_rule.id,
+                                    'level': rule_level,
+                                    'sigma_id': rule_id_from_yaml
+                                })
+                            
+                        except Exception as e:
+                            logger.warning(f"Error processing Chainsaw detection: {e}")
+                            continue
                 
                 # Commit all violations with retry logic
                 logger.info(f"Saving {total_violations} violation records to database...")
