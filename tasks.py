@@ -147,10 +147,10 @@ logger.info("OpenSearch client initialized")
 
 # caseScope SIGMA Field Mapping
 # Maps standard Sigma field names to our flattened EVTX structure
-# Note: After v7.30.6 normalization, .#text suffixes are removed for consistency
+# Note: After v7.30.6 normalization, .#text suffixes are enforced for consistency
 CASESCOPE_FIELD_MAPPING = {
     # System fields
-    'EventID': 'System.EventID',  # Normalized from System.EventID.#text
+    'EventID': 'System.EventID.#text',
     'Provider_Name': 'System.Provider.@Name',
     'Computer': 'System.Computer',
     'Channel': 'System.Channel',
@@ -458,31 +458,32 @@ def normalize_event_fields(flat_event):
     Problem: evtx_dump sometimes outputs System.EventID as {"#text": "4624"}
     and sometimes as just "4624", causing OpenSearch mapping conflicts.
     
-    Solution: Detect fields that have both a base key and a .#text variant,
-    and consolidate them to use only the simple value.
+    Solution: Ensure ALL events use the .#text structure for consistency.
+    If System.EventID exists without .#text, move value to System.EventID.#text
+    
+    This preserves the intentional double-mapping where EventID can be searched
+    both as a specific field (System.EventID.#text:4624) and via plain text.
     """
     normalized = {}
-    text_suffix_keys = {}  # Track keys ending with .#text
     
-    # First pass: identify all .#text keys and their base names
-    for key in flat_event.keys():
-        if key.endswith('.#text'):
-            base_key = key[:-6]  # Remove '.#text' suffix
-            text_suffix_keys[base_key] = key
+    # Fields that should have .#text structure for consistency
+    # These are typically simple XML elements that can vary in structure
+    text_required_prefixes = ['System.EventID', 'System.Level', 'System.Task', 
+                             'System.Version', 'System.Opcode']
     
-    # Second pass: normalize fields
     for key, value in flat_event.items():
-        if key.endswith('.#text'):
-            # This is a #text field - use the base key name
-            base_key = key[:-6]
-            normalized[base_key] = value
-        elif key in text_suffix_keys:
-            # This base key has a corresponding .#text variant somewhere
-            # Skip it - we'll use the .#text value or it's already a simple value
-            if key not in normalized:
-                normalized[key] = value
-        else:
-            # Regular field - keep as is
+        added = False
+        
+        # Check if this is a field that should have .#text but doesn't
+        for prefix in text_required_prefixes:
+            if key == prefix and not isinstance(value, dict):
+                # This field should have .#text - add it
+                normalized[f"{key}.#text"] = value
+                added = True
+                break
+        
+        if not added:
+            # Keep field as-is
             normalized[key] = value
     
     return normalized
@@ -655,12 +656,13 @@ def index_evtx_file(self, file_id):
                             # Flatten the structure for easier searching
                             flat_event = flatten_event(event_data)
                             
-                            # Normalize fields to ensure consistent types (e.g., System.EventID not System.EventID.#text)
+                            # Normalize fields to ensure consistent types (e.g., enforce System.EventID.#text structure)
                             flat_event = normalize_event_fields(flat_event)
                             
-                            # Get Event ID for description (now consistently at System.EventID)
-                            event_id = (flat_event.get('System.EventID') or 
-                                       flat_event.get('System_EventID') or 'N/A')
+                            # Get Event ID for description (now consistently at System.EventID.#text)
+                            event_id = (flat_event.get('System.EventID.#text') or 
+                                       flat_event.get('System_EventID_#text') or 
+                                       flat_event.get('System.EventID') or 'N/A')
                             channel = (flat_event.get('System.Channel') or 
                                       flat_event.get('System_Channel') or '')
                             provider = (flat_event.get('System.Provider.@Name') or 
@@ -1170,8 +1172,8 @@ def create_index_mapping(index_name):
                     }
                 },
                 # Event ID - text (searchable) and keyword (sortable/filterable)
-                # Note: Normalized from System.EventID.#text to System.EventID
-                "System.EventID": {
+                # Note: Normalized to consistently use System.EventID.#text structure
+                "System.EventID.#text": {
                     "type": "text",
                     "fields": {
                         "keyword": {"type": "keyword"}
