@@ -2427,15 +2427,15 @@ def search():
         custom_end = session.get('search_custom_end')
     
     # Always perform search (both GET and POST)
-        if query_str:
-            try:
-                # Build OpenSearch query from user input (this transforms the query)
-                # But we keep query_str unchanged for display
-                base_query = build_opensearch_query(query_str)
-                
-                # Build filters list
-                filters = []
-                
+    if query_str:
+        try:
+            # Build OpenSearch query from user input (this transforms the query)
+            # But we keep query_str unchanged for display
+            base_query = build_opensearch_query(query_str)
+            
+            # Build filters list
+            filters = []
+            
             # Add threat filtering
             print(f"[Search] Threat filter selected: {threat_filter}")
             if threat_filter == 'sigma':
