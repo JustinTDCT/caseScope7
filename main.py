@@ -2513,10 +2513,10 @@ def search():
                                 "lte": end_iso,
                                 "format": "strict_date_optional_time"
                             }
-                                }
-                            }
-                        
-                        filters.append(time_filter)
+                        }
+                    }
+                    
+                    filters.append(time_filter)
                 
                 # Combine base query with filters
                 if filters:
