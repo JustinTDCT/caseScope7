@@ -53,6 +53,9 @@ with app.app_context():
         conn.commit()
 logger.info("SQLite configuration complete")
 
+# Import Celery chain for task chaining
+from celery import chain
+
 # OpenSearch connection with extended timeouts for complex SIGMA queries
 logger.info("Initializing OpenSearch client...")
 from opensearchpy import RequestsHttpConnection

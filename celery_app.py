@@ -45,8 +45,9 @@ celery_app.conf.update(
     task_track_started=True,
     task_time_limit=3600,  # 1 hour max per task
     task_soft_time_limit=3300,  # 55 minute soft limit
-    worker_prefetch_multiplier=1,
+    worker_prefetch_multiplier=1,  # CRITICAL: Only fetch 1 task at a time (enables queue limiting)
     worker_max_tasks_per_child=50,
+    # NOTE: worker_concurrency is set in systemd service file (--concurrency=2)
     # Explicit queue configuration
     task_default_queue='celery',
     task_default_exchange='celery',
@@ -146,7 +147,7 @@ def on_after_publish(headers=None, body=None, exchange=None, routing_key=None, *
 
 # Import tasks
 logger.info("Auto-discovering tasks...")
-celery_app.autodiscover_tasks(['tasks'])
+celery_app.autodiscover_tasks(['tasks', 'tasks_queue'])
 logger.info("Celery app initialization complete")
 
 if __name__ == '__main__':
