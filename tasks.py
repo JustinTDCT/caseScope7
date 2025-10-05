@@ -35,6 +35,42 @@ logger.info("="*80)
 logger.info("TASKS MODULE LOADED")
 logger.info("="*80)
 
+def commit_with_retry(session, max_retries=5, initial_delay=0.1, logger_instance=None):
+    """
+    Commit database session with automatic retry on lock errors.
+    
+    Args:
+        session: SQLAlchemy session to commit
+        max_retries: Maximum number of retry attempts
+        initial_delay: Initial delay in seconds (doubles each retry)
+        logger_instance: Logger for output messages
+    
+    Raises:
+        Exception: Re-raises the exception if non-retryable or max retries exceeded
+    """
+    log = logger_instance or logger
+    delay = initial_delay
+    
+    for attempt in range(max_retries):
+        try:
+            session.commit()
+            return  # Success
+        except Exception as e:
+            error_str = str(e).lower()
+            is_lock_error = 'database is locked' in error_str or 'pendingrollbackerror' in error_str
+            
+            if is_lock_error and attempt < max_retries - 1:
+                log.warning(f"Database lock during commit (attempt {attempt + 1}/{max_retries}). Retrying in {delay}s...")
+                session.rollback()
+                time.sleep(delay)
+                delay *= 2
+                continue
+            
+            # Non-retryable error or max retries exceeded
+            log.error(f"Failed to commit transaction: {e}")
+            session.rollback()
+            raise
+
 # Add app directory to path for imports
 sys.path.insert(0, '/opt/casescope/app')
 logger.info("Importing Flask app and database models...")
@@ -962,26 +998,8 @@ def process_sigma_rules(self, file_id, index_name):
                 
                 # Commit all violations with retry logic
                 logger.info(f"Saving {total_violations} violation records to database...")
-                max_retries = 5
-                delay = 0.1
-                for attempt in range(max_retries):
-                    try:
-                        db.session.commit()
-                        logger.info(f"✓ Created {total_violations} violation records")
-                        break
-                    except Exception as e:
-                        error_str = str(e).lower()
-                        if 'database is locked' in error_str or 'pendingrollbackerror' in error_str:
-                            if attempt < max_retries - 1:
-                                logger.warning(f"Database lock during violation commit (attempt {attempt + 1}/{max_retries}). Retrying in {delay}s...")
-                                db.session.rollback()
-                                time.sleep(delay)
-                                delay *= 2
-                                continue
-                        # Non-retryable error or max retries exceeded
-                        logger.error(f"Failed to commit violations: {e}")
-                        db.session.rollback()
-                        raise
+                commit_with_retry(db.session, logger_instance=logger)
+                logger.info(f"✓ Created {total_violations} violation records")
             else:
                 logger.info("No detections found by Chainsaw (empty output file)")
             
@@ -995,7 +1013,7 @@ def process_sigma_rules(self, file_id, index_name):
             case_file.violation_count = total_violations
             case_file.indexing_status = 'Completed'
             case_file.celery_task_id = None  # Clear task ID on completion
-            db.session.commit()
+            commit_with_retry(db.session, logger_instance=logger)
             
             # Clean up temporary directory
             if temp_dir and os.path.exists(temp_dir):
@@ -1046,7 +1064,7 @@ def process_sigma_rules(self, file_id, index_name):
                 if case_file:
                     case_file.indexing_status = 'Failed'
                     case_file.celery_task_id = None  # Clear task ID on failure
-                    db.session.commit()
+                    commit_with_retry(db.session, logger_instance=logger)
             except Exception as db_err:
                 logger.error(f"Failed to update case_file status: {db_err}")
             
