@@ -55,6 +55,41 @@ logger.info("SQLite configuration complete")
 
 # Import Celery chain for task chaining
 from celery import chain
+import time
+
+# Database operation retry decorator for handling lock contention
+def retry_on_db_lock(max_retries=5, base_delay=0.1):
+    """
+    Decorator to retry database operations when lock errors occur
+    
+    Args:
+        max_retries: Maximum number of retry attempts
+        base_delay: Initial delay in seconds (doubles each retry)
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            delay = base_delay
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if 'database is locked' in error_str or 'pendingrollbackerror' in error_str:
+                        if attempt < max_retries - 1:
+                            logger.warning(f"Database lock detected (attempt {attempt + 1}/{max_retries}). Retrying in {delay}s...")
+                            # Rollback the failed transaction
+                            try:
+                                db.session.rollback()
+                            except:
+                                pass
+                            time.sleep(delay)
+                            delay *= 2  # Exponential backoff
+                            continue
+                    # Non-retryable error or max retries exceeded
+                    raise
+            return None
+        return wrapper
+    return decorator
 
 # OpenSearch connection with extended timeouts for complex SIGMA queries
 logger.info("Initializing OpenSearch client...")
@@ -981,11 +1016,20 @@ def process_sigma_rules(self, file_id, index_name):
                 except:
                     pass
             
-            case_file = db.session.get(CaseFile, file_id)
-            if case_file:
-                case_file.indexing_status = 'Failed'
-                case_file.celery_task_id = None  # Clear task ID on failure
-                db.session.commit()
+            # Rollback any failed transactions before trying to update
+            try:
+                db.session.rollback()
+            except:
+                pass
+            
+            try:
+                case_file = db.session.get(CaseFile, file_id)
+                if case_file:
+                    case_file.indexing_status = 'Failed'
+                    case_file.celery_task_id = None  # Clear task ID on failure
+                    db.session.commit()
+            except Exception as db_err:
+                logger.error(f"Failed to update case_file status: {db_err}")
             
             return {'status': 'error', 'message': str(e)}
 
