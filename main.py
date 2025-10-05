@@ -5295,7 +5295,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
         if is_limited:
             pagination_html += f'<span class="page-info" style="color: #fbbf24;">⚠️ Page {page} of {max_accessible_page} ({total_hits:,}+ results - OpenSearch limits to first {opensearch_limit:,})</span>'
         else:
-        pagination_html += f'<span class="page-info">Page {page} of {total_pages} ({total_hits:,} results)</span>'
+            pagination_html += f'<span class="page-info">Page {page} of {total_pages} ({total_hits:,} results)</span>'
         
         if page < max_accessible_page:
             pagination_html += f'<button class="page-btn" onclick="searchPage({page + 1})">Next →</button>'
