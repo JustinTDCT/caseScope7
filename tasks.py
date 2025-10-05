@@ -147,9 +147,10 @@ logger.info("OpenSearch client initialized")
 
 # caseScope SIGMA Field Mapping
 # Maps standard Sigma field names to our flattened EVTX structure
+# Note: After v7.30.6 normalization, .#text suffixes are removed for consistency
 CASESCOPE_FIELD_MAPPING = {
     # System fields
-    'EventID': 'System.EventID.#text',
+    'EventID': 'System.EventID',  # Normalized from System.EventID.#text
     'Provider_Name': 'System.Provider.@Name',
     'Computer': 'System.Computer',
     'Channel': 'System.Channel',
@@ -450,6 +451,42 @@ def flatten_event(event_data, prefix='', max_depth=10, current_depth=0):
     
     return flat
 
+def normalize_event_fields(flat_event):
+    """
+    Normalize event fields to ensure consistent types across all events.
+    
+    Problem: evtx_dump sometimes outputs System.EventID as {"#text": "4624"}
+    and sometimes as just "4624", causing OpenSearch mapping conflicts.
+    
+    Solution: Detect fields that have both a base key and a .#text variant,
+    and consolidate them to use only the simple value.
+    """
+    normalized = {}
+    text_suffix_keys = {}  # Track keys ending with .#text
+    
+    # First pass: identify all .#text keys and their base names
+    for key in flat_event.keys():
+        if key.endswith('.#text'):
+            base_key = key[:-6]  # Remove '.#text' suffix
+            text_suffix_keys[base_key] = key
+    
+    # Second pass: normalize fields
+    for key, value in flat_event.items():
+        if key.endswith('.#text'):
+            # This is a #text field - use the base key name
+            base_key = key[:-6]
+            normalized[base_key] = value
+        elif key in text_suffix_keys:
+            # This base key has a corresponding .#text variant somewhere
+            # Skip it - we'll use the .#text value or it's already a simple value
+            if key not in normalized:
+                normalized[key] = value
+        else:
+            # Regular field - keep as is
+            normalized[key] = value
+    
+    return normalized
+
 # Removed complex index mapping function - using OpenSearch auto-detection
 # Let OpenSearch automatically detect field types for simplicity
 
@@ -618,14 +655,17 @@ def index_evtx_file(self, file_id):
                             # Flatten the structure for easier searching
                             flat_event = flatten_event(event_data)
                             
-                            # Get Event ID for description (handle both dot and underscore notation)
-                            event_id = (flat_event.get('System.EventID.#text') or 
-                                       flat_event.get('System_EventID_#text') or 
-                                       flat_event.get('System.EventID') or 'N/A')
+                            # Normalize fields to ensure consistent types (e.g., System.EventID not System.EventID.#text)
+                            flat_event = normalize_event_fields(flat_event)
+                            
+                            # Get Event ID for description (now consistently at System.EventID)
+                            event_id = (flat_event.get('System.EventID') or 
+                                       flat_event.get('System_EventID') or 'N/A')
                             channel = (flat_event.get('System.Channel') or 
                                       flat_event.get('System_Channel') or '')
                             provider = (flat_event.get('System.Provider.@Name') or 
-                                       flat_event.get('System_Provider_@Name') or '')
+                                       flat_event.get('System_Provider_@Name') or 
+                                       flat_event.get('System.Provider') or '')
                             
                             # Add Event Type description for searchability
                             from main import get_event_description
@@ -1130,7 +1170,8 @@ def create_index_mapping(index_name):
                     }
                 },
                 # Event ID - text (searchable) and keyword (sortable/filterable)
-                "System.EventID.#text": {
+                # Note: Normalized from System.EventID.#text to System.EventID
+                "System.EventID": {
                     "type": "text",
                     "fields": {
                         "keyword": {"type": "keyword"}
