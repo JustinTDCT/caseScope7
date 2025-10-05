@@ -960,9 +960,28 @@ def process_sigma_rules(self, file_id, index_name):
                         logger.warning(f"Error processing Chainsaw detection: {e}")
                         continue
                 
-                # Commit all violations
-                db.session.commit()
-                logger.info(f"✓ Created {total_violations} violation records")
+                # Commit all violations with retry logic
+                logger.info(f"Saving {total_violations} violation records to database...")
+                max_retries = 5
+                delay = 0.1
+                for attempt in range(max_retries):
+                    try:
+                        db.session.commit()
+                        logger.info(f"✓ Created {total_violations} violation records")
+                        break
+                    except Exception as e:
+                        error_str = str(e).lower()
+                        if 'database is locked' in error_str or 'pendingrollbackerror' in error_str:
+                            if attempt < max_retries - 1:
+                                logger.warning(f"Database lock during violation commit (attempt {attempt + 1}/{max_retries}). Retrying in {delay}s...")
+                                db.session.rollback()
+                                time.sleep(delay)
+                                delay *= 2
+                                continue
+                        # Non-retryable error or max retries exceeded
+                        logger.error(f"Failed to commit violations: {e}")
+                        db.session.rollback()
+                        raise
             else:
                 logger.info("No detections found by Chainsaw (empty output file)")
             
