@@ -47,29 +47,8 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'casescope-7.1-productio
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:////opt/casescope/data/casescope.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# SQLite-specific configuration for better concurrency
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'connect_args': {
-        'timeout': 30,  # Wait up to 30 seconds for locks
-        'check_same_thread': False  # Allow SQLite to be used across threads
-    },
-    'pool_pre_ping': True,  # Verify connections before using
-    'pool_recycle': 3600  # Recycle connections after 1 hour
-}
-
 # Initialize Extensions
 db = SQLAlchemy(app)
-
-# Enable SQLite WAL mode for better concurrency (allows concurrent reads during writes)
-@app.before_request
-def _db_enable_wal():
-    """Enable Write-Ahead Logging mode for SQLite (once per connection)"""
-    if not hasattr(_db_enable_wal, 'initialized'):
-        with db.engine.connect() as conn:
-            conn.execute(db.text('PRAGMA journal_mode=WAL'))
-            conn.execute(db.text('PRAGMA busy_timeout=30000'))  # 30 second timeout
-            conn.commit()
-        _db_enable_wal.initialized = True
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
@@ -960,7 +939,7 @@ def upload_files():
                 with open(file_path, 'wb') as f:
                     f.write(file_data)
                 
-                # Create database record with Queued status
+                # Create database record
                 case_file = CaseFile(
                     case_id=case.id,
                     filename=safe_filename,
@@ -970,7 +949,7 @@ def upload_files():
                     file_hash=sha256_hash,
                     mime_type=mime_type,
                     uploaded_by=current_user.id,
-                    indexing_status='Queued'  # Changed from 'Uploaded' to show queue status
+                    indexing_status='Uploaded'
                 )
                 
                 db.session.add(case_file)
@@ -987,31 +966,30 @@ def upload_files():
                 db.session.commit()
                 log_audit('file_upload', 'file_operation', f'Uploaded {success_count} file(s) to case {case.name}')
                 
-                # Trigger complete file processing (queued with 2 concurrent limit)
+                # Trigger background indexing for each uploaded file
                 try:
                     # Get the files we just uploaded
                     recent_files = db.session.query(CaseFile).filter_by(
                         case_id=case.id,
-                        indexing_status='Queued'
+                        indexing_status='Uploaded'
                     ).order_by(CaseFile.uploaded_at.desc()).limit(success_count).all()
                     
                     for uploaded_file in recent_files:
                         if celery_app:
-                            # Use new queued processing task (index + SIGMA + IOC)
                             celery_app.send_task(
-                                'tasks.process_file_complete',
+                                'tasks.start_file_indexing',
                                 args=[uploaded_file.id],
                                 queue='celery',
                                 priority=0,
                             )
-                            print(f"[Upload] Queued complete processing for file ID {uploaded_file.id}: {uploaded_file.original_filename}")
+                            print(f"[Upload] Queued indexing for file ID {uploaded_file.id}: {uploaded_file.original_filename}")
                         else:
                             print(f"[Upload] WARNING: Celery not available, task not queued for file ID {uploaded_file.id}")
                     
-                    flash(f'Successfully uploaded {success_count} file(s). Processing queued (max 2 concurrent).', 'success')
+                    flash(f'Successfully uploaded {success_count} file(s). Indexing started.', 'success')
                 except Exception as e:
-                    print(f"[Upload] Warning: Failed to queue processing tasks: {e}")
-                    flash(f'Successfully uploaded {success_count} file(s). Manual processing may be required.', 'warning')
+                    print(f"[Upload] Warning: Failed to queue indexing tasks: {e}")
+                    flash(f'Successfully uploaded {success_count} file(s). Manual indexing may be required.', 'warning')
                 
             except Exception as e:
                 db.session.rollback()
@@ -2448,15 +2426,15 @@ def search():
         custom_end = session.get('search_custom_end')
     
     # Always perform search (both GET and POST)
-        if query_str:
-            try:
-                # Build OpenSearch query from user input (this transforms the query)
-                # But we keep query_str unchanged for display
-                base_query = build_opensearch_query(query_str)
-                
-                # Build filters list
-                filters = []
-                
+    if query_str:
+        try:
+            # Build OpenSearch query from user input (this transforms the query)
+            # But we keep query_str unchanged for display
+            base_query = build_opensearch_query(query_str)
+            
+            # Build filters list
+            filters = []
+            
             # Add threat filtering
             print(f"[Search] Threat filter selected: {threat_filter}")
             if threat_filter == 'sigma':
@@ -2481,43 +2459,43 @@ def search():
                 ]}}
                 filters.append(threat_query)
                 print(f"[Search] Added SIGMA + IOC filter: {threat_query}")
+            
+            # Add time range filter
+            if time_range != 'all':
+                from datetime import timedelta
+                now = datetime.utcnow()
                 
-                # Add time range filter
-                if time_range != 'all':
-                    from datetime import timedelta
-                    now = datetime.utcnow()
-                    
-                    start_time = None
-                    end_time = None
-                    
-                    if time_range == '24h':
-                        start_time = now - timedelta(hours=24)
-                        end_time = now
-                    elif time_range == '7d':
-                        start_time = now - timedelta(days=7)
-                        end_time = now
-                    elif time_range == '30d':
-                        start_time = now - timedelta(days=30)
-                        end_time = now
-                    elif time_range == 'custom' and custom_start:
-                        from datetime import datetime as dt
-                        # Parse custom datetime strings from HTML datetime-local input (YYYY-MM-DDTHH:MM format)
-                        try:
-                            if 'T' in custom_start:
-                                # Format: 2025-08-25T12:00
-                                start_time = dt.strptime(custom_start, '%Y-%m-%dT%H:%M') if custom_start else None
-                                end_time = dt.strptime(custom_end, '%Y-%m-%dT%H:%M') if custom_end else now
-                            else:
-                                # Fallback: try ISO format
-                                start_time = dt.fromisoformat(custom_start) if custom_start else None
-                                end_time = dt.fromisoformat(custom_end) if custom_end else now
-                        except Exception as e:
-                            print(f"[Search] Error parsing custom datetime: {e}, start='{custom_start}', end='{custom_end}'")
-                            start_time = None
-                            end_time = None
-                    
+                start_time = None
+                end_time = None
+                
+                if time_range == '24h':
+                    start_time = now - timedelta(hours=24)
+                    end_time = now
+                elif time_range == '7d':
+                    start_time = now - timedelta(days=7)
+                    end_time = now
+                elif time_range == '30d':
+                    start_time = now - timedelta(days=30)
+                    end_time = now
+                elif time_range == 'custom' and custom_start:
+                    from datetime import datetime as dt
+                    # Parse custom datetime strings from HTML datetime-local input (YYYY-MM-DDTHH:MM format)
+                    try:
+                        if 'T' in custom_start:
+                            # Format: 2025-08-25T12:00
+                            start_time = dt.strptime(custom_start, '%Y-%m-%dT%H:%M') if custom_start else None
+                            end_time = dt.strptime(custom_end, '%Y-%m-%dT%H:%M') if custom_end else now
+                        else:
+                            # Fallback: try ISO format
+                            start_time = dt.fromisoformat(custom_start) if custom_start else None
+                            end_time = dt.fromisoformat(custom_end) if custom_end else now
+                    except Exception as e:
+                        print(f"[Search] Error parsing custom datetime: {e}, start='{custom_start}', end='{custom_end}'")
+                        start_time = None
+                        end_time = None
+                
                 # Date range filtering using proper date range queries on .date field
-                    if start_time:
+                if start_time:
                     # Format timestamps for OpenSearch date range query
                     # Convert to ISO format (YYYY-MM-DDTHH:MM:SS)
                     start_iso = start_time.strftime('%Y-%m-%dT%H:%M:%S')
@@ -2527,33 +2505,33 @@ def search():
                     
                     # Use range query on the .date field (which has proper date type mapping)
                     # This is much more efficient than wildcards and handles all date ranges
-                            time_filter = {
+                    time_filter = {
                         "range": {
                             "System.TimeCreated.@SystemTime.date": {
                                 "gte": start_iso,
                                 "lte": end_iso,
                                 "format": "strict_date_optional_time"
                             }
-                                }
-                            }
-                        
-                        filters.append(time_filter)
-                
-                # Combine base query with filters
-                if filters:
-                    os_query = {
-                        "bool": {
-                            "must": [base_query],
-                            "filter": filters
                         }
                     }
+                    
+                    filters.append(time_filter)
+            
+            # Combine base query with filters
+            if filters:
+                os_query = {
+                    "bool": {
+                        "must": [base_query],
+                        "filter": filters
+                    }
+                }
                 print(f"[Search] Final query with filters: {os_query}")
-                else:
-                    os_query = base_query
+            else:
+                os_query = base_query
                 print(f"[Search] Query without filters: {os_query}")
-                
-                # Search across all indices for this case
-                from_offset = (page - 1) * per_page
+            
+            # Search across all indices for this case
+            from_offset = (page - 1) * per_page
             
             # Build sort configuration
             print(f"[Search] Sort parameters: field={sort_field}, order={sort_order}")
@@ -2574,103 +2552,103 @@ def search():
                 sort_config = ["_score"]
                 print(f"[Search] Using relevance sort")
             
-                search_body = {
-                    "query": os_query,
-                    "from": from_offset,
-                    "size": per_page,
+            search_body = {
+                "query": os_query,
+                "from": from_offset,
+                "size": per_page,
                 "sort": sort_config,
-                    "_source": True
-                }
-                
-                response = opensearch_client.search(
-                    index=','.join(indices),
+                "_source": True
+            }
+            
+            response = opensearch_client.search(
+                index=','.join(indices),
                 body=search_body,
                 ignore_unavailable=True
-                )
-                
-                total_hits = response['hits']['total']['value']
-                log_audit('search', 'search', f'Searched case {case.name} for "{query_str}" - {total_hits} results')
-                
-                # Add to search history
-                try:
-                    history = SearchHistory(
-                        user_id=current_user.id,
-                        case_id=case.id,
-                        query=query_str,
-                        time_range=time_range,
+            )
+            
+            total_hits = response['hits']['total']['value']
+            log_audit('search', 'search', f'Searched case {case.name} for "{query_str}" - {total_hits} results')
+            
+            # Add to search history
+            try:
+                history = SearchHistory(
+                    user_id=current_user.id,
+                    case_id=case.id,
+                    query=query_str,
+                    time_range=time_range,
                     violations_only=(threat_filter == 'sigma'),  # For backward compatibility
-                        result_count=total_hits
-                    )
-                    db.session.add(history)
-                    db.session.commit()
-                except:
-                    db.session.rollback()
+                    result_count=total_hits
+                )
+                db.session.add(history)
+                db.session.commit()
+            except:
+                db.session.rollback()
+            
+            for hit in response['hits']['hits']:
+                source = hit['_source']
                 
-                for hit in response['hits']['hits']:
-                    source = hit['_source']
+                # Get timestamp from various possible fields (XML attribute notation)
+                timestamp = source.get('System.TimeCreated.@SystemTime') or \
+                           source.get('System.TimeCreated.SystemTime') or \
+                           source.get('System_TimeCreated_SystemTime') or \
+                           source.get('@timestamp') or \
+                           'N/A'
+                
+                # Get Event ID (XML text node notation)
+                event_id = source.get('System.EventID.#text') or \
+                          source.get('System.EventID') or \
+                          source.get('System_EventID') or \
+                          source.get('EventID') or \
+                          'N/A'
+                
+                # Get source filename from metadata
+                metadata = source.get('_casescope_metadata', {})
+                source_file = metadata.get('filename', 'Unknown')
+                
+                # Get computer name (EVTX or EDR)
+                computer = source.get('System.Computer') or \
+                          source.get('System_Computer') or \
+                          source.get('Computer') or \
+                          source.get('host', {}).get('hostname') or \
+                          source.get('host', {}).get('name') or \
+                          'N/A'
+                
+                # Get channel (EVTX only)
+                channel = source.get('System.Channel') or \
+                         source.get('System_Channel') or \
+                         'N/A'
+                
+                # Get provider (EVTX XML attribute notation)
+                provider = source.get('System.Provider.@Name') or \
+                          source.get('System.Provider.Name') or \
+                          source.get('System_Provider_Name') or \
+                          'N/A'
+                
+                # Determine source type and get appropriate event description
+                source_type = metadata.get('source_type', 'evtx')
+                
+                if source_type == 'ndjson':
+                    # EDR telemetry - use command_line as Event Type
+                    process_data = source.get('process', {})
+                    command_line = process_data.get('command_line', '')
                     
-                    # Get timestamp from various possible fields (XML attribute notation)
-                    timestamp = source.get('System.TimeCreated.@SystemTime') or \
-                               source.get('System.TimeCreated.SystemTime') or \
-                               source.get('System_TimeCreated_SystemTime') or \
-                               source.get('@timestamp') or \
-                               'N/A'
-                    
-                    # Get Event ID (XML text node notation)
-                    event_id = source.get('System.EventID.#text') or \
-                              source.get('System.EventID') or \
-                              source.get('System_EventID') or \
-                              source.get('EventID') or \
-                              'N/A'
-                    
-                    # Get source filename from metadata
-                    metadata = source.get('_casescope_metadata', {})
-                    source_file = metadata.get('filename', 'Unknown')
-                    
-                    # Get computer name (EVTX or EDR)
-                    computer = source.get('System.Computer') or \
-                              source.get('System_Computer') or \
-                              source.get('Computer') or \
-                              source.get('host', {}).get('hostname') or \
-                              source.get('host', {}).get('name') or \
-                              'N/A'
-                    
-                    # Get channel (EVTX only)
-                    channel = source.get('System.Channel') or \
-                             source.get('System_Channel') or \
-                             'N/A'
-                    
-                    # Get provider (EVTX XML attribute notation)
-                    provider = source.get('System.Provider.@Name') or \
-                              source.get('System.Provider.Name') or \
-                              source.get('System_Provider_Name') or \
-                              'N/A'
-                    
-                    # Determine source type and get appropriate event description
-                    source_type = metadata.get('source_type', 'evtx')
-                    
-                    if source_type == 'ndjson':
-                        # EDR telemetry - use command_line as Event Type
-                        process_data = source.get('process', {})
-                        command_line = process_data.get('command_line', '')
-                        
-                        # Use command_line as the event description/type
-                        if command_line:
-                            event_description = command_line
-                        else:
-                            # Fallback to process name if no command line
-                            process_name = process_data.get('name', 'Unknown Process')
-                            event_description = f"Process: {process_name}"
-                        
-                        event_id = 'EDR'  # Tag EDR events
+                    # Use command_line as the event description/type
+                    if command_line:
+                        event_description = command_line
                     else:
-                        # EVTX - use traditional event description
-                        event_description = get_event_description(event_id, channel, provider, source)
+                        # Fallback to process name if no command line
+                        process_name = process_data.get('name', 'Unknown Process')
+                        event_description = f"Process: {process_name}"
                     
-                    # Get SIGMA violations if present
-                    sigma_violations = source.get('sigma_detections', [])
-                    has_violations = source.get('has_violations', False)
-                    
+                    event_id = 'EDR'  # Tag EDR events
+                else:
+                    # EVTX - use traditional event description
+                    event_description = get_event_description(event_id, channel, provider, source)
+                
+                # Get SIGMA violations if present
+                sigma_violations = source.get('sigma_detections', [])
+                has_violations = source.get('has_violations', False)
+                
                 # Check for IOC matches for this event
                 ioc_matches = []
                 try:
@@ -2690,25 +2668,25 @@ def search():
                 except Exception as e:
                     print(f"[Search] Error checking IOC matches: {e}")
                 
-                    results.append({
-                        'index': hit['_index'],
-                        'id': hit['_id'],
+                results.append({
+                    'index': hit['_index'],
+                    'id': hit['_id'],
                     'doc_id': hit['_id'],  # OpenSearch document ID for tagging
-                        'score': hit['_score'],
-                        'timestamp': timestamp,
-                        'event_id': event_id,
-                        'event_type': event_description,
-                        'source_file': source_file,
-                        'computer': computer,
-                        'channel': channel,
-                        'provider': provider,
-                        'full_data': source,
-                        'sigma_violations': sigma_violations,
+                    'score': hit['_score'],
+                    'timestamp': timestamp,
+                    'event_id': event_id,
+                    'event_type': event_description,
+                    'source_file': source_file,
+                    'computer': computer,
+                    'channel': channel,
+                    'provider': provider,
+                    'full_data': source,
+                    'sigma_violations': sigma_violations,
                     'has_violations': has_violations,
                     'ioc_matches': ioc_matches
-                    })
-                
-            except Exception as e:
+                })
+            
+        except Exception as e:
                 import traceback
                 error_message = f"Search error: {str(e)}"
                 print(f"[Search] Error: {e}")
@@ -5280,7 +5258,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
         if is_limited:
             pagination_html += f'<span class="page-info" style="color: #fbbf24;">⚠️ Page {page} of {max_accessible_page} ({total_hits:,}+ results - OpenSearch limits to first {opensearch_limit:,})</span>'
         else:
-        pagination_html += f'<span class="page-info">Page {page} of {total_pages} ({total_hits:,} results)</span>'
+            pagination_html += f'<span class="page-info">Page {page} of {total_pages} ({total_hits:,} results)</span>'
         
         if page < max_accessible_page:
             pagination_html += f'<button class="page-btn" onclick="searchPage({page + 1})">Next →</button>'
