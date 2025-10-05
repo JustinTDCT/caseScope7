@@ -41,6 +41,18 @@ logger.info("Importing Flask app and database models...")
 from main import app, db, CaseFile, Case, SigmaRule, SigmaViolation
 logger.info("Flask app and models imported successfully")
 
+# Enable SQLite WAL mode for Celery worker (same as web app)
+logger.info("Configuring SQLite for better concurrency...")
+with app.app_context():
+    with db.engine.connect() as conn:
+        result = conn.execute(db.text('PRAGMA journal_mode=WAL'))
+        mode = result.scalar()
+        logger.info(f"SQLite journal mode: {mode}")
+        conn.execute(db.text('PRAGMA busy_timeout=30000'))  # 30 second timeout
+        logger.info("SQLite busy_timeout set to 30s")
+        conn.commit()
+logger.info("SQLite configuration complete")
+
 # OpenSearch connection with extended timeouts for complex SIGMA queries
 logger.info("Initializing OpenSearch client...")
 from opensearchpy import RequestsHttpConnection
