@@ -378,13 +378,30 @@ def enrich_events_with_detections(index_name, detections_by_record_number, file_
             )
             
             if response.get('errors'):
-                logger.error(f"Bulk update had errors!")
+                logger.error(f"[SIGMA Enrichment] Bulk update had errors!")
                 for item in response.get('items', []):
                     if 'update' in item and 'error' in item['update']:
-                        logger.error(f"Update error: {item['update']['error']}")
-                logger.warning(f"Full response: {response}")
+                        logger.error(f"[SIGMA Enrichment] Update error: {item['update']['error']}")
+                logger.warning(f"[SIGMA Enrichment] Full response: {response}")
             else:
-                logger.info(f"✓ Successfully enriched {len(detections_by_record_number)} events")
+                # Log details of what actually happened (created vs updated)
+                items = response.get('items', [])
+                created_count = sum(1 for item in items if 'update' in item and item['update'].get('result') == 'created')
+                updated_count = sum(1 for item in items if 'update' in item and item['update'].get('result') == 'updated')
+                noop_count = sum(1 for item in items if 'update' in item and item['update'].get('result') == 'noop')
+                
+                logger.info(f"[SIGMA Enrichment] ✓ Bulk operation completed: {created_count} created, {updated_count} updated, {noop_count} noop")
+                
+                if created_count > 0:
+                    logger.warning(f"[SIGMA Enrichment] WARNING: {created_count} documents were CREATED (should be 0 - means doc IDs don't match!)")
+                    # Log first few created docs for debugging
+                    created_docs = [item['update'] for item in items if 'update' in item and item['update'].get('result') == 'created'][:3]
+                    for doc in created_docs:
+                        logger.warning(f"[SIGMA Enrichment] Created doc_id: {doc.get('_id')} in index: {doc.get('_index')}")
+                elif updated_count > 0:
+                    logger.info(f"[SIGMA Enrichment] ✅ All {updated_count} documents were UPDATED (correct behavior)")
+                
+                logger.info(f"[SIGMA Enrichment] Total processed: {len(detections_by_record_number)} events")
         except Exception as e:
             logger.error(f"Failed to enrich events: {e}")
             raise
