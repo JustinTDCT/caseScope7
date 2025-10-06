@@ -1528,12 +1528,6 @@ def index_ndjson_file(self, file_id):
             if not case:
                 return {'status': 'error', 'message': f'Case ID {case_file.case_id} not found'}
             
-            # Update status to Indexing
-            logger.info(f"Updating status to 'Indexing' for file: {case_file.original_filename}")
-            case_file.indexing_status = 'Indexing'
-            case_file.event_count = 0
-            db.session.commit()
-            
             # Check if file exists
             if not os.path.exists(case_file.file_path):
                 error_msg = f"File not found: {case_file.file_path}"
@@ -1544,6 +1538,22 @@ def index_ndjson_file(self, file_id):
             
             logger.info(f"File path: {case_file.file_path}")
             logger.info(f"File size: {case_file.file_size:,} bytes")
+            
+            # Fast line count for accurate progress estimation
+            logger.info("Counting lines for progress estimation...")
+            line_count = 0
+            with open(case_file.file_path, 'rb') as f:
+                for _ in f:
+                    line_count += 1
+            
+            logger.info(f"Estimated {line_count:,} events (based on line count)")
+            
+            # Update status to Indexing with estimated count
+            logger.info(f"Updating status to 'Indexing' for file: {case_file.original_filename}")
+            case_file.indexing_status = 'Indexing'
+            case_file.event_count = 0
+            case_file.estimated_event_count = line_count  # Set accurate estimate
+            db.session.commit()
             
             # Create OpenSearch index name
             index_name = make_index_name(case.id, case_file.original_filename)
