@@ -675,6 +675,13 @@ def index_evtx_file(self, file_id):
                             event_description = get_event_description(event_id, channel, provider, flat_event)
                             flat_event['event_type'] = event_description
                             
+                            # Get EventRecordID from event (used for SIGMA enrichment matching)
+                            # For EVTX: Use actual Windows EventRecordID from System data
+                            # For NDJSON/EDR: Fall back to sequential counter
+                            event_record_id = (flat_event.get('System.EventRecordID') or 
+                                             flat_event.get('System_EventRecordID') or 
+                                             record_number)
+                            
                             # Add metadata
                             flat_event['_casescope_metadata'] = {
                                 'case_id': case.id,
@@ -682,7 +689,8 @@ def index_evtx_file(self, file_id):
                                 'file_id': case_file.id,
                                 'filename': case_file.original_filename,
                                 'indexed_at': datetime.utcnow().isoformat(),
-                                'record_number': record_number
+                                'record_number': event_record_id,  # Use EventRecordID for matching
+                                'source_type': 'evtx'
                             }
                             
                             events.append(flat_event)
