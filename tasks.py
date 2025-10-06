@@ -1752,17 +1752,22 @@ def hunt_iocs(self, case_id):
             for idx, ioc in enumerate(iocs, 1):
                 logger.info(f"Processing IOC {idx}/{len(iocs)}: {ioc.ioc_type}={ioc.ioc_value}")
                 
-                # Update progress
-                self.update_state(
-                    state='PROGRESS',
-                    meta={
-                        'current': idx,
-                        'total': len(iocs),
-                        'ioc_type': ioc.ioc_type,
-                        'ioc_value': ioc.ioc_value[:50],
-                        'matches': total_matches
-                    }
-                )
+                # Update progress (only if running as a Celery task with task ID)
+                try:
+                    if self.request.id:
+                        self.update_state(
+                            state='PROGRESS',
+                            meta={
+                                'current': idx,
+                                'total': len(iocs),
+                                'ioc_type': ioc.ioc_type,
+                                'ioc_value': ioc.ioc_value[:50],
+                                'matches': total_matches
+                            }
+                        )
+                except (AttributeError, ValueError):
+                    # Called directly (not as Celery task), skip progress updates
+                    pass
                 
                 # Get fields to search based on IOC type
                 search_fields = ioc_field_mapping.get(ioc.ioc_type, ['*'])
