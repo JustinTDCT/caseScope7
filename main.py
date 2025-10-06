@@ -464,6 +464,287 @@ def set_setting(key, value, setting_type='string', description=None):
     db.session.commit()
     return setting
 
+# ============================================================================
+# Search Helper Functions (Refactored from 401-line search() function)
+# ============================================================================
+
+def extract_event_fields(source_dict, hit_id):
+    """
+    Extract standardized fields from an OpenSearch event document.
+    
+    CRITICAL: Maintains dual-field mapping for compatibility:
+    - System.EventID.#text (structured) + System.EventID (text)
+    - System.TimeCreated.#attributes.SystemTime (structured) + @timestamp (text)
+    
+    Args:
+        source_dict: OpenSearch _source dictionary
+        hit_id: OpenSearch document _id
+        
+    Returns:
+        dict with standardized fields (timestamp, event_id, computer, etc.)
+    """
+    # Get timestamp from various possible fields (dual-mapping aware)
+    # NOTE: evtx_dump uses #attributes for XML attributes, not @ prefix
+    timestamp = source_dict.get('System.TimeCreated.#attributes.SystemTime') or \
+               source_dict.get('System.TimeCreated.@SystemTime') or \
+               source_dict.get('System.TimeCreated.SystemTime') or \
+               source_dict.get('System_TimeCreated_SystemTime') or \
+               source_dict.get('@timestamp') or \
+               'N/A'
+    
+    # Get Event ID (XML text node notation) - dual-mapping aware
+    event_id = source_dict.get('System.EventID.#text') or \
+              source_dict.get('System.EventID') or \
+              source_dict.get('System_EventID') or \
+              source_dict.get('EventID') or \
+              'N/A'
+    
+    # Get source filename from metadata
+    metadata = source_dict.get('_casescope_metadata', {})
+    source_file = metadata.get('filename', 'Unknown')
+    source_type = metadata.get('source_type', 'evtx')
+    
+    # Get computer name (EVTX or EDR)
+    computer = source_dict.get('System.Computer') or \
+              source_dict.get('System_Computer') or \
+              source_dict.get('Computer') or \
+              source_dict.get('host', {}).get('hostname') or \
+              source_dict.get('host', {}).get('name') or \
+              'N/A'
+    
+    # Get channel (EVTX only)
+    channel = source_dict.get('System.Channel') or \
+             source_dict.get('System_Channel') or \
+             'N/A'
+    
+    # Get provider (EVTX XML attribute notation) - dual-mapping aware
+    # NOTE: evtx_dump uses #attributes for XML attributes
+    provider = source_dict.get('System.Provider.#attributes.Name') or \
+              source_dict.get('System.Provider.@Name') or \
+              source_dict.get('System.Provider.Name') or \
+              source_dict.get('System_Provider_Name') or \
+              'N/A'
+    
+    # Determine event description based on source type
+    if source_type == 'ndjson':
+        # EDR telemetry - use command_line as Event Type
+        process_data = source_dict.get('process', {})
+        command_line = process_data.get('command_line', '')
+        
+        if command_line:
+            event_description = command_line
+        else:
+            # Fallback to process name if no command line
+            process_name = process_data.get('name', 'Unknown Process')
+            event_description = f"Process: {process_name}"
+        
+        event_id = 'EDR'  # Tag EDR events
+    else:
+        # EVTX - use traditional event description
+        event_description = get_event_description(event_id, channel, provider, source_dict)
+    
+    # Get SIGMA violations if present
+    sigma_violations = source_dict.get('sigma_detections', [])
+    has_violations = source_dict.get('has_violations', False)
+    
+    return {
+        'timestamp': timestamp,
+        'event_id': event_id,
+        'event_type': event_description,
+        'source_file': source_file,
+        'computer': computer,
+        'channel': channel,
+        'provider': provider,
+        'sigma_violations': sigma_violations,
+        'has_violations': has_violations
+    }
+
+def build_threat_filter_query(threat_filter):
+    """
+    Build OpenSearch filter query for threat filtering.
+    
+    Args:
+        threat_filter: One of 'none', 'sigma', 'ioc', 'either', 'both'
+        
+    Returns:
+        dict: OpenSearch filter query or None
+    """
+    print(f"[Search] Threat filter selected: {threat_filter}")
+    
+    if threat_filter == 'sigma':
+        query = {"exists": {"field": "has_violations"}}
+        print(f"[Search] Added SIGMA filter: {query}")
+        return query
+    elif threat_filter == 'ioc':
+        query = {"exists": {"field": "has_ioc_matches"}}
+        print(f"[Search] Added IOC filter: {query}")
+        return query
+    elif threat_filter == 'either':
+        query = {"bool": {"should": [
+            {"exists": {"field": "has_violations"}},
+            {"exists": {"field": "has_ioc_matches"}}
+        ], "minimum_should_match": 1}}
+        print(f"[Search] Added SIGMA or IOC filter: {query}")
+        return query
+    elif threat_filter == 'both':
+        query = {"bool": {"must": [
+            {"exists": {"field": "has_violations"}},
+            {"exists": {"field": "has_ioc_matches"}}
+        ]}}
+        print(f"[Search] Added SIGMA + IOC filter: {query}")
+        return query
+    
+    return None
+
+def build_time_filter_query(time_range, custom_start=None, custom_end=None):
+    """
+    Build OpenSearch filter query for time range filtering.
+    
+    Args:
+        time_range: One of 'all', '24h', '7d', '30d', 'custom'
+        custom_start: Custom start datetime string (for 'custom' range)
+        custom_end: Custom end datetime string (for 'custom' range)
+        
+    Returns:
+        dict: OpenSearch filter query or None
+    """
+    from datetime import timedelta
+    
+    if time_range == 'all':
+        return None
+    
+    now = datetime.utcnow()
+    start_time = None
+    end_time = None
+    
+    if time_range == '24h':
+        start_time = now - timedelta(hours=24)
+        end_time = now
+    elif time_range == '7d':
+        start_time = now - timedelta(days=7)
+        end_time = now
+    elif time_range == '30d':
+        start_time = now - timedelta(days=30)
+        end_time = now
+    elif time_range == 'custom' and custom_start:
+        from datetime import datetime as dt
+        # Parse custom datetime strings from HTML datetime-local input
+        try:
+            if 'T' in custom_start:
+                start_time = dt.strptime(custom_start, '%Y-%m-%dT%H:%M') if custom_start else None
+                end_time = dt.strptime(custom_end, '%Y-%m-%dT%H:%M') if custom_end else now
+            else:
+                start_time = dt.fromisoformat(custom_start) if custom_start else None
+                end_time = dt.fromisoformat(custom_end) if custom_end else now
+        except Exception as e:
+            print(f"[Search] Error parsing custom datetime: {e}, start='{custom_start}', end='{custom_end}'")
+            return None
+    
+    if not start_time:
+        return None
+    
+    # Format timestamps for OpenSearch date range query
+    start_iso = start_time.strftime('%Y-%m-%dT%H:%M:%S')
+    end_iso = end_time.strftime('%Y-%m-%dT%H:%M:%S') if end_time else now.strftime('%Y-%m-%dT%H:%M:%S')
+    
+    print(f"[Search] Time filter: range={time_range}, start={start_iso}, end={end_iso}")
+    
+    # Use OR query to support both new (#attributes) and legacy (@) field names
+    time_filter = {
+        "bool": {
+            "should": [
+                {
+                    "range": {
+                        "System.TimeCreated.#attributes.SystemTime.date": {
+                            "gte": start_iso,
+                            "lte": end_iso,
+                            "format": "strict_date_optional_time"
+                        }
+                    }
+                },
+                {
+                    "range": {
+                        "System.TimeCreated.@SystemTime.date": {
+                            "gte": start_iso,
+                            "lte": end_iso,
+                            "format": "strict_date_optional_time"
+                        }
+                    }
+                }
+            ],
+            "minimum_should_match": 1
+        }
+    }
+    
+    return time_filter
+
+def parse_search_request(request_obj, session_obj):
+    """
+    Parse search request parameters from POST, IOC filter, threat filter, or GET.
+    
+    Args:
+        request_obj: Flask request object
+        session_obj: Flask session object
+        
+    Returns:
+        dict with parsed parameters (query_str, page, threat_filter, etc.)
+    """
+    # Default values
+    params = {
+        'query_str': '*',
+        'page': 1,
+        'threat_filter': 'none',
+        'time_range': 'all',
+        'custom_start': None,
+        'custom_end': None,
+        'sort_field': 'relevance',
+        'sort_order': 'desc'
+    }
+    
+    # Check for IOC filter from URL query string
+    ioc_filter = request_obj.args.get('ioc')
+    # Check for threat filter from URL query string
+    threat_filter_param = request_obj.args.get('threat_filter')
+    
+    if request_obj.method == 'POST':
+        params['query_str'] = request_obj.form.get('query', '*').strip()
+        params['page'] = int(request_obj.form.get('page', 1))
+        params['threat_filter'] = request_obj.form.get('threat_filter', 'none')
+        params['time_range'] = request_obj.form.get('time_range', session_obj.get('search_time_range', 'all'))
+        params['custom_start'] = request_obj.form.get('custom_start', session_obj.get('search_custom_start'))
+        params['custom_end'] = request_obj.form.get('custom_end', session_obj.get('search_custom_end'))
+        params['sort_field'] = request_obj.form.get('sort', 'relevance')
+        params['sort_order'] = request_obj.form.get('sort_order', 'desc')
+        
+        # Save time filter to session for persistence
+        session_obj['search_time_range'] = params['time_range']
+        if params['custom_start']:
+            session_obj['search_custom_start'] = params['custom_start']
+        if params['custom_end']:
+            session_obj['search_custom_end'] = params['custom_end']
+    elif ioc_filter:
+        # Coming from IOC link - search for that IOC value
+        params['query_str'] = ioc_filter
+        params['threat_filter'] = 'none'
+        # Restore time filter from session
+        params['time_range'] = session_obj.get('search_time_range', 'all')
+        params['custom_start'] = session_obj.get('search_custom_start')
+        params['custom_end'] = session_obj.get('search_custom_end')
+    elif threat_filter_param:
+        # Coming from dashboard tile with threat filter
+        params['threat_filter'] = threat_filter_param
+        # Restore time filter from session
+        params['time_range'] = session_obj.get('search_time_range', 'all')
+        params['custom_start'] = session_obj.get('search_custom_start')
+        params['custom_end'] = session_obj.get('search_custom_end')
+    else:
+        # GET request - restore time filter from session
+        params['time_range'] = session_obj.get('search_time_range', 'all')
+        params['custom_start'] = session_obj.get('search_custom_start')
+        params['custom_end'] = session_obj.get('search_custom_end')
+    
+    return params
+
 # Routes
 @app.route('/')
 def index():
@@ -2649,7 +2930,15 @@ def clear_search_filters():
 @app.route('/search', methods=['GET', 'POST'])
 @login_required
 def search():
-    """Search indexed events in active case"""
+    """
+    Search indexed events in active case.
+    
+    REFACTORED: Extracted to helper functions to reduce complexity:
+    - parse_search_request(): Parse request parameters
+    - build_threat_filter_query(): Build threat filters
+    - build_time_filter_query(): Build time range filters
+    - extract_event_fields(): Extract fields with dual-mapping support
+    """
     # Check if user has active case
     active_case_id = session.get('active_case_id')
     if not active_case_id:
@@ -2662,184 +2951,53 @@ def search():
         session.pop('active_case_id', None)
         return redirect(url_for('case_selection'))
     
-    # Get all indexed files for this case to determine which indices to search
-    indexed_files = db.session.query(CaseFile).filter_by(case_id=case.id, is_indexed=True, is_deleted=False).all()
+    # Get all indexed files for this case
+    indexed_files = db.session.query(CaseFile).filter_by(
+        case_id=case.id, is_indexed=True, is_deleted=False
+    ).all()
     
     if not indexed_files:
         flash('No indexed files in this case. Upload and index files first.', 'warning')
         return redirect(url_for('list_files'))
     
-    # Build list of indices to search using shared helper
+    # Build list of indices to search
     from tasks import make_index_name
-    indices = []
-    for file in indexed_files:
-        index_name = make_index_name(case.id, file.original_filename)
-        indices.append(index_name)
+    indices = [make_index_name(case.id, f.original_filename) for f in indexed_files]
+    
+    # Parse search request parameters (handles POST, IOC filter, threat filter, GET)
+    params = parse_search_request(request, session)
+    query_str = params['query_str']
+    page = params['page']
+    threat_filter = params['threat_filter']
+    time_range = params['time_range']
+    custom_start = params['custom_start']
+    custom_end = params['custom_end']
+    sort_field = params['sort_field']
+    sort_order = params['sort_order']
     
     results = []
     total_hits = 0
-    query_str = "*"  # Default to show all events
     error_message = None
-    page = 1
     per_page = 50
-    threat_filter = 'none'
-    time_range = 'all'
-    custom_start = None
-    custom_end = None
-    sort_field = 'relevance'
-    sort_order = 'desc'
     
-    # Check for IOC filter from URL query string (for clickable IOC links)
-    ioc_filter = request.args.get('ioc')
-    # Check for threat filter from URL query string (for clickable tiles)
-    threat_filter_param = request.args.get('threat_filter')
-    
-    if request.method == 'POST':
-        query_str = request.form.get('query', '*').strip()
-        page = int(request.form.get('page', 1))
-        threat_filter = request.form.get('threat_filter', 'none')
-        time_range = request.form.get('time_range', session.get('search_time_range', 'all'))
-        custom_start = request.form.get('custom_start', session.get('search_custom_start'))
-        custom_end = request.form.get('custom_end', session.get('search_custom_end'))
-        sort_field = request.form.get('sort', 'relevance')
-        sort_order = request.form.get('sort_order', 'desc')
-        
-        # Save time filter to session for persistence
-        session['search_time_range'] = time_range
-        if custom_start:
-            session['search_custom_start'] = custom_start
-        if custom_end:
-            session['search_custom_end'] = custom_end
-    elif ioc_filter:
-        # Coming from IOC link - search for that IOC value
-        query_str = ioc_filter
-        threat_filter = 'none'  # Search all events containing this IOC value
-        # Restore time filter from session
-        time_range = session.get('search_time_range', 'all')
-        custom_start = session.get('search_custom_start')
-        custom_end = session.get('search_custom_end')
-    elif threat_filter_param:
-        # Coming from dashboard tile with threat filter
-        threat_filter = threat_filter_param
-        # Restore time filter from session
-        time_range = session.get('search_time_range', 'all')
-        custom_start = session.get('search_custom_start')
-        custom_end = session.get('search_custom_end')
-    else:
-        # GET request - restore time filter from session
-        time_range = session.get('search_time_range', 'all')
-        custom_start = session.get('search_custom_start')
-        custom_end = session.get('search_custom_end')
-    
-    # Always perform search (both GET and POST)
+    # Execute search
     if query_str:
         try:
-            # Build OpenSearch query from user input (this transforms the query)
-            # But we keep query_str unchanged for display
+            # Build OpenSearch query
             base_query = build_opensearch_query(query_str)
             
-            # Build filters list
+            # Build filters list using helper functions
             filters = []
             
             # Add threat filtering
-            print(f"[Search] Threat filter selected: {threat_filter}")
-            if threat_filter == 'sigma':
-                threat_query = {"exists": {"field": "has_violations"}}
+            threat_query = build_threat_filter_query(threat_filter)
+            if threat_query:
                 filters.append(threat_query)
-                print(f"[Search] Added SIGMA filter: {threat_query}")
-            elif threat_filter == 'ioc':
-                threat_query = {"exists": {"field": "has_ioc_matches"}}
-                filters.append(threat_query)
-                print(f"[Search] Added IOC filter: {threat_query}")
-            elif threat_filter == 'either':
-                threat_query = {"bool": {"should": [
-                    {"exists": {"field": "has_violations"}},
-                    {"exists": {"field": "has_ioc_matches"}}
-                ], "minimum_should_match": 1}}
-                filters.append(threat_query)
-                print(f"[Search] Added SIGMA or IOC filter: {threat_query}")
-            elif threat_filter == 'both':
-                threat_query = {"bool": {"must": [
-                    {"exists": {"field": "has_violations"}},
-                    {"exists": {"field": "has_ioc_matches"}}
-                ]}}
-                filters.append(threat_query)
-                print(f"[Search] Added SIGMA + IOC filter: {threat_query}")
             
-            # Add time range filter
-            # Initialize time variables (needed for scope)
-            from datetime import timedelta
-            now = datetime.utcnow()
-            start_time = None
-            end_time = None
-            
-            if time_range != 'all':
-                if time_range == '24h':
-                    start_time = now - timedelta(hours=24)
-                    end_time = now
-                elif time_range == '7d':
-                    start_time = now - timedelta(days=7)
-                    end_time = now
-                elif time_range == '30d':
-                    start_time = now - timedelta(days=30)
-                    end_time = now
-                elif time_range == 'custom' and custom_start:
-                    from datetime import datetime as dt
-                    # Parse custom datetime strings from HTML datetime-local input (YYYY-MM-DDTHH:MM format)
-                    try:
-                        if 'T' in custom_start:
-                            # Format: 2025-08-25T12:00
-                            start_time = dt.strptime(custom_start, '%Y-%m-%dT%H:%M') if custom_start else None
-                            end_time = dt.strptime(custom_end, '%Y-%m-%dT%H:%M') if custom_end else now
-                        else:
-                            # Fallback: try ISO format
-                            start_time = dt.fromisoformat(custom_start) if custom_start else None
-                            end_time = dt.fromisoformat(custom_end) if custom_end else now
-                    except Exception as e:
-                        print(f"[Search] Error parsing custom datetime: {e}, start='{custom_start}', end='{custom_end}'")
-                        start_time = None
-                        end_time = None
-            
-            # Date range filtering using proper date range queries on .date field
-            if start_time:
-                # Format timestamps for OpenSearch date range query
-                # Convert to ISO format (YYYY-MM-DDTHH:MM:SS)
-                start_iso = start_time.strftime('%Y-%m-%dT%H:%M:%S')
-                end_iso = end_time.strftime('%Y-%m-%dT%H:%M:%S') if end_time else now.strftime('%Y-%m-%dT%H:%M:%S')
-                
-                print(f"[Search] Time filter: range={time_range}, start={start_iso}, end={end_iso}")
-                
-                # Use range query on the .date field (which has proper date type mapping)
-                # This is much more efficient than wildcards and handles all date ranges
-                # NOTE: evtx_dump uses #attributes for XML attributes
-                # Use OR query to support both new (#attributes) and legacy (@) field names
-                time_filter = {
-                    "bool": {
-                        "should": [
-                            {
-                                "range": {
-                                    "System.TimeCreated.#attributes.SystemTime.date": {
-                                        "gte": start_iso,
-                                        "lte": end_iso,
-                                        "format": "strict_date_optional_time"
-                                    }
-                                }
-                            },
-                            {
-                                "range": {
-                                    "System.TimeCreated.@SystemTime.date": {
-                                        "gte": start_iso,
-                                        "lte": end_iso,
-                                        "format": "strict_date_optional_time"
-                                    }
-                                }
-                            }
-                        ],
-                        "minimum_should_match": 1
-                    }
-                }
-                
-                filters.append(time_filter)
+            # Add time range filtering
+            time_query = build_time_filter_query(time_range, custom_start, custom_end)
+            if time_query:
+                filters.append(time_query)
             
             # Combine base query with filters
             if filters:
@@ -2916,82 +3074,12 @@ def search():
             except:
                 db.session.rollback()
             
+            # Process search results using helper function
             for hit in response['hits']['hits']:
                 source = hit['_source']
                 
-                # DEBUG: Print first few results to see what fields exist
-                if len(results) < 3 and threat_filter == 'sigma':
-                    print(f"[Search] DEBUG - SIGMA result keys: {list(source.keys())[:20]}")
-                    if '_casescope_metadata' in source:
-                        print(f"[Search] DEBUG - Metadata: {source['_casescope_metadata']}")
-                    else:
-                        print(f"[Search] DEBUG - NO _casescope_metadata field!")
-                
-                # Get timestamp from various possible fields
-                # NOTE: evtx_dump uses #attributes for XML attributes, not @ prefix
-                timestamp = source.get('System.TimeCreated.#attributes.SystemTime') or \
-                           source.get('System.TimeCreated.@SystemTime') or \
-                               source.get('System.TimeCreated.SystemTime') or \
-                               source.get('System_TimeCreated_SystemTime') or \
-                               source.get('@timestamp') or \
-                               'N/A'
-                
-                # Get Event ID (XML text node notation)
-                event_id = source.get('System.EventID.#text') or \
-                          source.get('System.EventID') or \
-                          source.get('System_EventID') or \
-                          source.get('EventID') or \
-                          'N/A'
-                
-                # Get source filename from metadata
-                metadata = source.get('_casescope_metadata', {})
-                source_file = metadata.get('filename', 'Unknown')
-                
-                # Get computer name (EVTX or EDR)
-                computer = source.get('System.Computer') or \
-                          source.get('System_Computer') or \
-                          source.get('Computer') or \
-                          source.get('host', {}).get('hostname') or \
-                          source.get('host', {}).get('name') or \
-                          'N/A'
-                
-                # Get channel (EVTX only)
-                channel = source.get('System.Channel') or \
-                         source.get('System_Channel') or \
-                         'N/A'
-                
-                # Get provider (EVTX XML attribute notation)
-                # NOTE: evtx_dump uses #attributes for XML attributes
-                provider = source.get('System.Provider.#attributes.Name') or \
-                          source.get('System.Provider.@Name') or \
-                              source.get('System.Provider.Name') or \
-                              source.get('System_Provider_Name') or \
-                              'N/A'
-                
-                # Determine source type and get appropriate event description
-                source_type = metadata.get('source_type', 'evtx')
-                
-                if source_type == 'ndjson':
-                    # EDR telemetry - use command_line as Event Type
-                    process_data = source.get('process', {})
-                    command_line = process_data.get('command_line', '')
-                    
-                    # Use command_line as the event description/type
-                    if command_line:
-                        event_description = command_line
-                    else:
-                        # Fallback to process name if no command line
-                        process_name = process_data.get('name', 'Unknown Process')
-                        event_description = f"Process: {process_name}"
-                    
-                    event_id = 'EDR'  # Tag EDR events
-                else:
-                    # EVTX - use traditional event description
-                    event_description = get_event_description(event_id, channel, provider, source)
-                
-                # Get SIGMA violations if present
-                sigma_violations = source.get('sigma_detections', [])
-                has_violations = source.get('has_violations', False)
+                # Extract standardized fields (uses dual-mapping aware helper)
+                extracted = extract_event_fields(source, hit['_id'])
                 
                 # Check for IOC matches for this event
                 ioc_matches = []
@@ -3012,22 +3100,22 @@ def search():
                 except Exception as e:
                     print(f"[Search] Error checking IOC matches: {e}")
                 
-                # Add result to list (always, not just on error)
+                # Add result to list with both extracted fields and additional data
                 results.append({
                     'index': hit['_index'],
                     'id': hit['_id'],
                     'doc_id': hit['_id'],  # OpenSearch document ID for tagging
                     'score': hit['_score'],
-                    'timestamp': timestamp,
-                    'event_id': event_id,
-                    'event_type': event_description,
-                    'source_file': source_file,
-                    'computer': computer,
-                    'channel': channel,
-                    'provider': provider,
+                    'timestamp': extracted['timestamp'],
+                    'event_id': extracted['event_id'],
+                    'event_type': extracted['event_type'],
+                    'source_file': extracted['source_file'],
+                    'computer': extracted['computer'],
+                    'channel': extracted['channel'],
+                    'provider': extracted['provider'],
                     'full_data': source,
-                    'sigma_violations': sigma_violations,
-                    'has_violations': has_violations,
+                    'sigma_violations': extracted['sigma_violations'],
+                    'has_violations': extracted['has_violations'],
                     'ioc_matches': ioc_matches
                 })
         
