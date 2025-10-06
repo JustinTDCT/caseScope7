@@ -455,10 +455,12 @@ class IrisSyncService:
                             event_title = 'EDR Event'
                     
                     # Extract actual event timestamp from the event source
-                    # EVTX: System.TimeCreated.@SystemTime (try both dot and underscore notation)
+                    # EVTX: System.TimeCreated.#attributes.SystemTime (evtx_dump format)
                     # NDJSON: @timestamp
                     raw_timestamp = None
-                    if 'System.TimeCreated.@SystemTime' in event_data:
+                    if 'System.TimeCreated.#attributes.SystemTime' in event_data:
+                        raw_timestamp = event_data['System.TimeCreated.#attributes.SystemTime']
+                    elif 'System.TimeCreated.@SystemTime' in event_data:
                         raw_timestamp = event_data['System.TimeCreated.@SystemTime']
                     elif 'System_TimeCreated_SystemTime' in event_data:
                         raw_timestamp = event_data['System_TimeCreated_SystemTime']

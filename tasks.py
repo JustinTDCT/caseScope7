@@ -151,13 +151,13 @@ logger.info("OpenSearch client initialized")
 CASESCOPE_FIELD_MAPPING = {
     # System fields
     'EventID': 'System.EventID.#text',
-    'Provider_Name': 'System.Provider.@Name',
+    'Provider_Name': 'System.Provider.#attributes.Name',
     'Computer': 'System.Computer',
     'Channel': 'System.Channel',
     'Level': 'System.Level',
     'Task': 'System.Task',
     'Keywords': 'System.Keywords',
-    'TimeCreated': 'System.TimeCreated.@SystemTime',
+    'TimeCreated': 'System.TimeCreated.#attributes.SystemTime',
     
     # Common EventData fields (Sysmon & Security)
     'CommandLine': 'EventData.CommandLine',
@@ -665,7 +665,8 @@ def index_evtx_file(self, file_id):
                                        flat_event.get('System.EventID') or 'N/A')
                             channel = (flat_event.get('System.Channel') or 
                                       flat_event.get('System_Channel') or '')
-                            provider = (flat_event.get('System.Provider.@Name') or 
+                            provider = (flat_event.get('System.Provider.#attributes.Name') or 
+                                       flat_event.get('System.Provider.@Name') or 
                                        flat_event.get('System_Provider_@Name') or 
                                        flat_event.get('System.Provider') or '')
                             
@@ -1192,7 +1193,8 @@ def create_index_mapping(index_name):
         "mappings": {
             "properties": {
                 # Timestamp field - both as text (searchable) and date (sortable)
-                "System.TimeCreated.@SystemTime": {
+                # Timestamp field - evtx_dump uses #attributes for XML attributes
+                "System.TimeCreated.#attributes.SystemTime": {
                     "type": "text",
                     "fields": {
                         "keyword": {"type": "keyword"},
@@ -1222,7 +1224,8 @@ def create_index_mapping(index_name):
                     }
                 },
                 # Provider - text (searchable) and keyword (sortable)
-                "System.Provider.@Name": {
+                # Provider - evtx_dump uses #attributes for XML attributes
+                "System.Provider.#attributes.Name": {
                     "type": "text",
                     "fields": {
                         "keyword": {"type": "keyword"}
@@ -1737,7 +1740,8 @@ def hunt_iocs(self, case_id):
                         
                         # Extract timestamp - try all possible field notations
                         event_timestamp = (
-                            source.get('System.TimeCreated.@SystemTime') or  # Flattened dot notation (current)
+                            source.get('System.TimeCreated.#attributes.SystemTime') or  # evtx_dump format (current)
+                            source.get('System.TimeCreated.@SystemTime') or  # Legacy format
                             source.get('System', {}).get('TimeCreated', {}).get('@SystemTime') or  # Nested dict
                             source.get('System_TimeCreated_@SystemTime') or  # Old underscore notation
                             source.get('@timestamp') or  # Generic timestamp

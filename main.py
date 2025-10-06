@@ -2506,9 +2506,10 @@ def search():
                 
                 # Use range query on the .date field (which has proper date type mapping)
                 # This is much more efficient than wildcards and handles all date ranges
+                # NOTE: evtx_dump uses #attributes for XML attributes
                 time_filter = {
                     "range": {
-                        "System.TimeCreated.@SystemTime.date": {
+                        "System.TimeCreated.#attributes.SystemTime.date": {
                             "gte": start_iso,
                             "lte": end_iso,
                             "format": "strict_date_optional_time"
@@ -2540,7 +2541,7 @@ def search():
                 # Sort by timestamp using the date field mapping
                 sort_config = [
                     {
-                        "System.TimeCreated.@SystemTime.date": {
+                        "System.TimeCreated.#attributes.SystemTime.date": {
                             "order": sort_order,
                             "unmapped_type": "date"
                         }
@@ -2588,15 +2589,10 @@ def search():
                 for hit in response['hits']['hits']:
                     source = hit['_source']
                     
-                    # DEBUG: Print available timestamp-related fields
-                    timestamp_keys = [k for k in source.keys() if 'time' in k.lower() or 'timestamp' in k.lower()]
-                    if timestamp_keys:
-                        print(f"[Search] DEBUG - Available timestamp fields: {timestamp_keys}")
-                        for key in timestamp_keys:
-                            print(f"[Search] DEBUG - {key} = {source[key]}")
-                    
-                    # Get timestamp from various possible fields (XML attribute notation)
-                    timestamp = source.get('System.TimeCreated.@SystemTime') or \
+                    # Get timestamp from various possible fields
+                    # NOTE: evtx_dump uses #attributes for XML attributes, not @ prefix
+                    timestamp = source.get('System.TimeCreated.#attributes.SystemTime') or \
+                               source.get('System.TimeCreated.@SystemTime') or \
                                source.get('System.TimeCreated.SystemTime') or \
                                source.get('System_TimeCreated_SystemTime') or \
                                source.get('@timestamp') or \
@@ -2627,7 +2623,9 @@ def search():
                              'N/A'
                     
                     # Get provider (EVTX XML attribute notation)
-                    provider = source.get('System.Provider.@Name') or \
+                    # NOTE: evtx_dump uses #attributes for XML attributes
+                    provider = source.get('System.Provider.#attributes.Name') or \
+                              source.get('System.Provider.@Name') or \
                               source.get('System.Provider.Name') or \
                               source.get('System_Provider_Name') or \
                               'N/A'
@@ -3259,10 +3257,10 @@ def build_opensearch_query(user_query):
         'EventID': 'System.EventID.#text',
         'Computer': 'System.Computer',
         'Channel': 'System.Channel',
-        'Provider': 'System.Provider.@Name',
+        'Provider': 'System.Provider.#attributes.Name',
         'Level': 'System.Level',
         'Task': 'System.Task',
-        'TimeCreated': 'System.TimeCreated.@SystemTime',
+        'TimeCreated': 'System.TimeCreated.#attributes.SystemTime',
         'source_filename': '_casescope_metadata.filename',
         'filename': '_casescope_metadata.filename',  # Alternative field name
         
