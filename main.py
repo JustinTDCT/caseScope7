@@ -2768,11 +2768,11 @@ def search():
                 
                 # Add time range filter
                 # Initialize time variables (needed for scope)
-                    from datetime import timedelta
-                    now = datetime.utcnow()
-                    start_time = None
-                    end_time = None
-                    
+                from datetime import timedelta
+                now = datetime.utcnow()
+                start_time = None
+                end_time = None
+                
                 if time_range != 'all':
                     if time_range == '24h':
                         start_time = now - timedelta(hours=24)
