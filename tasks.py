@@ -1187,13 +1187,52 @@ def flatten_event(event_data, parent_key='', sep='.'):
 def create_index_mapping(index_name):
     """
     Create index with proper field mappings for sorting and searching
-    Uses multi-field mapping: text for searching, keyword/date for sorting
+    
+    PHILOSOPHY:
+    - ALL fields indexed as TEXT for plain-text searching (normalize to text)
+    - CRITICAL fields get subfields for structured operations:
+      * .keyword - exact match, sorting, aggregations
+      * .date - timestamps (range queries, date math, sorting)
+      * .long - numeric fields (range queries, sorting)
+    
+    NOTE: evtx_dump uses #attributes for XML attributes (not @ prefix)
     """
     mapping = {
         "mappings": {
+            # Dynamic templates apply to all fields not explicitly defined
+            "dynamic_templates": [
+                {
+                    # All string fields → text with keyword subfield
+                    "strings_as_text_and_keyword": {
+                        "match_mapping_type": "string",
+                        "mapping": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 8192  # Increased from 256 for long command lines
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    # All numeric fields → long with keyword subfield for exact match
+                    "numbers_as_long_and_keyword": {
+                        "match_mapping_type": "long",
+                        "mapping": {
+                            "type": "long",
+                            "fields": {
+                                "keyword": {"type": "keyword"}
+                            }
+                        }
+                    }
+                }
+            ],
             "properties": {
-                # Timestamp field - both as text (searchable) and date (sortable)
-                # Timestamp field - evtx_dump uses #attributes for XML attributes
+                # ===== CRITICAL SYSTEM FIELDS (explicitly mapped) =====
+                
+                # Timestamp - TEXT (searchable) + KEYWORD (exact) + DATE (sortable, filterable)
                 "System.TimeCreated.#attributes.SystemTime": {
                     "type": "text",
                     "fields": {
@@ -1201,37 +1240,40 @@ def create_index_mapping(index_name):
                         "date": {"type": "date", "ignore_malformed": True}
                     }
                 },
-                # Event ID - text (searchable) and keyword (sortable/filterable)
-                # Note: Normalized to consistently use System.EventID.#text structure
+                
+                # Event ID - TEXT (searchable "4624") + KEYWORD (exact match, sorting)
                 "System.EventID.#text": {
                     "type": "text",
                     "fields": {
                         "keyword": {"type": "keyword"}
                     }
                 },
-                # Computer - text (searchable) and keyword (sortable)
+                
+                # Computer - TEXT (searchable "WORKSTATION") + KEYWORD (exact, sorting)
                 "System.Computer": {
                     "type": "text",
                     "fields": {
                         "keyword": {"type": "keyword"}
                     }
                 },
-                # Channel - text (searchable) and keyword (sortable)
+                
+                # Channel - TEXT (searchable "Security") + KEYWORD (exact, sorting)
                 "System.Channel": {
                     "type": "text",
                     "fields": {
                         "keyword": {"type": "keyword"}
                     }
                 },
-                # Provider - text (searchable) and keyword (sortable)
-                # Provider - evtx_dump uses #attributes for XML attributes
+                
+                # Provider Name - TEXT (searchable) + KEYWORD (exact, sorting)
                 "System.Provider.#attributes.Name": {
                     "type": "text",
                     "fields": {
                         "keyword": {"type": "keyword"}
                     }
                 },
-                # Level - both text and long for filtering
+                
+                # Level - TEXT (searchable) + KEYWORD (exact) + LONG (numeric filtering)
                 "System.Level": {
                     "type": "text",
                     "fields": {
@@ -1239,28 +1281,61 @@ def create_index_mapping(index_name):
                         "long": {"type": "long", "ignore_malformed": True}
                     }
                 },
-                # Default mapping for all other fields - text with keyword subfield
-                "_default_": {
-                    "dynamic_templates": [
-                        {
-                            "strings": {
-                                "match_mapping_type": "string",
-                                "mapping": {
-                                    "type": "text",
-                                    "fields": {
-                                        "keyword": {"type": "keyword", "ignore_above": 256}
-                                    }
-                                }
-                            }
+                
+                # Event Type (our added description field) - TEXT + KEYWORD
+                "event_type": {
+                    "type": "text",
+                    "fields": {
+                        "keyword": {"type": "keyword"}
+                    }
+                },
+                
+                # ===== NDJSON/EDR FIELDS =====
+                
+                # Process command line - TEXT (searchable) + KEYWORD (exact)
+                "process.command_line": {
+                    "type": "text",
+                    "fields": {
+                        "keyword": {
+                            "type": "keyword",
+                            "ignore_above": 32766  # Very long command lines
                         }
-                    ]
-                }
+                    }
+                },
+                
+                # Timestamp for NDJSON - TEXT + KEYWORD + DATE
+                "@timestamp": {
+                    "type": "text",
+                    "fields": {
+                        "keyword": {"type": "keyword"},
+                        "date": {"type": "date", "ignore_malformed": True}
+                    }
+                },
+                
+                # ===== CASESCOPE METADATA =====
+                
+                # Source filename - TEXT + KEYWORD
+                "_casescope_metadata.filename": {
+                    "type": "text",
+                    "fields": {
+                        "keyword": {"type": "keyword"}
+                    }
+                },
+                
+                # SIGMA enrichment flags (booleans)
+                "has_violations": {"type": "boolean"},
+                "has_ioc_matches": {"type": "boolean"},
+                "violation_count": {"type": "long"}
             }
         },
         "settings": {
             "index": {
                 "number_of_shards": 1,
-                "number_of_replicas": 0
+                "number_of_replicas": 0,
+                # Increase max fields to handle complex EVTX events
+                "mapping.total_fields.limit": 5000,
+                # Better for forensic timeline analysis
+                "refresh_interval": "5s"
             }
         }
     }
