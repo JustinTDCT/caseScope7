@@ -340,7 +340,12 @@ def enrich_events_with_detections(index_name, detections_by_record_number, file_
     bulk_actions = []
     for record_num, detections in detections_by_record_number.items():
         # Generate the same doc ID that was created during indexing
-        doc_id = hashlib.sha256(f"{file_id}_{record_num}".encode()).hexdigest()[:16]
+        # CRITICAL: Ensure record_num is same type (str) as during indexing
+        record_num_str = str(record_num)
+        doc_id = hashlib.sha256(f"{file_id}_{record_num_str}".encode()).hexdigest()[:16]
+        
+        # DEBUG: Log doc ID generation
+        logger.debug(f"Enrichment doc_id for EventRecordID {record_num}: {doc_id}")
         
         action = {
             "update": {
@@ -513,7 +518,12 @@ def bulk_index_events(index_name, events):
         file_id = metadata.get('file_id', 0)
         
         # Hash-based ID to prevent duplicates on retries
-        doc_id = hashlib.sha256(f"{file_id}_{record_num}".encode()).hexdigest()[:16]
+        # CRITICAL: Convert to str to ensure consistent hashing with enrichment
+        doc_id = hashlib.sha256(f"{file_id}_{str(record_num)}".encode()).hexdigest()[:16]
+        
+        # DEBUG: Log first few doc IDs
+        if len(actions) < 3:
+            logger.debug(f"Indexing doc_id for file_id={file_id}, record_num={record_num}: {doc_id}")
         
         action = {
             '_index': index_name,
@@ -683,6 +693,9 @@ def index_evtx_file(self, file_id):
                                              flat_event.get('System_EventRecordID') or 
                                              record_number)
                             
+                            # CRITICAL: Ensure record_number is stored as string for consistent hashing
+                            event_record_id_str = str(event_record_id)
+                            
                             # Add metadata
                             flat_event['_casescope_metadata'] = {
                                 'case_id': case.id,
@@ -690,7 +703,7 @@ def index_evtx_file(self, file_id):
                                 'file_id': case_file.id,
                                 'filename': case_file.original_filename,
                                 'indexed_at': datetime.utcnow().isoformat(),
-                                'record_number': event_record_id,  # Use EventRecordID for matching
+                                'record_number': event_record_id_str,  # Store as string for consistent hashing
                                 'source_type': 'evtx'
                             }
                             
@@ -1025,9 +1038,12 @@ def process_sigma_rules(self, file_id, index_name):
                                 logger.info(f"DEBUG: Document sample: {json.dumps(doc, indent=2)[:500]}")
                                 continue
                             
+                            # CRITICAL: Convert EventRecordID to string for consistent hashing
+                            event_record_id_str = str(event_record_id)
+                            
                             # Create a unique event ID (same format as indexing uses)
                             import hashlib
-                            event_id = hashlib.sha256(f"{file_id}_{event_record_id}".encode()).hexdigest()[:16]
+                            event_id = hashlib.sha256(f"{file_id}_{event_record_id_str}".encode()).hexdigest()[:16]
                             
                             # Find matching SigmaRule in database by comparing rule name or YAML ID
                             matching_rule = None
@@ -1068,10 +1084,10 @@ def process_sigma_rules(self, file_id, index_name):
                                 db.session.add(violation)
                                 total_violations += 1
                                 
-                                # Track detections for enrichment by EventRecordID
-                                if event_record_id not in detections_by_record_number:
-                                    detections_by_record_number[event_record_id] = []
-                                detections_by_record_number[event_record_id].append({
+                                # Track detections for enrichment by EventRecordID (use string version)
+                                if event_record_id_str not in detections_by_record_number:
+                                    detections_by_record_number[event_record_id_str] = []
+                                detections_by_record_number[event_record_id_str].append({
                                     'rule_name': rule_name,
                                     'rule_id': matching_rule.id,
                                     'level': rule_level,
