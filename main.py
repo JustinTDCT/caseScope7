@@ -2650,42 +2650,42 @@ def search():
                     sigma_violations = source.get('sigma_detections', [])
                     has_violations = source.get('has_violations', False)
                     
-                # Check for IOC matches for this event
-                ioc_matches = []
-                try:
-                    event_doc_id = hit['_id']
-                    matches = db.session.query(IOCMatch).filter_by(
-                        case_id=case.id,
-                        event_id=event_doc_id
-                    ).all()
+                    # Check for IOC matches for this event
+                    ioc_matches = []
+                    try:
+                        event_doc_id = hit['_id']
+                        matches = db.session.query(IOCMatch).filter_by(
+                            case_id=case.id,
+                            event_id=event_doc_id
+                        ).all()
+                        
+                        for match in matches:
+                            ioc = match.ioc
+                            ioc_matches.append({
+                                'type': ioc.ioc_type,
+                                'value': ioc.ioc_value,
+                                'severity': ioc.severity
+                            })
+                    except Exception as e:
+                        print(f"[Search] Error checking IOC matches: {e}")
                     
-                    for match in matches:
-                        ioc = match.ioc
-                        ioc_matches.append({
-                            'type': ioc.ioc_type,
-                            'value': ioc.ioc_value,
-                            'severity': ioc.severity
-                        })
-                except Exception as e:
-                    print(f"[Search] Error checking IOC matches: {e}")
-                
-                results.append({
-                    'index': hit['_index'],
-                    'id': hit['_id'],
-                    'doc_id': hit['_id'],  # OpenSearch document ID for tagging
-                    'score': hit['_score'],
-                    'timestamp': timestamp,
-                    'event_id': event_id,
-                    'event_type': event_description,
-                    'source_file': source_file,
-                    'computer': computer,
-                    'channel': channel,
-                    'provider': provider,
-                    'full_data': source,
-                    'sigma_violations': sigma_violations,
-                    'has_violations': has_violations,
-                    'ioc_matches': ioc_matches
-                })
+                    results.append({
+                        'index': hit['_index'],
+                        'id': hit['_id'],
+                        'doc_id': hit['_id'],  # OpenSearch document ID for tagging
+                        'score': hit['_score'],
+                        'timestamp': timestamp,
+                        'event_id': event_id,
+                        'event_type': event_description,
+                        'source_file': source_file,
+                        'computer': computer,
+                        'channel': channel,
+                        'provider': provider,
+                        'full_data': source,
+                        'sigma_violations': sigma_violations,
+                        'has_violations': has_violations,
+                        'ioc_matches': ioc_matches
+                    })
             
         except Exception as e:
             import traceback
