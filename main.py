@@ -3967,6 +3967,21 @@ def render_file_list(case, files):
         </div>
         '''
     
+    # Get IOC match counts for all files
+    from sqlalchemy import func
+    ioc_counts = {}
+    if files:
+        file_ids = [f.id for f in files]
+        ioc_count_results = db.session.query(
+            IOCMatch.file_id,
+            func.count(func.distinct(IOCMatch.event_id)).label('ioc_count')
+        ).filter(
+            IOCMatch.file_id.in_(file_ids)
+        ).group_by(IOCMatch.file_id).all()
+        
+        for file_id, count in ioc_count_results:
+            ioc_counts[file_id] = count
+    
     file_rows = ""
     for file in files:
         file_size_mb = file.file_size / (1024 * 1024)
@@ -4024,6 +4039,13 @@ def render_file_list(case, files):
         else:
             violations_display = f'<span id="violation-count-{file.id}">-</span>'
         
+        # IOC match count
+        ioc_count = ioc_counts.get(file.id, 0)
+        if ioc_count > 0:
+            iocs_display = f'<span id="ioc-count-{file.id}">{ioc_count:,}</span>'
+        else:
+            iocs_display = f'<span id="ioc-count-{file.id}">-</span>'
+        
         # Build action buttons based on user role
         actions_list = []
         actions_list.append(f'<button class="btn-action btn-info" onclick="showFileDetails({file.id})">📋 Details</button>')
@@ -4049,12 +4071,13 @@ def render_file_list(case, files):
             <td><span class="status-{status_class}">{status_display}</span></td>
             <td>{events_display}</td>
             <td>{violations_display}</td>
+            <td>{iocs_display}</td>
             <td>{actions}</td>
         </tr>
         '''
     
     if not file_rows:
-        file_rows = '<tr><td colspan="8" style="text-align: center; padding: 40px;">No files uploaded yet. Click "Upload Files" to add files to this case.</td></tr>'
+        file_rows = '<tr><td colspan="9" style="text-align: center; padding: 40px;">No files uploaded yet. Click "Upload Files" to add files to this case.</td></tr>'
     
     return f'''
     <!DOCTYPE html>
@@ -4101,6 +4124,7 @@ def render_file_list(case, files):
                             <th>Status</th>
                             <th>Events</th>
                             <th>Violations</th>
+                            <th>IOCs</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -8066,6 +8090,21 @@ def render_file_management(files, cases):
         </div>
         '''
     
+    # Get IOC match counts for all files
+    from sqlalchemy import func
+    ioc_counts = {}
+    if files:
+        file_ids = [f.id for f in files]
+        ioc_count_results = db.session.query(
+            IOCMatch.file_id,
+            func.count(func.distinct(IOCMatch.event_id)).label('ioc_count')
+        ).filter(
+            IOCMatch.file_id.in_(file_ids)
+        ).group_by(IOCMatch.file_id).all()
+        
+        for file_id, count in ioc_count_results:
+            ioc_counts[file_id] = count
+    
     # Build file rows
     file_rows = ""
     for file in files:
@@ -8100,6 +8139,10 @@ def render_file_management(files, cases):
         events_display = f'{file.event_count:,}' if file.event_count and file.event_count > 0 else '-'
         violations_display = f'{file.violation_count:,}' if file.violation_count and file.violation_count > 0 else '-'
         
+        # IOC match count
+        ioc_count = ioc_counts.get(file.id, 0)
+        iocs_display = f'{ioc_count:,}' if ioc_count > 0 else '-'
+        
         # Action buttons
         actions_list = []
         actions_list.append(f'<button class="btn-action" onclick="reindexFile({file.id})" style="background: linear-gradient(145deg, #2196f3, #1976d2);">🔄 Re-index</button>')
@@ -8123,12 +8166,13 @@ def render_file_management(files, cases):
             <td><span class="status-{status_class}">{status_display}</span></td>
             <td>{events_display}</td>
             <td>{violations_display}</td>
+            <td>{iocs_display}</td>
             <td>{actions}</td>
         </tr>
         '''
     
     if not file_rows:
-        file_rows = '<tr><td colspan="10" style="text-align: center; padding: 40px;">No files found.</td></tr>'
+        file_rows = '<tr><td colspan="11" style="text-align: center; padding: 40px;">No files found.</td></tr>'
     
     # Build case filter options
     case_options = '<option value="">All Cases</option>'
@@ -8203,6 +8247,7 @@ def render_file_management(files, cases):
                             <th>Status</th>
                             <th>Events</th>
                             <th>Violations</th>
+                            <th>IOCs</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
