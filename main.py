@@ -1430,7 +1430,7 @@ def api_reindex_all_files():
         for case_file in files:
             try:
                 # Reset file status
-                case_file.indexing_status = 'Uploaded'
+                case_file.indexing_status = 'Queued'
                 case_file.is_indexed = False
                 case_file.indexed_at = None
                 case_file.event_count = 0
@@ -1495,7 +1495,7 @@ def api_rerun_all_rules():
                         db.session.delete(violation)
                 
                 # Reset violation status
-                case_file.indexing_status = 'Running SIGMA'
+                case_file.indexing_status = 'Queued'
                 case_file.violation_count = 0
                 db.session.commit()
                 
@@ -4523,18 +4523,16 @@ def render_file_list(case, files):
                     }}
                 }});
                 
-                // Also check for Uploaded/Pending/Counting/Preparing/Indexing/Running SIGMA/Hunting IOCs status
+                // Check for active processing statuses
                 const statusElements = document.querySelectorAll('[id^="status-"]');
                 statusElements.forEach(function(elem) {{
                     const fileId = elem.id.split('-')[1];
                     const statusText = elem.textContent;
-                    if ((statusText.includes('Uploaded') || 
-                         statusText.includes('Pending') || 
-                         statusText.includes('Counting') || 
-                         statusText.includes('Preparing') ||
+                    if ((statusText.includes('Queued') || 
+                         statusText.includes('Estimating') || 
                          statusText.includes('Indexing') ||
-                         statusText.includes('Running SIGMA') ||
-                         statusText.includes('Hunting IOCs')) && 
+                         statusText.includes('SIGMA Hunting') ||
+                         statusText.includes('IOC Hunting')) && 
                         !activeFiles.includes(fileId)) {{
                         activeFiles.push(fileId);
                     }}
@@ -4574,14 +4572,15 @@ def render_file_list(case, files):
                                 violationCountElem.textContent = data.violation_count.toLocaleString();
                             }}
                             
-                            if (data.status === 'Uploaded' || data.status === 'Counting Events' || data.status === 'Preparing to Index') {{
-                                // Show status without progress
+                            if (data.status === 'Queued') {{
+                                // Show queued status
                                 if (statusElem) {{
-                                    if (data.estimated_event_count > 0) {{
-                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #2196f3;">Preparing to Index...</div>';
-                                    }} else {{
-                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #2196f3;">Counting Events...</div>';
-                                    }}
+                                    statusElem.innerHTML = '<div style="font-weight: 600; color: #9ca3af;">Queued</div>';
+                                }}
+                            }} else if (data.status === 'Estimating') {{
+                                // Show estimating status
+                                if (statusElem) {{
+                                    statusElem.innerHTML = '<div style="font-weight: 600; color: #9ca3af;">Estimating...</div>';
                                 }}
                             }} else if (data.status === 'Indexing') {{
                                 // Update count text (no progress bar) with color
@@ -4592,25 +4591,25 @@ def render_file_list(case, files):
                                     eventsText.textContent = currentEvents + ' / ' + totalEvents + ' events';
                                 }}
                                 if (statusElem) {{
-                                    statusElem.innerHTML = '<div style="font-weight: 600; color: #4caf50;">Indexing...</div>' +
+                                    statusElem.innerHTML = '<div style="font-weight: 600; color: #ff9800;">Indexing...</div>' +
                                                           '<div style="font-size: 0.9em; color: rgba(255,255,255,0.8); margin-top: 4px;">' + 
                                                           currentEvents + ' / ' + totalEvents + ' events</div>';
                                 }}
-                            }} else if (data.status === 'Running SIGMA') {{
-                                // Show SIGMA progress - event-based
+                            }} else if (data.status === 'SIGMA Hunting') {{
+                                // Show SIGMA progress
                                 if (statusElem) {{
                                     if (data.event_count) {{
-                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #ff9800;">Running SIGMA...</div>' +
+                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #fbbf24;">SIGMA Hunting...</div>' +
                                                               '<div style="font-size: 0.9em; color: rgba(255,255,255,0.8); margin-top: 4px;">Scanning ' +
                                                               data.event_count.toLocaleString() + ' events</div>';
                                     }} else {{
-                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #ff9800;">Running SIGMA...</div>';
+                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #fbbf24;">SIGMA Hunting...</div>';
                                     }}
                                 }}
-                            }} else if (data.status === 'Hunting IOCs') {{
+                            }} else if (data.status === 'IOC Hunting') {{
                                 // Show IOC hunting progress
                                 if (statusElem) {{
-                                    statusElem.innerHTML = '<div style="font-weight: 600; color: #9c27b0;">Hunting IOCs...</div>';
+                                    statusElem.innerHTML = '<div style="font-weight: 600; color: #60a5fa;">IOC Hunting...</div>';
                                 }}
                             }} else if (data.status === 'Completed' || data.status === 'Failed') {{
                                 // Update status in-place instead of reloading with color coding
@@ -8372,13 +8371,13 @@ def file_progress(file_id):
         elif case_file.indexing_status == 'Failed':
             response['progress'] = 0
             response['message'] = 'Failed'
-        elif case_file.indexing_status == 'Running SIGMA':
+        elif case_file.indexing_status == 'SIGMA Hunting':
             response['progress'] = 50
             response['event_count'] = case_file.event_count or 0
-            response['message'] = 'Running SIGMA (scanning events)'
-        elif case_file.indexing_status == 'Hunting IOCs':
+            response['message'] = 'SIGMA Hunting (scanning events)'
+        elif case_file.indexing_status == 'IOC Hunting':
             response['progress'] = 75
-            response['message'] = 'Hunting IOCs'
+            response['message'] = 'IOC Hunting'
         else:
             response['progress'] = 0
             response['message'] = case_file.indexing_status
@@ -8828,26 +8827,30 @@ def render_file_management(files, cases):
         file_size_mb = file.file_size / (1024 * 1024)
         status_class = file.indexing_status.lower().replace(' ', '-')
         
-        # Status display
-        if file.indexing_status == 'Uploaded':
-            status_display = '<div class="status-text">Preparing...</div>'
-            status_class = 'uploaded'
+        # Status display with color coding
+        # STATUS COLORS: Queued=#9ca3af, Indexing=#ff9800, SIGMA=#fbbf24, IOC=#60a5fa, Complete=#4caf50, Failed=#f44336
+        if file.indexing_status == 'Queued':
+            status_display = '<div class="status-text" style="color: #9ca3af;">Queued</div>'
+            status_class = 'queued'
+        elif file.indexing_status == 'Estimating':
+            status_display = '<div class="status-text" style="color: #9ca3af;">Estimating...</div>'
+            status_class = 'estimating'
         elif file.indexing_status == 'Indexing':
             current_events = file.event_count or 0
             estimated = file.estimated_event_count or int((file.file_size / 1048576) * 1000)
-            status_display = f'<div class="status-text">Indexing... ({current_events:,} / {estimated:,} events)</div>'
+            status_display = f'<div class="status-text" style="color: #ff9800;">Indexing... ({current_events:,} / {estimated:,} events)</div>'
             status_class = 'indexing'
-        elif file.indexing_status == 'Running SIGMA':
-            status_display = '<div class="status-text">Running SIGMA...</div>'
-            status_class = 'running-sigma'
-        elif file.indexing_status == 'Hunting IOCs':
-            status_display = '<div class="status-text">Hunting IOCs...</div>'
-            status_class = 'hunting-iocs'
+        elif file.indexing_status == 'SIGMA Hunting':
+            status_display = '<div class="status-text" style="color: #fbbf24;">SIGMA Hunting...</div>'
+            status_class = 'sigma-hunting'
+        elif file.indexing_status == 'IOC Hunting':
+            status_display = '<div class="status-text" style="color: #60a5fa;">IOC Hunting...</div>'
+            status_class = 'ioc-hunting'
         elif file.indexing_status == 'Completed':
-            status_display = '<div class="status-text">Completed</div>'
+            status_display = '<div class="status-text" style="color: #4caf50;">Completed</div>'
             status_class = 'completed'
         elif file.indexing_status == 'Failed':
-            status_display = '<div class="status-text">Failed</div>'
+            status_display = '<div class="status-text" style="color: #f44336;">Failed</div>'
             status_class = 'failed'
         else:
             status_display = f'<div class="status-text">{file.indexing_status}</div>'
@@ -8864,7 +8867,7 @@ def render_file_management(files, cases):
         actions_list = []
         actions_list.append(f'<button class="btn-action" onclick="reindexFile({file.id})" style="background: linear-gradient(145deg, #2196f3, #1976d2);">🔄 Re-index</button>')
         
-        if file.is_indexed and file.indexing_status in ['Running SIGMA', 'Hunting IOCs', 'Completed', 'Failed']:
+        if file.is_indexed and file.indexing_status in ['SIGMA Hunting', 'IOC Hunting', 'Completed', 'Failed']:
             actions_list.append(f'<button class="btn-action" onclick="rerunRules({file.id})" style="background: linear-gradient(145deg, #ff9800, #f57c00);">⚡ Re-run Rules</button>')
         
         if current_user.role == 'administrator':
@@ -8932,10 +8935,11 @@ def render_file_management(files, cases):
                     </select>
                     <select id="statusFilter" onchange="filterFiles()">
                         <option value="">All Statuses</option>
-                        <option value="Uploaded">Uploaded</option>
+                        <option value="Queued">Queued</option>
+                        <option value="Estimating">Estimating</option>
                         <option value="Indexing">Indexing</option>
-                        <option value="Running SIGMA">Running SIGMA</option>
-                        <option value="Hunting IOCs">Hunting IOCs</option>
+                        <option value="SIGMA Hunting">SIGMA Hunting</option>
+                        <option value="IOC Hunting">IOC Hunting</option>
                         <option value="Completed">Completed</option>
                         <option value="Failed">Failed</option>
                     </select>
