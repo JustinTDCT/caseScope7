@@ -641,6 +641,7 @@ def index_evtx_file(self, file_id):
             events = []
             event_count = 0
             record_number = 0
+            last_progress_update = time.time()  # Track last progress update time for 5s intervals
             
             with open(jsonl_file, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -701,23 +702,24 @@ def index_evtx_file(self, file_id):
                                 bulk_index_events(index_name, events)
                                 events = []
                                 
-                                # Update progress - send current/total for UI display
-                                case_file.event_count = event_count
-                                db.session.commit()
-                                
-                                # Update task progress with current and total counts
-                                self.update_state(
-                                    state='PROGRESS',
-                                    meta={
-                                        'current': event_count, 
-                                        'total': case_file.estimated_event_count or event_count,
-                                        'status': f'{event_count:,} / {case_file.estimated_event_count:,} events' if case_file.estimated_event_count else f'{event_count:,} events'
-                                    }
-                                )
-                                
-                                # Log progress less frequently to reduce log spam
-                                if event_count % 1000 == 0:
+                                # Update progress every 5 seconds (time-based)
+                                current_time = time.time()
+                                if current_time - last_progress_update >= 5.0:
+                                    case_file.event_count = event_count
+                                    db.session.commit()
+                                    
+                                    # Update task progress with current and total counts
+                                    self.update_state(
+                                        state='PROGRESS',
+                                        meta={
+                                            'current': event_count, 
+                                            'total': case_file.estimated_event_count or event_count,
+                                            'status': f'{event_count:,} / {case_file.estimated_event_count:,} events' if case_file.estimated_event_count else f'{event_count:,} events'
+                                        }
+                                    )
+                                    
                                     logger.info(f"Progress: {event_count:,} / {case_file.estimated_event_count:,} events indexed")
+                                    last_progress_update = current_time
                     
                     except json.JSONDecodeError as e:
                         logger.warning(f"Error parsing JSON line {record_number}: {e}")
@@ -734,7 +736,7 @@ def index_evtx_file(self, file_id):
             case_file.event_count = event_count
             case_file.indexed_at = datetime.utcnow()
             case_file.is_indexed = True
-            case_file.indexing_status = 'Running Rules'
+            case_file.indexing_status = 'SIGMA Hunting'
             db.session.commit()
             
             logger.info("="*80)
@@ -974,24 +976,27 @@ def process_sigma_rules(self, file_id, index_name):
                 # Disable autoflush to prevent lock contention during violation creation loop
                 total_detections = len(chainsaw_results)
                 processed_count = 0
+                last_progress_update = time.time()  # Track last progress update time for 5s intervals
                 
                 with db.session.no_autoflush:
                     for detection in chainsaw_results:
                         processed_count += 1
                         
-                        # Update progress every 10 detections
-                        # Note: Shows detections processed, but user sees "X / Y events scanned"
-                        if processed_count % 10 == 0:
+                        # Update progress every 5 seconds (time-based)
+                        current_time = time.time()
+                        if current_time - last_progress_update >= 5.0:
                             self.update_state(
                                 state='PROGRESS',
                                 meta={
                                     'current': processed_count,
                                     'total': total_detections,
                                     'event_count': case_file.event_count or 0,
-                                    'status': f'Processing SIGMA results',
+                                    'status': f'SIGMA Hunting: {processed_count:,} / {total_detections:,} detections processed',
                                     'violations': total_violations
                                 }
                             )
+                            logger.info(f"SIGMA Progress: {processed_count:,} / {total_detections:,} detections processed, {total_violations} violations found")
+                            last_progress_update = current_time
                         try:
                             # Each detection IS a rule match - extract rule metadata directly
                             rule_name = detection.get('name', 'Unknown Rule')
@@ -1564,6 +1569,7 @@ def index_ndjson_file(self, file_id):
             indexed_events = 0
             batch_size = 500
             events_batch = []
+            last_progress_update = time.time()  # Track last progress update time for 5s intervals
             
             logger.info("Starting NDJSON parsing and indexing...")
             
@@ -1613,11 +1619,24 @@ def index_ndjson_file(self, file_id):
                             if failed:
                                 logger.warning(f"Failed to index {len(failed)} events from batch")
                             
-                            # Update progress in database
-                            case_file.event_count = indexed_events
-                            db.session.commit()
-                            
-                            logger.info(f"Indexed {indexed_events:,} / {total_events:,} events...")
+                            # Update progress every 5 seconds (time-based)
+                            current_time = time.time()
+                            if current_time - last_progress_update >= 5.0:
+                                case_file.event_count = indexed_events
+                                db.session.commit()
+                                
+                                # Update task progress with current/total
+                                self.update_state(
+                                    state='PROGRESS',
+                                    meta={
+                                        'current': indexed_events,
+                                        'total': case_file.estimated_event_count or indexed_events,
+                                        'status': f'{indexed_events:,} / {case_file.estimated_event_count:,} events' if case_file.estimated_event_count else f'{indexed_events:,} events'
+                                    }
+                                )
+                                
+                                logger.info(f"Indexed {indexed_events:,} / {case_file.estimated_event_count:,} events...")
+                                last_progress_update = current_time
                             
                             # Clear batch
                             events_batch = []
