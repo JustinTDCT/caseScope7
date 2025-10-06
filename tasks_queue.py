@@ -90,8 +90,8 @@ def process_file_complete(self, file_id):
             case_file.indexing_status = 'Hunting IOCs'
             db.session.commit()
             
-            from tasks import hunt_iocs_in_case
-            ioc_result = hunt_iocs_in_case(case_file.case_id)
+            from tasks import hunt_iocs
+            ioc_result = hunt_iocs(case_file.case_id)
             logger.info(f"✓ IOC hunting complete: {ioc_result.get('total_matches', 0)} matches")
             
             # Mark as completed
