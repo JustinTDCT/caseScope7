@@ -2613,6 +2613,14 @@ def search():
                 for hit in response['hits']['hits']:
                     source = hit['_source']
                     
+                    # DEBUG: Print first few results to see what fields exist
+                    if len(results) < 3 and threat_filter == 'sigma':
+                        print(f"[Search] DEBUG - SIGMA result keys: {list(source.keys())[:20]}")
+                        if '_casescope_metadata' in source:
+                            print(f"[Search] DEBUG - Metadata: {source['_casescope_metadata']}")
+                        else:
+                            print(f"[Search] DEBUG - NO _casescope_metadata field!")
+                    
                     # Get timestamp from various possible fields
                     # NOTE: evtx_dump uses #attributes for XML attributes, not @ prefix
                     timestamp = source.get('System.TimeCreated.#attributes.SystemTime') or \
