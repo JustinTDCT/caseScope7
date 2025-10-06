@@ -1,13 +1,55 @@
 # caseScope Code Quality Report
 
 **Generated:** 2025-10-06  
-**Version:** 7.36.6
+**Version:** 7.37.0 (Phase 1 Complete)
 
 ## Executive Summary
 
 ✅ **All code files have valid Python syntax**  
 ✅ **No indentation errors found**  
-⚠️  **15 structural warnings** (code works but is complex)
+✅ **Phase 1 Refactoring Complete** (search() function)  
+⚠️  **13 structural warnings remaining** (down from 15)
+
+---
+
+## Refactoring Progress
+
+### Phase 1: COMPLETE ✅
+**search() function** (main.py)
+- **Before:** 401 lines, depth 9 (HIGHEST RISK) ⚠️
+- **After:** 212 lines, depth <7 (NO WARNING) ✅
+- **Reduction:** 47% (189 lines extracted to helpers)
+- **Status:** COMPLETE - No longer flagged in quality checks
+
+**Helper Functions Created:**
+1. `extract_event_fields()` - Field extraction with dual-mapping
+2. `build_threat_filter_query()` - Threat filter building
+3. `build_time_filter_query()` - Time range filter building
+4. `parse_search_request()` - Request parameter parsing
+
+### Phase 2: PENDING
+**hunt_iocs()** (tasks.py)
+- **Current:** 329 lines, depth 9 (HIGH RISK) ⚠️
+- **Priority:** HIGH - Same depth as original search()
+- **Plan:** Extract IOC query building and match processing
+
+### Phase 3: PENDING
+**render_search_page()** (main.py)
+- **Current:** 680 lines (VERY LARGE) ⚠️
+- **Priority:** MEDIUM - Mostly HTML generation
+- **Plan:** Extract HTML builders (form, table, pagination)
+
+### Phase 4: PENDING
+**render_violations_page()** (main.py)
+- **Current:** 523 lines (LARGE) ⚠️
+- **Priority:** MEDIUM - Mostly HTML generation
+- **Plan:** Extract HTML builders (table, details)
+
+### Phase 5: PENDING
+**render_file_list()** (main.py)
+- **Current:** 428 lines, depth 8 (LARGE) ⚠️
+- **Priority:** LOW-MEDIUM
+- **Plan:** Extract status rendering logic
 
 ---
 
@@ -17,7 +59,7 @@
 
 | File | Syntax | Indentation | Structure |
 |------|--------|-------------|-----------|
-| `main.py` | ✅ Valid | ✅ No issues | ⚠️ 10 warnings |
+| `main.py` | ✅ Valid | ✅ No issues | ⚠️ 8 warnings (was 10) |
 | `tasks.py` | ✅ Valid | ✅ No issues | ⚠️ 3 warnings |
 | `tasks_queue.py` | ✅ Valid | ✅ No issues | ✅ No warnings |
 | `iris_sync.py` | ✅ Valid | ✅ No issues | ⚠️ 1 warning |
