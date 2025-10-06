@@ -3971,13 +3971,18 @@ def render_file_list(case, files):
     from sqlalchemy import func
     ioc_counts = {}
     if files:
-        file_ids = [f.id for f in files]
+        # IOCMatch uses source_filename, not file_id, so we need to join with CaseFile
         ioc_count_results = db.session.query(
-            IOCMatch.file_id,
+            CaseFile.id.label('file_id'),
             func.count(func.distinct(IOCMatch.event_id)).label('ioc_count')
+        ).join(
+            IOCMatch, 
+            (IOCMatch.source_filename == CaseFile.original_filename) & 
+            (IOCMatch.case_id == CaseFile.case_id)
         ).filter(
-            IOCMatch.file_id.in_(file_ids)
-        ).group_by(IOCMatch.file_id).all()
+            CaseFile.case_id == case.id,
+            CaseFile.is_deleted == False
+        ).group_by(CaseFile.id).all()
         
         for file_id, count in ioc_count_results:
             ioc_counts[file_id] = count
@@ -8094,13 +8099,19 @@ def render_file_management(files, cases):
     from sqlalchemy import func
     ioc_counts = {}
     if files:
+        # IOCMatch uses source_filename, not file_id, so we need to join with CaseFile
         file_ids = [f.id for f in files]
         ioc_count_results = db.session.query(
-            IOCMatch.file_id,
+            CaseFile.id.label('file_id'),
             func.count(func.distinct(IOCMatch.event_id)).label('ioc_count')
+        ).join(
+            IOCMatch, 
+            (IOCMatch.source_filename == CaseFile.original_filename) & 
+            (IOCMatch.case_id == CaseFile.case_id)
         ).filter(
-            IOCMatch.file_id.in_(file_ids)
-        ).group_by(IOCMatch.file_id).all()
+            CaseFile.id.in_(file_ids),
+            CaseFile.is_deleted == False
+        ).group_by(CaseFile.id).all()
         
         for file_id, count in ioc_count_results:
             ioc_counts[file_id] = count
