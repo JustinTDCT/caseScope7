@@ -6150,7 +6150,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                 if (/^[0-9a-f]{{32}}$/i.test(value)) return 'hash_md5';
                 if (/^[0-9a-f]{{40}}$/i.test(value)) return 'hash_sha1';
                 if (/^[0-9a-f]{{64}}$/i.test(value)) return 'hash_sha256';
-                if (/^(\d{{1,3}}\.)\{{3}}\d{{1,3}}$/.test(value)) return 'ip';
+                if (/^(\\d{{1,3}}\\.){{3}}\\d{{1,3}}$/.test(value)) return 'ip';
                 if (/@/.test(value)) return 'email';
                 
                 // Field name-based detection
@@ -6875,7 +6875,7 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
                 if (/^[0-9a-f]{{32}}$/i.test(value)) return 'hash_md5';
                 if (/^[0-9a-f]{{40}}$/i.test(value)) return 'hash_sha1';
                 if (/^[0-9a-f]{{64}}$/i.test(value)) return 'hash_sha256';
-                if (/^(\d{{1,3}}\.)\{{3}}\d{{1,3}}$/.test(value)) return 'ip';
+                if (/^(\\d{{1,3}}\\.){{3}}\\d{{1,3}}$/.test(value)) return 'ip';
                 if (/@/.test(value)) return 'email';
                 
                 // Field name-based detection
