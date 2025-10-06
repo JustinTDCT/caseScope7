@@ -1268,6 +1268,142 @@ def rerun_rules(file_id):
     
     return redirect(url_for('list_files'))
 
+
+@app.route('/file/rehunt-iocs/<int:file_id>', methods=['POST'])
+@login_required
+def rehunt_iocs(file_id):
+    """
+    Re-hunt IOCs on a file
+    
+    Workflow: Queued → IOC Hunting → Completed
+    - Keeps event data and SIGMA violations intact
+    - Clears existing IOC matches
+    - Re-processes with IOC hunting engine
+    """
+    case_file = db.session.get(CaseFile, file_id) or abort(404)
+    
+    # Verify file belongs to active case
+    active_case_id = session.get('active_case_id')
+    if not active_case_id or case_file.case_id != active_case_id:
+        flash('Access denied.', 'error')
+        return redirect(url_for('list_files'))
+    
+    # Verify file is indexed
+    if not case_file.is_indexed:
+        flash('File must be indexed before hunting IOCs.', 'warning')
+        return redirect(url_for('list_files'))
+    
+    try:
+        print(f"[Re-hunt IOCs] Starting IOC re-hunting for file ID {file_id}: {case_file.original_filename}")
+        
+        # STEP 1: Delete existing IOC matches for this file
+        ioc_matches_deleted = db.session.query(IOCMatch).filter_by(
+            source_filename=case_file.original_filename,
+            case_id=case_file.case_id
+        ).delete()
+        if ioc_matches_deleted > 0:
+            print(f"[Re-hunt IOCs] Deleted {ioc_matches_deleted} existing IOC matches")
+        
+        # STEP 2: Clear has_ioc_matches flag in OpenSearch (event data remains)
+        try:
+            from opensearchpy import OpenSearch
+            from opensearchpy.helpers import bulk as opensearch_bulk
+            from tasks import make_index_name
+            
+            es = OpenSearch(
+                hosts=[{'host': 'localhost', 'port': 9200}],
+                http_auth=('admin', 'caseScope2024!'),
+                use_ssl=True,
+                verify_certs=False,
+                ssl_show_warn=False
+            )
+            
+            index_name = make_index_name(case_file.case_id, case_file.original_filename)
+            
+            if es.indices.exists(index=index_name):
+                # Bulk update all events to clear IOC-related fields
+                update_actions = []
+                
+                # Query all document IDs
+                scroll_query = {"query": {"match_all": {}}, "_source": False}
+                scroll = es.search(index=index_name, body=scroll_query, scroll='2m', size=1000)
+                scroll_id = scroll['_scroll_id']
+                hits = scroll['hits']['hits']
+                
+                while hits:
+                    for hit in hits:
+                        update_actions.append({
+                            '_op_type': 'update',
+                            '_index': index_name,
+                            '_id': hit['_id'],
+                            'doc': {
+                                'has_ioc_matches': False,
+                                'ioc_matches': []
+                            }
+                        })
+                    
+                    # Get next batch
+                    scroll = es.scroll(scroll_id=scroll_id, scroll='2m')
+                    hits = scroll['hits']['hits']
+                
+                # Clear scroll
+                es.clear_scroll(scroll_id=scroll_id)
+                
+                # Bulk update
+                if update_actions:
+                    success, failed = opensearch_bulk(es, update_actions, raise_on_error=False)
+                    print(f"[Re-hunt IOCs] Cleared IOC flags for {success} events in OpenSearch")
+                    
+        except Exception as es_error:
+            print(f"[Re-hunt IOCs] Error clearing OpenSearch IOC flags: {es_error}")
+            # Continue anyway - IOC hunting will re-enrich
+        
+        # STEP 3: Reset file status to Queued for IOC hunting
+        case_file.indexing_status = 'Queued'
+        case_file.celery_task_id = None
+        db.session.commit()
+        print(f"[Re-hunt IOCs] Reset status to 'Queued' for IOC re-hunting")
+        
+        # STEP 4: Queue IOC hunting task
+        try:
+            from tasks import make_index_name
+            
+            index_name = make_index_name(case_file.case_id, case_file.original_filename)
+            
+            if celery_app:
+                # Call hunt_iocs_for_file as a Celery task
+                task = celery_app.send_task(
+                    'tasks.hunt_iocs_for_file',
+                    args=[file_id, index_name],
+                    queue='celery',
+                    priority=0,
+                )
+                
+                # Save task ID for progress tracking
+                case_file.celery_task_id = task.id
+                db.session.commit()
+                
+                flash(f'✓ Re-hunting IOCs for {case_file.original_filename}', 'success')
+                print(f"[Re-hunt IOCs] Queued IOC hunting task {task.id} for file ID {file_id}")
+            else:
+                flash(f'Celery worker not available', 'error')
+                print(f"[Re-hunt IOCs] ERROR: Celery not available")
+        except Exception as e:
+            print(f"[Re-hunt IOCs] Error queuing task: {e}")
+            import traceback
+            traceback.print_exc()
+            flash(f'IOC hunting queued but worker may not be running. Check logs.', 'warning')
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error re-hunting IOCs: {str(e)}', 'error')
+        print(f"[Re-hunt IOCs] Database error: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    return redirect(url_for('list_files'))
+
+
 @app.route('/api/reindex-all-files', methods=['POST'])
 @login_required
 def api_reindex_all_files():
@@ -4243,8 +4379,12 @@ def render_file_list(case, files):
         actions_list.append(f'<button class="btn-action btn-reindex" onclick="confirmReindex({file.id})">🔄 Re-index</button>')
         
         # Re-run Rules only available for indexed files
-        if file.is_indexed and file.indexing_status in ['Running SIGMA', 'Hunting IOCs', 'Completed', 'Failed']:
+        if file.is_indexed and file.indexing_status in ['SIGMA Hunting', 'IOC Hunting', 'Completed', 'Failed']:
             actions_list.append(f'<button class="btn-action btn-rules" onclick="confirmRerunRules({file.id})">⚡ Re-run Rules</button>')
+        
+        # Re-hunt IOCs only available for indexed files
+        if file.is_indexed and file.indexing_status in ['SIGMA Hunting', 'IOC Hunting', 'Completed', 'Failed']:
+            actions_list.append(f'<button class="btn-action btn-iocs" onclick="confirmRehuntIocs({file.id})">🎯 Re-hunt IOCs</button>')
         
         if current_user.role == 'administrator':
             actions_list.append(f'<button class="btn-action btn-delete" onclick="confirmDelete({file.id}, \'{file.original_filename}\')">🗑️ Delete</button>')
@@ -4345,6 +4485,16 @@ def render_file_list(case, files):
                     var form = document.createElement('form');
                     form.method = 'POST';
                     form.action = '/file/rerun-rules/' + fileId;
+                    document.body.appendChild(form);
+                    form.submit();
+                }}
+            }}
+            
+            function confirmRehuntIocs(fileId) {{
+                if (confirm('Re-hunt IOCs on this file? This will discard existing IOC matches and re-scan all events for current IOCs.')) {{
+                    var form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = '/file/rehunt-iocs/' + fileId;
                     document.body.appendChild(form);
                     form.submit();
                 }}

@@ -1704,6 +1704,224 @@ def index_ndjson_file(self, file_id):
 # IOC HUNTING TASK
 # ============================================================================
 
+@celery_app.task(bind=True, name='tasks.hunt_iocs_for_file')
+def hunt_iocs_for_file(self, file_id, index_name):
+    """
+    Hunt for IOCs in a specific file's indexed events
+    Creates IOCMatch records for all matching events
+    Used for re-hunting IOCs on a single file
+    """
+    from datetime import datetime
+    import time
+    
+    logger.info("="*80)
+    logger.info(f"IOC HUNT STARTED - File ID: {file_id}, Index: {index_name}")
+    logger.info("="*80)
+    
+    task_start_time = time.time()
+    
+    try:
+        with app.app_context():
+            # Import models
+            from main import Case, IOC, IOCMatch, CaseFile
+            
+            # Get file
+            case_file = db.session.get(CaseFile, file_id)
+            if not case_file:
+                logger.error(f"File ID {file_id} not found")
+                return {'status': 'error', 'message': 'File not found'}
+            
+            # Update status
+            case_file.indexing_status = 'IOC Hunting'
+            db.session.commit()
+            logger.info(f"Status updated to 'IOC Hunting' for file: {case_file.original_filename}")
+            
+            # Get all active IOCs for this case
+            iocs = db.session.query(IOC).filter_by(case_id=case_file.case_id, is_active=True).all()
+            
+            if not iocs:
+                logger.warning(f"No active IOCs found for case {case_file.case_id}")
+                case_file.indexing_status = 'Completed'
+                db.session.commit()
+                return {'status': 'success', 'message': 'No active IOCs to hunt', 'total_iocs': 0, 'matches': 0}
+            
+            logger.info(f"Found {len(iocs)} active IOCs to hunt")
+            
+            # IOC field mappings
+            ioc_field_mapping = {
+                'ip': ['Computer', 'SourceAddress', 'DestinationAddress', 'IpAddress', 'ClientIP', 'ServerIP', 'host.ip'],
+                'domain': ['DestinationHostname', 'QueryName', 'domain', 'dns.question.name'],
+                'fqdn': ['DestinationHostname', 'QueryName', 'domain', 'dns.question.name'],
+                'hostname': ['Computer', 'Hostname', 'host.name', 'host.hostname'],
+                'username': ['User', 'TargetUserName', 'SubjectUserName', 'user.name', 'user.id'],
+                'hash_md5': ['Hashes.MD5', 'MD5', 'hash.md5', 'file.hash.md5'],
+                'hash_sha1': ['Hashes.SHA1', 'SHA1', 'hash.sha1', 'file.hash.sha1'],
+                'hash_sha256': ['Hashes.SHA256', 'SHA256', 'hash.sha256', 'file.hash.sha256'],
+                'command': ['CommandLine', 'command_line', 'process.command_line'],
+                'filename': ['Image', 'ParentImage', 'TargetFilename', 'FileName', 'file.name', 'file.path'],
+                'process_name': ['Image', 'ParentImage', 'ProcessName', 'process.name', 'process.executable'],
+                'registry_key': ['TargetObject', 'registry.path', 'registry.key'],
+                'email': ['TargetUserName', 'email', 'user.email'],
+                'url': ['url', 'url.full', 'url.original'],
+                'malware_name': ['*']  # Search all fields for malware names
+            }
+            
+            total_matches = 0
+            last_progress_update = time.time()
+            
+            # Process each IOC
+            for idx, ioc in enumerate(iocs, 1):
+                logger.info(f"Processing IOC {idx}/{len(iocs)}: {ioc.ioc_type}={ioc.ioc_value}")
+                
+                # Update progress every 5 seconds
+                current_time = time.time()
+                if current_time - last_progress_update >= 5.0:
+                    self.update_state(
+                        state='PROGRESS',
+                        meta={
+                            'current': idx,
+                            'total': len(iocs),
+                            'ioc_type': ioc.ioc_type,
+                            'ioc_value': ioc.ioc_value[:50],
+                            'matches': total_matches
+                        }
+                    )
+                    logger.info(f"IOC Hunting Progress: {idx} / {len(iocs)} IOCs processed, {total_matches} matches found")
+                    last_progress_update = current_time
+                
+                # Get fields to search based on IOC type
+                search_fields = ioc_field_mapping.get(ioc.ioc_type, ['*'])
+                
+                # Build OpenSearch query
+                search_value = ioc.ioc_value_normalized or ioc.ioc_value.lower()
+                
+                # Build multi-field query with nested field support
+                should_clauses = []
+                for field in search_fields:
+                    # Use wildcard query for nested field support (e.g., EventData.Data_12.#text)
+                    should_clauses.append({
+                        "query_string": {
+                            "query": f"*{search_value}*",
+                            "fields": [f"{field}*"],  # Wildcard to match nested paths
+                            "default_operator": "AND"
+                        }
+                    })
+                
+                query = {
+                    "query": {
+                        "bool": {
+                            "should": should_clauses,
+                            "minimum_should_match": 1
+                        }
+                    },
+                    "size": 1000  # Process in batches
+                }
+                
+                # Search OpenSearch
+                try:
+                    response = opensearch_client.search(index=index_name, body=query)
+                    hits = response['hits']['hits']
+                    
+                    if hits:
+                        logger.info(f"Found {len(hits)} matches for IOC: {ioc.ioc_value}")
+                        
+                        # Create IOCMatch records
+                        for hit in hits:
+                            event_source = hit['_source']
+                            event_id = hit['_id']
+                            
+                            # Extract timestamp
+                            timestamp = (event_source.get('System', {}).get('TimeCreated', {}).get('#attributes', {}).get('SystemTime') or 
+                                       event_source.get('@timestamp') or 
+                                       datetime.utcnow().isoformat())
+                            
+                            # Check if match already exists (prevent duplicates)
+                            existing = db.session.query(IOCMatch).filter_by(
+                                ioc_id=ioc.id,
+                                event_id=event_id,
+                                case_id=case_file.case_id
+                            ).first()
+                            
+                            if not existing:
+                                ioc_match = IOCMatch(
+                                    ioc_id=ioc.id,
+                                    case_id=case_file.case_id,
+                                    event_id=event_id,
+                                    source_filename=case_file.original_filename,
+                                    matched_field='auto_detected',  # Could be enhanced to show exact field
+                                    event_timestamp=timestamp,
+                                    detected_at=datetime.utcnow()
+                                )
+                                db.session.add(ioc_match)
+                                total_matches += 1
+                        
+                        # Commit matches in batches
+                        db.session.commit()
+                        
+                        # Enrich OpenSearch events with IOC match flags
+                        bulk_updates = []
+                        for hit in hits:
+                            bulk_updates.append({
+                                '_op_type': 'update',
+                                '_index': index_name,
+                                '_id': hit['_id'],
+                                'doc': {
+                                    'has_ioc_matches': True,
+                                    'ioc_matches': [{'ioc_id': ioc.id, 'ioc_value': ioc.ioc_value, 'ioc_type': ioc.ioc_type}]
+                                },
+                                'doc_as_upsert': True
+                            })
+                        
+                        if bulk_updates:
+                            from opensearchpy.helpers import bulk as opensearch_bulk
+                            opensearch_bulk(opensearch_client, bulk_updates, raise_on_error=False)
+                            logger.info(f"Enriched {len(bulk_updates)} events with IOC match flags")
+                
+                except Exception as e:
+                    logger.error(f"Error searching for IOC {ioc.ioc_value}: {e}")
+                    continue
+            
+            # Mark file as completed
+            case_file.indexing_status = 'Completed'
+            case_file.celery_task_id = None
+            db.session.commit()
+            
+            task_duration = time.time() - task_start_time
+            logger.info("="*80)
+            logger.info(f"IOC HUNT COMPLETED - File: {case_file.original_filename}")
+            logger.info(f"Total IOCs processed: {len(iocs)}")
+            logger.info(f"Total matches found: {total_matches}")
+            logger.info(f"Duration: {task_duration:.2f} seconds")
+            logger.info("="*80)
+            
+            return {
+                'status': 'success',
+                'file_id': file_id,
+                'total_iocs': len(iocs),
+                'matches': total_matches,
+                'duration': task_duration
+            }
+            
+    except Exception as e:
+        logger.error(f"IOC hunt failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        
+        # Mark file as failed
+        try:
+            with app.app_context():
+                from main import CaseFile
+                case_file = db.session.get(CaseFile, file_id)
+                if case_file:
+                    case_file.indexing_status = 'Failed'
+                    case_file.celery_task_id = None
+                    db.session.commit()
+        except:
+            pass
+        
+        return {'status': 'error', 'message': str(e)}
+
+
 @celery_app.task(bind=True, name='tasks.hunt_iocs')
 def hunt_iocs(self, case_id):
     """
