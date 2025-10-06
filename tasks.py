@@ -1922,11 +1922,254 @@ def hunt_iocs_for_file(self, file_id, index_name):
         return {'status': 'error', 'message': str(e)}
 
 
+# ============================================================================
+# IOC Hunting Helper Functions (Refactored from 329-line hunt_iocs function)
+# ============================================================================
+
+def get_ioc_field_mapping():
+    """
+    Get mapping of IOC types to OpenSearch field names to search.
+    
+    Returns:
+        dict: Mapping of IOC type to list of field names
+    """
+    return {
+        'ip': ['Computer', 'SourceAddress', 'DestinationAddress', 'IpAddress', 'ClientIP', 'ServerIP', 'host.ip'],
+        'domain': ['DestinationHostname', 'QueryName', 'domain', 'dns.question.name'],
+        'fqdn': ['DestinationHostname', 'QueryName', 'domain', 'dns.question.name'],
+        'hostname': ['Computer', 'Hostname', 'host.name', 'host.hostname'],
+        'username': ['User', 'TargetUserName', 'SubjectUserName', 'user.name', 'user.id'],
+        'hash_md5': ['Hashes.MD5', 'MD5', 'hash.md5', 'file.hash.md5'],
+        'hash_sha1': ['Hashes.SHA1', 'SHA1', 'hash.sha1', 'file.hash.sha1'],
+        'hash_sha256': ['Hashes.SHA256', 'SHA256', 'hash.sha256', 'file.hash.sha256'],
+        'command': ['CommandLine', 'command_line', 'process.command_line'],
+        'filename': ['Image', 'ParentImage', 'TargetFilename', 'FileName', 'file.name', 'file.path'],
+        'process_name': ['Image', 'ParentImage', 'ProcessName', 'process.name', 'process.executable'],
+        'registry_key': ['TargetObject', 'registry.path', 'registry.key'],
+        'email': ['TargetUserName', 'email', 'user.email'],
+        'url': ['url', 'url.full', 'url.original'],
+        'malware_name': ['malware.name', 'threat.name', 'ThreatName']
+    }
+
+def build_ioc_search_query(ioc, field_mapping):
+    """
+    Build OpenSearch query for IOC hunting.
+    
+    Args:
+        ioc: IOC object with ioc_type, ioc_value, ioc_value_normalized
+        field_mapping: Dict mapping IOC types to field names
+        
+    Returns:
+        dict: OpenSearch query body
+    """
+    search_fields = field_mapping.get(ioc.ioc_type, ['*'])
+    search_value = ioc.ioc_value_normalized or ioc.ioc_value.lower()
+    
+    # Build multi-field query
+    should_clauses = []
+    for field in search_fields:
+        # Use match query for exact matching
+        should_clauses.append({
+            "match": {
+                field: {
+                    "query": search_value,
+                    "operator": "and"
+                }
+            }
+        })
+        # Also try wildcard for partial matches (e.g., filenames)
+        if ioc.ioc_type in ['filename', 'command', 'registry_key', 'url']:
+            should_clauses.append({
+                "wildcard": {
+                    f"{field}.keyword": f"*{search_value}*"
+                }
+            })
+    
+    # CRITICAL: Add wildcard search across ALL fields to catch flattened field paths
+    # e.g., EventData.Data_12.#text where Data_12.@Name might be "IpAddress"
+    should_clauses.append({
+        "query_string": {
+            "query": f"*{search_value}*",
+            "fields": ["*"],
+            "analyze_wildcard": True
+        }
+    })
+    
+    return {
+        "query": {
+            "bool": {
+                "should": should_clauses,
+                "minimum_should_match": 1
+            }
+        },
+        "size": 1000,  # Max results per IOC
+        "_source": True
+    }
+
+def find_matched_field_in_event(source, search_value, search_fields):
+    """
+    Find which field in the event matched the IOC value.
+    
+    Args:
+        source: OpenSearch document _source
+        search_value: IOC value to search for
+        search_fields: List of field names to check
+        
+    Returns:
+        tuple: (matched_field_name, matched_value) or ('unknown', search_value)
+    """
+    def search_nested_dict(d, search_val, path=''):
+        """Recursively search nested dict for matching value"""
+        if isinstance(d, dict):
+            for key, val in d.items():
+                current_path = f"{path}.{key}" if path else key
+                if isinstance(val, (dict, list)):
+                    result = search_nested_dict(val, search_val, current_path)
+                    if result:
+                        return result
+                elif val and search_val.lower() in str(val).lower():
+                    return (current_path, str(val))
+        elif isinstance(d, list):
+            for idx, item in enumerate(d):
+                result = search_nested_dict(item, search_val, f"{path}[{idx}]")
+                if result:
+                    return result
+        return None
+    
+    # Try specific fields first
+    for field in search_fields:
+        if field == '*':
+            continue
+        # Check nested fields
+        if '.' in field:
+            parts = field.split('.')
+            val = source
+            for part in parts:
+                if isinstance(val, dict):
+                    val = val.get(part)
+                else:
+                    val = None
+                    break
+            if val and search_value.lower() in str(val).lower():
+                return (field, str(val)[:500])
+        else:
+            # Direct field
+            val = source.get(field)
+            if val and search_value.lower() in str(val).lower():
+                return (field, str(val)[:500])
+    
+    # If not found in specific fields, do deep search
+    result = search_nested_dict(source, search_value)
+    if result:
+        field_name, field_value = result
+        return (field_name, field_value[:500])
+    
+    return ('unknown', search_value)
+
+def extract_ioc_match_metadata(source):
+    """
+    Extract metadata fields from event for IOC match record.
+    
+    Args:
+        source: OpenSearch document _source
+        
+    Returns:
+        dict with timestamp and source_filename
+    """
+    # Extract timestamp - try all possible field notations
+    event_timestamp = (
+        source.get('System.TimeCreated.#attributes.SystemTime') or  # evtx_dump format (current)
+        source.get('System.TimeCreated.@SystemTime') or  # Legacy format
+        source.get('System', {}).get('TimeCreated', {}).get('@SystemTime') or  # Nested dict
+        source.get('System_TimeCreated_@SystemTime') or  # Old underscore notation
+        source.get('@timestamp') or  # Generic timestamp
+        None
+    )
+    # Clean up timestamp - remove microseconds and timezone for display
+    if event_timestamp and event_timestamp != 'N/A':
+        # Format: "2025-09-25 05:07:08.123456+00:00" -> "2025-09-25 05:07:08"
+        event_timestamp = event_timestamp.split('.')[0] if '.' in event_timestamp else event_timestamp
+    
+    # Extract source filename - try all possible field notations
+    source_filename = (
+        source.get('_casescope_metadata.filename') or  # Flattened dot notation
+        source.get('_casescope_metadata', {}).get('filename') or  # Nested dict
+        source.get('_casescope_metadata_filename') or  # Old underscore notation
+        'Unknown'
+    )
+    
+    return {
+        'timestamp': event_timestamp,
+        'filename': source_filename
+    }
+
+def enrich_events_with_ioc_flags(hits, case_id, opensearch_client, db_session, logger):
+    """
+    Enrich OpenSearch events with IOC match flags via bulk update.
+    
+    Args:
+        hits: List of OpenSearch hits to enrich
+        case_id: Case ID
+        opensearch_client: OpenSearch client
+        db_session: SQLAlchemy session
+        logger: Logger instance
+    """
+    try:
+        from main import IOCMatch
+        
+        logger.info(f"Enriching {len(hits)} events with IOC match flags")
+        
+        # Build bulk update for all matching events
+        bulk_actions = []
+        for hit in hits:
+            event_id = hit['_id']
+            event_index = hit['_index']
+            
+            # Get current IOC matches for this event (could be multiple IOCs)
+            event_ioc_matches = db_session.query(IOCMatch).filter_by(
+                case_id=case_id,
+                event_id=event_id
+            ).all()
+            
+            # Build list of matched IOC values
+            ioc_values = [match.ioc.ioc_value for match in event_ioc_matches if match.ioc]
+            
+            # Update document with IOC match information
+            bulk_actions.append({
+                'update': {
+                    '_index': event_index,
+                    '_id': event_id
+                }
+            })
+            bulk_actions.append({
+                'doc': {
+                    'has_ioc_matches': True,
+                    'ioc_match_count': len(event_ioc_matches),
+                    'matched_iocs': ioc_values
+                },
+                'doc_as_upsert': True,
+                'detect_noop': False
+            })
+        
+        if bulk_actions:
+            opensearch_client.bulk(body=bulk_actions, timeout=60)
+            logger.info(f"✓ Enriched {len(bulk_actions)//2} events with IOC match flags")
+    except Exception as enrich_err:
+        logger.warning(f"Failed to enrich events with IOC flags: {enrich_err}")
+
+
 @celery_app.task(bind=True, name='tasks.hunt_iocs')
 def hunt_iocs(self, case_id):
     """
-    Hunt for IOCs across all indexed events in a case
-    Creates IOCMatch records for all matching events
+    Hunt for IOCs across all indexed events in a case.
+    Creates IOCMatch records for all matching events.
+    
+    REFACTORED: Extracted helper functions to reduce complexity:
+    - get_ioc_field_mapping(): Get IOC field mappings
+    - build_ioc_search_query(): Build OpenSearch query
+    - find_matched_field_in_event(): Find which field matched
+    - extract_ioc_match_metadata(): Extract timestamp/filename
+    - enrich_events_with_ioc_flags(): Bulk update OpenSearch
     """
     from datetime import datetime
     
@@ -1965,23 +2208,8 @@ def hunt_iocs(self, case_id):
             indices = [make_index_name(case_id, f.original_filename) for f in indexed_files]
             logger.info(f"Searching across {len(indices)} indices")
             
-            # IOC field mappings - which OpenSearch fields to search for each IOC type
-            ioc_field_mapping = {
-                'ip': ['Computer', 'SourceAddress', 'DestinationAddress', 'IpAddress', 'ClientIP', 'ServerIP', 'host.ip'],
-                'domain': ['DestinationHostname', 'QueryName', 'domain', 'dns.question.name'],
-                'fqdn': ['DestinationHostname', 'QueryName', 'domain', 'dns.question.name'],
-                'hostname': ['Computer', 'Hostname', 'host.name', 'host.hostname'],
-                'username': ['User', 'TargetUserName', 'SubjectUserName', 'user.name', 'user.id'],
-                'hash_md5': ['Hashes.MD5', 'MD5', 'hash.md5', 'file.hash.md5'],
-                'hash_sha1': ['Hashes.SHA1', 'SHA1', 'hash.sha1', 'file.hash.sha1'],
-                'hash_sha256': ['Hashes.SHA256', 'SHA256', 'hash.sha256', 'file.hash.sha256'],
-                'command': ['CommandLine', 'command_line', 'process.command_line'],
-                'filename': ['Image', 'ParentImage', 'TargetFilename', 'FileName', 'file.name', 'file.path'],
-                'process_name': ['Image', 'ParentImage', 'ProcessName', 'process.name', 'process.executable'],
-                'registry_key': ['TargetObject', 'registry.path', 'registry.key'],
-                'email': ['TargetUserName', 'email', 'user.email'],
-                'url': ['url', 'url.full', 'url.original']
-            }
+            # Get IOC field mappings using helper
+            ioc_field_mapping = get_ioc_field_mapping()
             
             total_matches = 0
             
@@ -2006,53 +2234,10 @@ def hunt_iocs(self, case_id):
                     # Called directly (not as Celery task), skip progress updates
                     pass
                 
-                # Get fields to search based on IOC type
-                search_fields = ioc_field_mapping.get(ioc.ioc_type, ['*'])
-                
-                # Build OpenSearch query - use normalized (lowercase) value for matching
+                # Build OpenSearch query using helper
                 search_value = ioc.ioc_value_normalized or ioc.ioc_value.lower()
-                
-                # Build multi-field query
-                should_clauses = []
-                for field in search_fields:
-                    # Use match query for exact matching
-                    should_clauses.append({
-                        "match": {
-                            field: {
-                                "query": search_value,
-                                "operator": "and"
-                            }
-                        }
-                    })
-                    # Also try wildcard for partial matches (e.g., filenames)
-                    if ioc.ioc_type in ['filename', 'command', 'registry_key', 'url']:
-                        should_clauses.append({
-                            "wildcard": {
-                                f"{field}.keyword": f"*{search_value}*"
-                            }
-                        })
-                
-                # CRITICAL: Add wildcard search across ALL fields to catch flattened field paths
-                # e.g., EventData.Data_12.#text where Data_12.@Name might be "IpAddress"
-                # This ensures we find IOCs even when they're in nested/flattened structures
-                should_clauses.append({
-                    "query_string": {
-                        "query": f"*{search_value}*",
-                        "fields": ["*"],
-                        "analyze_wildcard": True
-                    }
-                })
-                
-                query = {
-                    "query": {
-                        "bool": {
-                            "should": should_clauses,
-                            "minimum_should_match": 1
-                        }
-                    },
-                    "size": 1000,  # Max results per IOC
-                    "_source": True
-                }
+                search_fields = ioc_field_mapping.get(ioc.ioc_type, ['*'])
+                query = build_ioc_search_query(ioc, ioc_field_mapping)
                 
                 try:
                     # Search OpenSearch (ignore_unavailable allows searching even if some indices don't exist)
@@ -2067,91 +2252,21 @@ def hunt_iocs(self, case_id):
                     
                     ioc_match_count = 0
                     
-                    # Create IOCMatch records for each hit
+                    # Create IOCMatch records for each hit using helpers
                     for hit in hits:
                         event_id = hit['_id']
                         index_name = hit['_index']
                         source = hit['_source']
                         
-                        # Extract timestamp - try all possible field notations
-                        event_timestamp = (
-                            source.get('System.TimeCreated.#attributes.SystemTime') or  # evtx_dump format (current)
-                            source.get('System.TimeCreated.@SystemTime') or  # Legacy format
-                            source.get('System', {}).get('TimeCreated', {}).get('@SystemTime') or  # Nested dict
-                            source.get('System_TimeCreated_@SystemTime') or  # Old underscore notation
-                            source.get('@timestamp') or  # Generic timestamp
-                            None
+                        # Extract metadata using helper
+                        metadata = extract_ioc_match_metadata(source)
+                        event_timestamp = metadata['timestamp']
+                        source_filename = metadata['filename']
+                        
+                        # Find matched field using helper
+                        matched_field, matched_value = find_matched_field_in_event(
+                            source, search_value, search_fields
                         )
-                        # Clean up timestamp - remove microseconds and timezone for display
-                        if event_timestamp and event_timestamp != 'N/A':
-                            # Format: "2025-09-25 05:07:08.123456+00:00" -> "2025-09-25 05:07:08"
-                            event_timestamp = event_timestamp.split('.')[0] if '.' in event_timestamp else event_timestamp
-                        
-                        # Extract source filename - try all possible field notations
-                        source_filename = (
-                            source.get('_casescope_metadata.filename') or  # Flattened dot notation
-                            source.get('_casescope_metadata', {}).get('filename') or  # Nested dict
-                            source.get('_casescope_metadata_filename') or  # Old underscore notation
-                            'Unknown'
-                        )
-                        
-                        # Find which field matched - recursive search through all fields
-                        matched_field = 'unknown'
-                        matched_value = search_value
-                        
-                        def search_nested_dict(d, search_val, path=''):
-                            """Recursively search nested dict for matching value"""
-                            if isinstance(d, dict):
-                                for key, val in d.items():
-                                    current_path = f"{path}.{key}" if path else key
-                                    if isinstance(val, (dict, list)):
-                                        result = search_nested_dict(val, search_val, current_path)
-                                        if result:
-                                            return result
-                                    elif val and search_val.lower() in str(val).lower():
-                                        return (current_path, str(val))
-                            elif isinstance(d, list):
-                                for idx, item in enumerate(d):
-                                    result = search_nested_dict(item, search_val, f"{path}[{idx}]")
-                                    if result:
-                                        return result
-                            return None
-                        
-                        # Try specific fields first
-                        found = False
-                        for field in search_fields:
-                            if field == '*':
-                                continue
-                            # Check nested fields
-                            if '.' in field:
-                                parts = field.split('.')
-                                val = source
-                                for part in parts:
-                                    if isinstance(val, dict):
-                                        val = val.get(part)
-                                    else:
-                                        val = None
-                                        break
-                                if val and search_value.lower() in str(val).lower():
-                                    matched_field = field
-                                    matched_value = str(val)[:500]
-                                    found = True
-                                    break
-                            else:
-                                # Direct field
-                                val = source.get(field)
-                                if val and search_value.lower() in str(val).lower():
-                                    matched_field = field
-                                    matched_value = str(val)[:500]
-                                    found = True
-                                    break
-                        
-                        # If not found in specific fields, do deep search
-                        if not found:
-                            result = search_nested_dict(source, search_value)
-                            if result:
-                                matched_field, matched_value = result
-                                matched_value = matched_value[:500]
                         
                         # Check if match already exists
                         existing_match = db.session.query(IOCMatch).filter_by(
@@ -2187,48 +2302,11 @@ def hunt_iocs(self, case_id):
                     
                     logger.info(f"Created {ioc_match_count} new matches for IOC {ioc.ioc_value}")
                     
-                    # Enrich OpenSearch events with IOC match flags
+                    # Enrich OpenSearch events with IOC match flags using helper
                     if ioc_match_count > 0:
-                        try:
-                            logger.info(f"Enriching {ioc_match_count} events with IOC match flags for {ioc.ioc_value}")
-                            
-                            # Build bulk update for all matching events
-                            bulk_actions = []
-                            for hit in hits:
-                                event_id = hit['_id']
-                                event_index = hit['_index']
-                                
-                                # Get current IOC matches for this event (could be multiple IOCs)
-                                event_ioc_matches = db.session.query(IOCMatch).filter_by(
-                                    case_id=case_id,
-                                    event_id=event_id
-                                ).all()
-                                
-                                # Build list of matched IOC values
-                                ioc_values = [match.ioc.ioc_value for match in event_ioc_matches if match.ioc]
-                                
-                                # Update document with IOC match information
-                                bulk_actions.append({
-                                    'update': {
-                                        '_index': event_index,
-                                        '_id': event_id
-                                    }
-                                })
-                                bulk_actions.append({
-                                    'doc': {
-                                        'has_ioc_matches': True,
-                                        'ioc_match_count': len(event_ioc_matches),
-                                        'matched_iocs': ioc_values
-                                    },
-                                    'doc_as_upsert': True,
-                                    'detect_noop': False
-                                })
-                            
-                            if bulk_actions:
-                                opensearch_client.bulk(body=bulk_actions, timeout=60)
-                                logger.info(f"✓ Enriched {len(bulk_actions)//2} events with IOC match flags")
-                        except Exception as enrich_err:
-                            logger.warning(f"Failed to enrich events with IOC flags: {enrich_err}")
+                        enrich_events_with_ioc_flags(
+                            hits, case_id, opensearch_client, db.session, logger
+                        )
                     
                 except Exception as e:
                     logger.error(f"Error searching for IOC {ioc.ioc_value}: {e}")
