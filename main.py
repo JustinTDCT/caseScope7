@@ -2578,151 +2578,152 @@ def search():
                 sort_config = ["_score"]
                 print(f"[Search] Using relevance sort")
             
-                search_body = {
-                    "query": os_query,
-                    "from": from_offset,
-                    "size": per_page,
+            # Execute search (outside if/else blocks - runs for all sort types)
+            search_body = {
+                "query": os_query,
+                "from": from_offset,
+                "size": per_page,
                 "sort": sort_config,
-                    "_source": True
-                }
-                
-                response = opensearch_client.search(
-                    index=','.join(indices),
+                "_source": True
+            }
+            
+            response = opensearch_client.search(
+                index=','.join(indices),
                 body=search_body,
                 ignore_unavailable=True
-                )
-                
-                total_hits = response['hits']['total']['value']
-                log_audit('search', 'search', f'Searched case {case.name} for "{query_str}" - {total_hits} results')
-                
-                # Add to search history
-                try:
-                    history = SearchHistory(
-                        user_id=current_user.id,
-                        case_id=case.id,
-                        query=query_str,
-                        time_range=time_range,
+            )
+            
+            total_hits = response['hits']['total']['value']
+            log_audit('search', 'search', f'Searched case {case.name} for "{query_str}" - {total_hits} results')
+            
+            # Add to search history
+            try:
+                history = SearchHistory(
+                    user_id=current_user.id,
+                    case_id=case.id,
+                    query=query_str,
+                    time_range=time_range,
                     violations_only=(threat_filter == 'sigma'),  # For backward compatibility
-                        result_count=total_hits
-                    )
-                    db.session.add(history)
-                    db.session.commit()
-                except:
-                    db.session.rollback()
-                
-                for hit in response['hits']['hits']:
-                    source = hit['_source']
+                    result_count=total_hits
+                )
+                db.session.add(history)
+                db.session.commit()
+            except:
+                db.session.rollback()
+            
+            for hit in response['hits']['hits']:
+                source = hit['_source']
                     
-                    # DEBUG: Print first few results to see what fields exist
-                    if len(results) < 3 and threat_filter == 'sigma':
-                        print(f"[Search] DEBUG - SIGMA result keys: {list(source.keys())[:20]}")
-                        if '_casescope_metadata' in source:
-                            print(f"[Search] DEBUG - Metadata: {source['_casescope_metadata']}")
-                        else:
-                            print(f"[Search] DEBUG - NO _casescope_metadata field!")
-                    
-                    # Get timestamp from various possible fields
-                    # NOTE: evtx_dump uses #attributes for XML attributes, not @ prefix
-                    timestamp = source.get('System.TimeCreated.#attributes.SystemTime') or \
-                               source.get('System.TimeCreated.@SystemTime') or \
-                               source.get('System.TimeCreated.SystemTime') or \
-                               source.get('System_TimeCreated_SystemTime') or \
-                               source.get('@timestamp') or \
-                               'N/A'
-                    
-                    # Get Event ID (XML text node notation)
-                    event_id = source.get('System.EventID.#text') or \
-                              source.get('System.EventID') or \
-                              source.get('System_EventID') or \
-                              source.get('EventID') or \
-                              'N/A'
-                    
-                    # Get source filename from metadata
-                    metadata = source.get('_casescope_metadata', {})
-                    source_file = metadata.get('filename', 'Unknown')
-                    
-                    # Get computer name (EVTX or EDR)
-                    computer = source.get('System.Computer') or \
-                              source.get('System_Computer') or \
-                              source.get('Computer') or \
-                              source.get('host', {}).get('hostname') or \
-                              source.get('host', {}).get('name') or \
-                              'N/A'
-                    
-                    # Get channel (EVTX only)
-                    channel = source.get('System.Channel') or \
-                             source.get('System_Channel') or \
-                             'N/A'
-                    
-                    # Get provider (EVTX XML attribute notation)
-                    # NOTE: evtx_dump uses #attributes for XML attributes
-                    provider = source.get('System.Provider.#attributes.Name') or \
-                              source.get('System.Provider.@Name') or \
-                              source.get('System.Provider.Name') or \
-                              source.get('System_Provider_Name') or \
-                              'N/A'
-                    
-                    # Determine source type and get appropriate event description
-                    source_type = metadata.get('source_type', 'evtx')
-                    
-                    if source_type == 'ndjson':
-                        # EDR telemetry - use command_line as Event Type
-                        process_data = source.get('process', {})
-                        command_line = process_data.get('command_line', '')
-                        
-                        # Use command_line as the event description/type
-                        if command_line:
-                            event_description = command_line
-                        else:
-                            # Fallback to process name if no command line
-                            process_name = process_data.get('name', 'Unknown Process')
-                            event_description = f"Process: {process_name}"
-                        
-                        event_id = 'EDR'  # Tag EDR events
+                # DEBUG: Print first few results to see what fields exist
+                if len(results) < 3 and threat_filter == 'sigma':
+                    print(f"[Search] DEBUG - SIGMA result keys: {list(source.keys())[:20]}")
+                    if '_casescope_metadata' in source:
+                        print(f"[Search] DEBUG - Metadata: {source['_casescope_metadata']}")
                     else:
-                        # EVTX - use traditional event description
-                        event_description = get_event_description(event_id, channel, provider, source)
+                        print(f"[Search] DEBUG - NO _casescope_metadata field!")
                     
-                    # Get SIGMA violations if present
-                    sigma_violations = source.get('sigma_detections', [])
-                    has_violations = source.get('has_violations', False)
+                # Get timestamp from various possible fields
+                # NOTE: evtx_dump uses #attributes for XML attributes, not @ prefix
+                timestamp = source.get('System.TimeCreated.#attributes.SystemTime') or \
+                           source.get('System.TimeCreated.@SystemTime') or \
+                           source.get('System.TimeCreated.SystemTime') or \
+                           source.get('System_TimeCreated_SystemTime') or \
+                           source.get('@timestamp') or \
+                           'N/A'
                     
-                    # Check for IOC matches for this event
-                    ioc_matches = []
-                    try:
-                        event_doc_id = hit['_id']
-                        matches = db.session.query(IOCMatch).filter_by(
-                            case_id=case.id,
-                            event_id=event_doc_id
-                        ).all()
+                # Get Event ID (XML text node notation)
+                event_id = source.get('System.EventID.#text') or \
+                          source.get('System.EventID') or \
+                          source.get('System_EventID') or \
+                          source.get('EventID') or \
+                          'N/A'
+                    
+                # Get source filename from metadata
+                metadata = source.get('_casescope_metadata', {})
+                source_file = metadata.get('filename', 'Unknown')
+                    
+                # Get computer name (EVTX or EDR)
+                computer = source.get('System.Computer') or \
+                          source.get('System_Computer') or \
+                          source.get('Computer') or \
+                          source.get('host', {}).get('hostname') or \
+                          source.get('host', {}).get('name') or \
+                          'N/A'
+                    
+                # Get channel (EVTX only)
+                channel = source.get('System.Channel') or \
+                         source.get('System_Channel') or \
+                         'N/A'
+                    
+                # Get provider (EVTX XML attribute notation)
+                # NOTE: evtx_dump uses #attributes for XML attributes
+                provider = source.get('System.Provider.#attributes.Name') or \
+                          source.get('System.Provider.@Name') or \
+                          source.get('System.Provider.Name') or \
+                          source.get('System_Provider_Name') or \
+                          'N/A'
+                    
+                # Determine source type and get appropriate event description
+                source_type = metadata.get('source_type', 'evtx')
+                    
+                if source_type == 'ndjson':
+                    # EDR telemetry - use command_line as Event Type
+                    process_data = source.get('process', {})
+                    command_line = process_data.get('command_line', '')
                         
-                        for match in matches:
-                            ioc = match.ioc
-                            ioc_matches.append({
-                                'type': ioc.ioc_type,
-                                'value': ioc.ioc_value,
-                                'severity': ioc.severity
-                            })
-                    except Exception as e:
-                        print(f"[Search] Error checking IOC matches: {e}")
+                    # Use command_line as the event description/type
+                    if command_line:
+                        event_description = command_line
+                    else:
+                        # Fallback to process name if no command line
+                        process_name = process_data.get('name', 'Unknown Process')
+                        event_description = f"Process: {process_name}"
+                        
+                    event_id = 'EDR'  # Tag EDR events
+                else:
+                    # EVTX - use traditional event description
+                    event_description = get_event_description(event_id, channel, provider, source)
                     
-                    results.append({
-                        'index': hit['_index'],
-                        'id': hit['_id'],
-                        'doc_id': hit['_id'],  # OpenSearch document ID for tagging
-                        'score': hit['_score'],
-                        'timestamp': timestamp,
-                        'event_id': event_id,
-                        'event_type': event_description,
-                        'source_file': source_file,
-                        'computer': computer,
-                        'channel': channel,
-                        'provider': provider,
-                        'full_data': source,
-                        'sigma_violations': sigma_violations,
-                        'has_violations': has_violations,
-                        'ioc_matches': ioc_matches
-                    })
+                # Get SIGMA violations if present
+                sigma_violations = source.get('sigma_detections', [])
+                has_violations = source.get('has_violations', False)
+                    
+                # Check for IOC matches for this event
+                ioc_matches = []
+                try:
+                    event_doc_id = hit['_id']
+                    matches = db.session.query(IOCMatch).filter_by(
+                        case_id=case.id,
+                        event_id=event_doc_id
+                    ).all()
+                        
+                    for match in matches:
+                        ioc = match.ioc
+                        ioc_matches.append({
+                            'type': ioc.ioc_type,
+                            'value': ioc.ioc_value,
+                            'severity': ioc.severity
+                        })
+                except Exception as e:
+                    print(f"[Search] Error checking IOC matches: {e}")
+                    
+                results.append({
+                    'index': hit['_index'],
+                    'id': hit['_id'],
+                    'doc_id': hit['_id'],  # OpenSearch document ID for tagging
+                    'score': hit['_score'],
+                    'timestamp': timestamp,
+                    'event_id': event_id,
+                    'event_type': event_description,
+                    'source_file': source_file,
+                    'computer': computer,
+                    'channel': channel,
+                    'provider': provider,
+                    'full_data': source,
+                    'sigma_violations': sigma_violations,
+                    'has_violations': has_violations,
+                    'ioc_matches': ioc_matches
+                })
             
         except Exception as e:
             import traceback
