@@ -2038,7 +2038,7 @@ def ioc_edit(ioc_id):
 @app.route('/ioc/delete/<int:ioc_id>', methods=['POST'])
 @login_required
 def ioc_delete(ioc_id):
-    """Delete an IOC and its matches"""
+    """Delete an IOC and its matches, with proper OpenSearch and DFIR-IRIS cleanup"""
     ioc = db.session.get(IOC, ioc_id)
     if not ioc:
         flash('IOC not found', 'error')
@@ -2049,15 +2049,89 @@ def ioc_delete(ioc_id):
         flash('Access denied', 'error')
         return redirect(url_for('ioc_list'))
     
-    # Delete associated matches first
-    db.session.query(IOCMatch).filter_by(ioc_id=ioc_id).delete()
-    
     # Store info for logging
     ioc_info = f'{ioc.ioc_type}={ioc.ioc_value}'
+    case_id = ioc.case_id
     
-    # Delete IOC
+    # Get all events that had this IOC (before deleting matches)
+    affected_matches = db.session.query(IOCMatch).filter_by(ioc_id=ioc_id).all()
+    affected_events = {}  # {(index_name, event_id): source_filename}
+    for match in affected_matches:
+        affected_events[(match.index_name, match.event_id)] = match.source_filename
+    
+    # Delete associated matches
+    db.session.query(IOCMatch).filter_by(ioc_id=ioc_id).delete()
+    db.session.commit()
+    
+    # For each affected event, check if it still has IOC matches from OTHER IOCs
+    # If not, clear the has_ioc_matches flag in OpenSearch
+    if affected_events:
+        from opensearchpy import OpenSearch
+        es = OpenSearch(
+            hosts=[{'host': 'localhost', 'port': 9200}],
+            http_auth=('admin', 'caseScope2024!'),
+            use_ssl=True,
+            verify_certs=False,
+            ssl_show_warn=False
+        )
+        
+        events_to_clear = []
+        for (index_name, event_id), source_file in affected_events.items():
+            # Check if this event has any remaining IOC matches
+            remaining_matches = db.session.query(IOCMatch).filter_by(
+                case_id=case_id,
+                index_name=index_name,
+                event_id=event_id
+            ).count()
+            
+            if remaining_matches == 0:
+                # No more IOC matches - clear the flag
+                events_to_clear.append((index_name, event_id))
+        
+        # Bulk update OpenSearch to clear has_ioc_matches flag
+        if events_to_clear:
+            from opensearchpy.helpers import bulk
+            actions = []
+            for index_name, event_id in events_to_clear:
+                actions.append({
+                    '_op_type': 'update',
+                    '_index': index_name,
+                    '_id': event_id,
+                    'doc': {
+                        'has_ioc_matches': False
+                    },
+                    'doc_as_upsert': False
+                })
+            
+            try:
+                if actions:
+                    success, failed = bulk(es, actions, raise_on_error=False)
+                    print(f"[IOC Delete] Cleared has_ioc_matches flag for {success} events (after deleting IOC: {ioc_info})")
+                    if failed:
+                        print(f"[IOC Delete] Failed to clear flags for {len(failed)} events")
+            except Exception as e:
+                print(f"[IOC Delete] Error clearing has_ioc_matches flags: {e}")
+    
+    # Delete IOC from database
     db.session.delete(ioc)
     db.session.commit()
+    
+    # Delete from DFIR-IRIS if sync is enabled
+    try:
+        settings = db.session.query(SystemSettings).first()
+        if settings and settings.iris_enabled:
+            from iris_sync import delete_ioc_from_iris
+            case = db.session.get(Case, case_id)
+            if case:
+                # Try to delete from IRIS (fire and forget - don't fail if it errors)
+                try:
+                    delete_ioc_from_iris(ioc_info, ioc.ioc_type, case_id)
+                    print(f"[IOC Delete] Deleted IOC from DFIR-IRIS: {ioc_info}")
+                except Exception as iris_error:
+                    print(f"[IOC Delete] Failed to delete from DFIR-IRIS (non-fatal): {iris_error}")
+    except Exception as e:
+        # Don't fail the deletion if IRIS sync fails
+        print(f"[IOC Delete] Error during DFIR-IRIS cleanup: {e}")
     
     log_audit('delete_ioc', 'ioc_management', f'Deleted IOC: {ioc_info}', success=True)
     flash(f'✓ IOC deleted: {ioc_info}', 'success')
@@ -5249,6 +5323,9 @@ def render_wazuh_style_fields(data, path=""):
                                 <button class="field-action-btn copy-value" onclick="copyToClipboard('{js_safe_value}')" title="Copy value">
                                     <span class="action-icon">📋</span>
                                 </button>
+                                <button class="field-action-btn add-ioc" onclick="showIocModal('{js_safe_value}', '{js_safe_path}')" title="Add as IOC" style="background: linear-gradient(145deg, #22c55e, #16a34a); color: white;">
+                                    <span class="action-icon">🎯</span>
+                                </button>
                             </div>
                         </div>
                     </td>
@@ -5794,7 +5871,148 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             
             // Load tagged events when page loads
             document.addEventListener('DOMContentLoaded', loadTaggedEvents);
+            
+            // IOC Quick-Add Functionality
+            function showIocModal(value, fieldPath) {{
+                document.getElementById('iocValue').value = value;
+                document.getElementById('iocFieldPath').textContent = fieldPath || 'Unknown field';
+                
+                // Try to auto-detect IOC type from field name
+                const suggestedType = detectIocType(fieldPath, value);
+                document.getElementById('iocType').value = suggestedType;
+                
+                document.getElementById('iocQuickAddModal').style.display = 'flex';
+            }}
+            
+            function detectIocType(fieldPath, value) {{
+                const path = fieldPath.toLowerCase();
+                
+                // Pattern-based detection
+                if (/^[0-9a-f]{{32}}$/i.test(value)) return 'hash_md5';
+                if (/^[0-9a-f]{{40}}$/i.test(value)) return 'hash_sha1';
+                if (/^[0-9a-f]{{64}}$/i.test(value)) return 'hash_sha256';
+                if (/^(\d{{1,3}}\.)\{{3}}\d{{1,3}}$/.test(value)) return 'ip';
+                if (/@/.test(value)) return 'email';
+                
+                // Field name-based detection
+                if (path.includes('computer') || path.includes('hostname')) return 'hostname';
+                if (path.includes('domain')) return 'domain';
+                if (path.includes('ip') || path.includes('address')) return 'ip';
+                if (path.includes('username') || path.includes('user') || path.includes('account')) return 'username';
+                if (path.includes('commandline') || path.includes('command')) return 'command';
+                if (path.includes('process') || path.includes('image')) return 'process_name';
+                if (path.includes('file') || path.includes('filename')) return 'filename';
+                if (path.includes('hash') || path.includes('md5') || path.includes('sha')) {{
+                    if (value.length === 32) return 'hash_md5';
+                    if (value.length === 40) return 'hash_sha1';
+                    if (value.length === 64) return 'hash_sha256';
+                }}
+                
+                return 'command'; // Default fallback
+            }}
+            
+            function closeIocModal() {{
+                document.getElementById('iocQuickAddModal').style.display = 'none';
+            }}
+            
+            function submitQuickIoc() {{
+                const iocType = document.getElementById('iocType').value;
+                const iocValue = document.getElementById('iocValue').value;
+                const iocDescription = document.getElementById('iocDescription').value;
+                const iocSeverity = document.getElementById('iocSeverity').value;
+                
+                if (!iocType || !iocValue) {{
+                    alert('IOC type and value are required');
+                    return;
+                }}
+                
+                // Create form data
+                const formData = new FormData();
+                formData.append('action', 'add');
+                formData.append('ioc_type', iocType);
+                formData.append('ioc_value', iocValue);
+                formData.append('description', iocDescription);
+                formData.append('source', 'Quick Add from Event');
+                formData.append('severity', iocSeverity);
+                
+                // Submit to existing IOC endpoint
+                fetch('/ioc/list', {{
+                    method: 'POST',
+                    body: formData
+                }})
+                .then(response => {{
+                    if (response.ok) {{
+                        closeIocModal();
+                        alert('✓ IOC added successfully!');
+                        // Clear description field for next use
+                        document.getElementById('iocDescription').value = '';
+                    }} else {{
+                        alert('Failed to add IOC. Please try again.');
+                    }}
+                }})
+                .catch(error => {{
+                    console.error('Error:', error);
+                    alert('Failed to add IOC: ' + error);
+                }});
+            }}
         </script>
+        
+        <!-- IOC Quick Add Modal -->
+        <div id="iocQuickAddModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center;">
+            <div style="background: #1e293b; border-radius: 8px; padding: 30px; max-width: 500px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+                <h3 style="margin: 0 0 20px 0; color: #f1f5f9;">🎯 Quick Add IOC</h3>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #cbd5e1; font-weight: 600;">Field Path:</label>
+                    <div id="iocFieldPath" style="padding: 8px 12px; background: #0f172a; border-radius: 4px; color: #94a3b8; font-family: monospace; font-size: 0.9em;"></div>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #cbd5e1; font-weight: 600;">IOC Type:</label>
+                    <select id="iocType" style="width: 100%; padding: 10px; background: #0f172a; color: #f1f5f9; border: 1px solid #334155; border-radius: 4px;">
+                        <option value="ip">IP Address</option>
+                        <option value="domain">Domain</option>
+                        <option value="hostname">Hostname</option>
+                        <option value="username">Username</option>
+                        <option value="hash_md5">Hash (MD5)</option>
+                        <option value="hash_sha1">Hash (SHA1)</option>
+                        <option value="hash_sha256">Hash (SHA256)</option>
+                        <option value="command">Command/Command Line</option>
+                        <option value="filename">Filename</option>
+                        <option value="process_name">Process Name</option>
+                        <option value="malware_name">Malware Name</option>
+                        <option value="registry_key">Registry Key</option>
+                        <option value="email">Email Address</option>
+                        <option value="url">URL</option>
+                    </select>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #cbd5e1; font-weight: 600;">IOC Value:</label>
+                    <input type="text" id="iocValue" readonly style="width: 100%; padding: 10px; background: #0f172a; color: #f1f5f9; border: 1px solid #334155; border-radius: 4px; font-family: monospace;">
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #cbd5e1; font-weight: 600;">Description (Optional):</label>
+                    <input type="text" id="iocDescription" placeholder="Why is this an IOC?" style="width: 100%; padding: 10px; background: #0f172a; color: #f1f5f9; border: 1px solid #334155; border-radius: 4px;">
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 5px; color: #cbd5e1; font-weight: 600;">Severity:</label>
+                    <select id="iocSeverity" style="width: 100%; padding: 10px; background: #0f172a; color: #f1f5f9; border: 1px solid #334155; border-radius: 4px;">
+                        <option value="low">Low</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                    </select>
+                </div>
+                
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button onclick="closeIocModal()" style="padding: 10px 20px; background: #475569; color: #f1f5f9; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
+                    <button onclick="submitQuickIoc()" style="padding: 10px 20px; background: linear-gradient(145deg, #22c55e, #16a34a); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; box-shadow: 0 4px 12px rgba(34,197,94,0.3);">Add IOC</button>
+                </div>
+            </div>
+        </div>
     </body>
     </html>
     '''
@@ -6102,8 +6320,12 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
                         {f'<div class="detail-item"><strong>Review Date:</strong> {v.reviewed_at.strftime("%Y-%m-%d %H:%M:%S") if v.reviewed_at else "N/A"}</div>' if v.is_reviewed else ''}
                         {f'<div class="detail-item" style="grid-column: 1 / -1;"><strong>Notes:</strong><br>{v.notes}</div>' if v.notes else ''}
                     </div>
-                    <h4>Event Data</h4>
-                    <pre class="event-json">{json.dumps(event_data, indent=2)}</pre>
+                    <h4>Event Data 
+                        <span style="font-size: 0.8em; color: #94a3b8; font-weight: normal;">
+                            (Click <span style="color: #22c55e;">+</span> to add value as IOC)
+                        </span>
+                    </h4>
+                    <div id="event-json-{v.id}" class="event-json-interactive" data-event-json="{html.escape(json.dumps(event_data))}">{json.dumps(event_data, indent=2)}</div>
                 </div>
             </td>
         </tr>
@@ -6323,8 +6545,232 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
                         }}
                     }})
                     .catch(error => console.error('Error loading tags:', error));
+                
+                // Make event JSON interactive with IOC quick-add buttons
+                makeJsonInteractive();
             }});
+            
+            // IOC Quick-Add Functionality
+            function makeJsonInteractive() {{
+                document.querySelectorAll('.event-json-interactive').forEach(container => {{
+                    const jsonData = JSON.parse(container.getAttribute('data-event-json'));
+                    container.innerHTML = renderInteractiveJson(jsonData, '');
+                }});
+            }}
+            
+            function renderInteractiveJson(obj, path) {{
+                if (obj === null) return '<span style="color: #6b7280;">null</span>';
+                if (typeof obj === 'boolean') return '<span style="color: #3b82f6;">' + obj + '</span>';
+                if (typeof obj === 'number') return '<span style="color: #10b981;">' + obj + '</span>';
+                if (typeof obj === 'string') {{
+                    const escaped = obj.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const fullPath = path;
+                    return `<span style="color: #f59e0b;">"${{escaped}}"</span><button class="ioc-add-btn" onclick="showIocModal('${{escaped}}', '${{fullPath}}')" title="Add as IOC">+</button>`;
+                }}
+                
+                if (Array.isArray(obj)) {{
+                    if (obj.length === 0) return '<span style="color: #6b7280;">[]</span>';
+                    let html = '<span style="color: #6b7280;">[</span><div style="margin-left: 20px;">';
+                    obj.forEach((item, i) => {{
+                        html += renderInteractiveJson(item, path + '[' + i + ']');
+                        if (i < obj.length - 1) html += '<span style="color: #6b7280;">,</span>';
+                        html += '<br>';
+                    }});
+                    html += '</div><span style="color: #6b7280;">]</span>';
+                    return html;
+                }}
+                
+                if (typeof obj === 'object') {{
+                    const keys = Object.keys(obj);
+                    if (keys.length === 0) return '<span style="color: #6b7280;">{{}}</span>';
+                    let html = '<span style="color: #6b7280;">{{</span><div style="margin-left: 20px;">';
+                    keys.forEach((key, i) => {{
+                        const keyPath = path ? path + '.' + key : key;
+                        html += '<span style="color: #c084fc;">"' + key + '"</span><span style="color: #6b7280;">: </span>';
+                        html += renderInteractiveJson(obj[key], keyPath);
+                        if (i < keys.length - 1) html += '<span style="color: #6b7280;">,</span>';
+                        html += '<br>';
+                    }});
+                    html += '</div><span style="color: #6b7280;">}}</span>';
+                    return html;
+                }}
+                
+                return String(obj);
+            }}
+            
+            function showIocModal(value, fieldPath) {{
+                document.getElementById('iocValue').value = value;
+                document.getElementById('iocFieldPath').textContent = fieldPath || 'Unknown field';
+                
+                // Try to auto-detect IOC type from field name
+                const suggestedType = detectIocType(fieldPath, value);
+                document.getElementById('iocType').value = suggestedType;
+                
+                document.getElementById('iocQuickAddModal').style.display = 'flex';
+            }}
+            
+            function detectIocType(fieldPath, value) {{
+                const path = fieldPath.toLowerCase();
+                
+                // Pattern-based detection
+                if (/^[0-9a-f]{{32}}$/i.test(value)) return 'hash_md5';
+                if (/^[0-9a-f]{{40}}$/i.test(value)) return 'hash_sha1';
+                if (/^[0-9a-f]{{64}}$/i.test(value)) return 'hash_sha256';
+                if (/^(\d{{1,3}}\.)\{{3}}\d{{1,3}}$/.test(value)) return 'ip';
+                if (/@/.test(value)) return 'email';
+                
+                // Field name-based detection
+                if (path.includes('computer') || path.includes('hostname')) return 'hostname';
+                if (path.includes('domain')) return 'domain';
+                if (path.includes('ip') || path.includes('address')) return 'ip';
+                if (path.includes('username') || path.includes('user') || path.includes('account')) return 'username';
+                if (path.includes('commandline') || path.includes('command')) return 'command';
+                if (path.includes('process') || path.includes('image')) return 'process_name';
+                if (path.includes('file') || path.includes('filename')) return 'filename';
+                if (path.includes('hash') || path.includes('md5') || path.includes('sha')) {{
+                    if (value.length === 32) return 'hash_md5';
+                    if (value.length === 40) return 'hash_sha1';
+                    if (value.length === 64) return 'hash_sha256';
+                }}
+                
+                return 'command'; // Default fallback
+            }}
+            
+            function closeIocModal() {{
+                document.getElementById('iocQuickAddModal').style.display = 'none';
+            }}
+            
+            function submitQuickIoc() {{
+                const iocType = document.getElementById('iocType').value;
+                const iocValue = document.getElementById('iocValue').value;
+                const iocDescription = document.getElementById('iocDescription').value;
+                const iocSeverity = document.getElementById('iocSeverity').value;
+                
+                if (!iocType || !iocValue) {{
+                    alert('IOC type and value are required');
+                    return;
+                }}
+                
+                // Create form data
+                const formData = new FormData();
+                formData.append('action', 'add');
+                formData.append('ioc_type', iocType);
+                formData.append('ioc_value', iocValue);
+                formData.append('description', iocDescription);
+                formData.append('source', 'Quick Add from Event');
+                formData.append('severity', iocSeverity);
+                
+                // Submit to existing IOC endpoint
+                fetch('/ioc/list', {{
+                    method: 'POST',
+                    body: formData
+                }})
+                .then(response => {{
+                    if (response.ok) {{
+                        closeIocModal();
+                        alert('✓ IOC added successfully!');
+                        // Clear description field for next use
+                        document.getElementById('iocDescription').value = '';
+                    }} else {{
+                        alert('Failed to add IOC. Please try again.');
+                    }}
+                }})
+                .catch(error => {{
+                    console.error('Error:', error);
+                    alert('Failed to add IOC: ' + error);
+                }});
+            }}
         </script>
+        
+        <!-- IOC Quick Add Modal -->
+        <div id="iocQuickAddModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center;">
+            <div style="background: #1e293b; border-radius: 8px; padding: 30px; max-width: 500px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+                <h3 style="margin: 0 0 20px 0; color: #f1f5f9;">🎯 Quick Add IOC</h3>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #cbd5e1; font-weight: 600;">Field Path:</label>
+                    <div id="iocFieldPath" style="padding: 8px 12px; background: #0f172a; border-radius: 4px; color: #94a3b8; font-family: monospace; font-size: 0.9em;"></div>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #cbd5e1; font-weight: 600;">IOC Type:</label>
+                    <select id="iocType" style="width: 100%; padding: 10px; background: #0f172a; color: #f1f5f9; border: 1px solid #334155; border-radius: 4px;">
+                        <option value="ip">IP Address</option>
+                        <option value="domain">Domain</option>
+                        <option value="hostname">Hostname</option>
+                        <option value="username">Username</option>
+                        <option value="hash_md5">Hash (MD5)</option>
+                        <option value="hash_sha1">Hash (SHA1)</option>
+                        <option value="hash_sha256">Hash (SHA256)</option>
+                        <option value="command">Command/Command Line</option>
+                        <option value="filename">Filename</option>
+                        <option value="process_name">Process Name</option>
+                        <option value="malware_name">Malware Name</option>
+                        <option value="registry_key">Registry Key</option>
+                        <option value="email">Email Address</option>
+                        <option value="url">URL</option>
+                    </select>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #cbd5e1; font-weight: 600;">IOC Value:</label>
+                    <input type="text" id="iocValue" readonly style="width: 100%; padding: 10px; background: #0f172a; color: #f1f5f9; border: 1px solid #334155; border-radius: 4px; font-family: monospace;">
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; color: #cbd5e1; font-weight: 600;">Description (Optional):</label>
+                    <input type="text" id="iocDescription" placeholder="Why is this an IOC?" style="width: 100%; padding: 10px; background: #0f172a; color: #f1f5f9; border: 1px solid #334155; border-radius: 4px;">
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 5px; color: #cbd5e1; font-weight: 600;">Severity:</label>
+                    <select id="iocSeverity" style="width: 100%; padding: 10px; background: #0f172a; color: #f1f5f9; border: 1px solid #334155; border-radius: 4px;">
+                        <option value="low">Low</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                    </select>
+                </div>
+                
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button onclick="closeIocModal()" style="padding: 10px 20px; background: #475569; color: #f1f5f9; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
+                    <button onclick="submitQuickIoc()" style="padding: 10px 20px; background: linear-gradient(145deg, #22c55e, #16a34a); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; box-shadow: 0 4px 12px rgba(34,197,94,0.3);">Add IOC</button>
+                </div>
+            </div>
+        </div>
+        
+        <style>
+            .ioc-add-btn {{
+                display: inline-block;
+                margin-left: 6px;
+                padding: 2px 6px;
+                background: linear-gradient(145deg, #22c55e, #16a34a);
+                color: white;
+                border: none;
+                border-radius: 3px;
+                cursor: pointer;
+                font-weight: bold;
+                font-size: 0.9em;
+                box-shadow: 0 2px 4px rgba(34,197,94,0.2);
+                transition: all 0.2s;
+            }}
+            .ioc-add-btn:hover {{
+                background: linear-gradient(145deg, #16a34a, #15803d);
+                box-shadow: 0 3px 8px rgba(34,197,94,0.4);
+                transform: scale(1.05);
+            }}
+            .event-json-interactive {{
+                background: #0f172a;
+                padding: 15px;
+                border-radius: 6px;
+                font-family: 'Courier New', monospace;
+                font-size: 0.9em;
+                line-height: 1.6;
+                overflow-x: auto;
+                white-space: pre-wrap;
+                word-break: break-all;
+            }}
+        </style>
     </body>
     </html>
     '''

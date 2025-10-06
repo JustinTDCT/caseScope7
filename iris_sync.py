@@ -653,3 +653,104 @@ class IrisSyncService:
         """
         return self.stats.copy()
 
+
+# Standalone helper functions for use in main.py
+
+def delete_ioc_from_iris(ioc_value: str, ioc_type: str, case_id: int):
+    """
+    Delete an IOC from DFIR-IRIS when it's removed from caseScope
+    
+    Args:
+        ioc_value: The IOC value to delete
+        ioc_type: The IOC type
+        case_id: caseScope case ID
+    """
+    from main import db, SystemSettings, Case
+    
+    # Get IRIS settings
+    settings = db.session.query(SystemSettings).first()
+    if not settings or not settings.iris_enabled:
+        logger.debug("IRIS integration not enabled, skipping IOC deletion")
+        return
+    
+    # Get case
+    case = db.session.get(Case, case_id)
+    if not case:
+        logger.warning(f"Case {case_id} not found for IOC deletion")
+        return
+    
+    try:
+        # Initialize client
+        client = IrisClient(settings.iris_url, settings.iris_api_key)
+        
+        # Get all IRIS cases to find the matching one
+        iris_cases = client.get_cases()
+        iris_case_id = None
+        
+        for iris_case in iris_cases:
+            if iris_case.get('case_name') == case.name:
+                iris_case_id = iris_case.get('case_id')
+                break
+        
+        if not iris_case_id:
+            logger.warning(f"Case '{case.name}' not found in IRIS, cannot delete IOC")
+            return
+        
+        # Get all IOCs for this case in IRIS
+        iris_iocs = client.get_case_iocs(iris_case_id)
+        
+        # Find the matching IOC
+        ioc_id_to_delete = None
+        for iris_ioc in iris_iocs:
+            # Match by value (exact match, case-insensitive)
+            if iris_ioc.get('ioc_value', '').lower() == ioc_value.lower():
+                ioc_id_to_delete = iris_ioc.get('ioc_id')
+                break
+        
+        if ioc_id_to_delete:
+            # Delete the IOC from IRIS
+            client.delete_case_ioc(iris_case_id, ioc_id_to_delete)
+            logger.info(f"✓ Deleted IOC from DFIR-IRIS: {ioc_value} (IRIS IOC ID: {ioc_id_to_delete})")
+        else:
+            logger.warning(f"IOC '{ioc_value}' not found in IRIS case '{case.name}', nothing to delete")
+            
+    except Exception as e:
+        logger.error(f"Failed to delete IOC from IRIS: {str(e)}")
+        raise
+
+
+def sync_case_to_iris(case_id: int):
+    """
+    Standalone function to sync a case to IRIS (for use in background threads)
+    
+    Args:
+        case_id: caseScope case ID to sync
+    """
+    from main import db, SystemSettings, Case
+    
+    # Get settings
+    settings = db.session.query(SystemSettings).first()
+    if not settings or not settings.iris_enabled:
+        return
+    
+    # Get case
+    case = db.session.get(Case, case_id)
+    if not case:
+        logger.warning(f"Case {case_id} not found for sync")
+        return
+    
+    try:
+        # Initialize sync service
+        sync_service = IrisSyncService(settings.iris_url, settings.iris_api_key)
+        
+        # Perform sync
+        result = sync_service.sync_case_to_iris(case, db.session)
+        
+        if result['success']:
+            logger.info(f"✓ Case synced to IRIS: {case.name}")
+        else:
+            logger.error(f"Failed to sync case to IRIS: {result.get('message')}")
+            
+    except Exception as e:
+        logger.error(f"Error syncing case to IRIS: {str(e)}")
+

@@ -346,6 +346,27 @@ class IrisClient:
         response = self._request('POST', '/case/ioc/add', json=data)
         return response.get('data', {})
     
+    def delete_case_ioc(self, case_id: int, ioc_id: int) -> bool:
+        """
+        Delete an IOC from a case
+        
+        Args:
+            case_id: IRIS case ID
+            ioc_id: IRIS IOC ID to delete
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # DFIR-IRIS API endpoint for IOC deletion
+            endpoint = f'/case/ioc/delete/{ioc_id}'
+            data = {'cid': case_id}
+            response = self._request('POST', endpoint, json=data)
+            return response.get('success', False)
+        except Exception as e:
+            logger.error(f"Failed to delete IOC {ioc_id} from case {case_id}: {str(e)}")
+            return False
+    
     # ============================================================================
     # TIMELINE OPERATIONS
     # ============================================================================
