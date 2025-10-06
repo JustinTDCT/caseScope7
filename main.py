@@ -2588,6 +2588,13 @@ def search():
                 for hit in response['hits']['hits']:
                     source = hit['_source']
                     
+                    # DEBUG: Print available timestamp-related fields
+                    timestamp_keys = [k for k in source.keys() if 'time' in k.lower() or 'timestamp' in k.lower()]
+                    if timestamp_keys:
+                        print(f"[Search] DEBUG - Available timestamp fields: {timestamp_keys}")
+                        for key in timestamp_keys:
+                            print(f"[Search] DEBUG - {key} = {source[key]}")
+                    
                     # Get timestamp from various possible fields (XML attribute notation)
                     timestamp = source.get('System.TimeCreated.@SystemTime') or \
                                source.get('System.TimeCreated.SystemTime') or \
