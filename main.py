@@ -2732,310 +2732,310 @@ def search():
         custom_end = session.get('search_custom_end')
     
     # Always perform search (both GET and POST)
-        if query_str:
-            try:
-                # Build OpenSearch query from user input (this transforms the query)
-                # But we keep query_str unchanged for display
-                base_query = build_opensearch_query(query_str)
+    if query_str:
+        try:
+            # Build OpenSearch query from user input (this transforms the query)
+            # But we keep query_str unchanged for display
+            base_query = build_opensearch_query(query_str)
+            
+            # Build filters list
+            filters = []
+            
+            # Add threat filtering
+            print(f"[Search] Threat filter selected: {threat_filter}")
+            if threat_filter == 'sigma':
+                threat_query = {"exists": {"field": "has_violations"}}
+                filters.append(threat_query)
+                print(f"[Search] Added SIGMA filter: {threat_query}")
+            elif threat_filter == 'ioc':
+                threat_query = {"exists": {"field": "has_ioc_matches"}}
+                filters.append(threat_query)
+                print(f"[Search] Added IOC filter: {threat_query}")
+            elif threat_filter == 'either':
+                threat_query = {"bool": {"should": [
+                    {"exists": {"field": "has_violations"}},
+                    {"exists": {"field": "has_ioc_matches"}}
+                ], "minimum_should_match": 1}}
+                filters.append(threat_query)
+                print(f"[Search] Added SIGMA or IOC filter: {threat_query}")
+            elif threat_filter == 'both':
+                threat_query = {"bool": {"must": [
+                    {"exists": {"field": "has_violations"}},
+                    {"exists": {"field": "has_ioc_matches"}}
+                ]}}
+                filters.append(threat_query)
+                print(f"[Search] Added SIGMA + IOC filter: {threat_query}")
+            
+            # Add time range filter
+            # Initialize time variables (needed for scope)
+            from datetime import timedelta
+            now = datetime.utcnow()
+            start_time = None
+            end_time = None
+            
+            if time_range != 'all':
+                if time_range == '24h':
+                    start_time = now - timedelta(hours=24)
+                    end_time = now
+                elif time_range == '7d':
+                    start_time = now - timedelta(days=7)
+                    end_time = now
+                elif time_range == '30d':
+                    start_time = now - timedelta(days=30)
+                    end_time = now
+                elif time_range == 'custom' and custom_start:
+                    from datetime import datetime as dt
+                    # Parse custom datetime strings from HTML datetime-local input (YYYY-MM-DDTHH:MM format)
+                    try:
+                        if 'T' in custom_start:
+                            # Format: 2025-08-25T12:00
+                            start_time = dt.strptime(custom_start, '%Y-%m-%dT%H:%M') if custom_start else None
+                            end_time = dt.strptime(custom_end, '%Y-%m-%dT%H:%M') if custom_end else now
+                        else:
+                            # Fallback: try ISO format
+                            start_time = dt.fromisoformat(custom_start) if custom_start else None
+                            end_time = dt.fromisoformat(custom_end) if custom_end else now
+                    except Exception as e:
+                        print(f"[Search] Error parsing custom datetime: {e}, start='{custom_start}', end='{custom_end}'")
+                        start_time = None
+                        end_time = None
+            
+            # Date range filtering using proper date range queries on .date field
+            if start_time:
+                # Format timestamps for OpenSearch date range query
+                # Convert to ISO format (YYYY-MM-DDTHH:MM:SS)
+                start_iso = start_time.strftime('%Y-%m-%dT%H:%M:%S')
+                end_iso = end_time.strftime('%Y-%m-%dT%H:%M:%S') if end_time else now.strftime('%Y-%m-%dT%H:%M:%S')
                 
-                # Build filters list
-                filters = []
+                print(f"[Search] Time filter: range={time_range}, start={start_iso}, end={end_iso}")
                 
-                # Add threat filtering
-                print(f"[Search] Threat filter selected: {threat_filter}")
-                if threat_filter == 'sigma':
-                    threat_query = {"exists": {"field": "has_violations"}}
-                    filters.append(threat_query)
-                    print(f"[Search] Added SIGMA filter: {threat_query}")
-                elif threat_filter == 'ioc':
-                    threat_query = {"exists": {"field": "has_ioc_matches"}}
-                    filters.append(threat_query)
-                    print(f"[Search] Added IOC filter: {threat_query}")
-                elif threat_filter == 'either':
-                    threat_query = {"bool": {"should": [
-                        {"exists": {"field": "has_violations"}},
-                        {"exists": {"field": "has_ioc_matches"}}
-                    ], "minimum_should_match": 1}}
-                    filters.append(threat_query)
-                    print(f"[Search] Added SIGMA or IOC filter: {threat_query}")
-                elif threat_filter == 'both':
-                    threat_query = {"bool": {"must": [
-                        {"exists": {"field": "has_violations"}},
-                        {"exists": {"field": "has_ioc_matches"}}
-                    ]}}
-                    filters.append(threat_query)
-                    print(f"[Search] Added SIGMA + IOC filter: {threat_query}")
-                
-                # Add time range filter
-                # Initialize time variables (needed for scope)
-                from datetime import timedelta
-                now = datetime.utcnow()
-                start_time = None
-                end_time = None
-                
-                if time_range != 'all':
-                    if time_range == '24h':
-                        start_time = now - timedelta(hours=24)
-                        end_time = now
-                    elif time_range == '7d':
-                        start_time = now - timedelta(days=7)
-                        end_time = now
-                    elif time_range == '30d':
-                        start_time = now - timedelta(days=30)
-                        end_time = now
-                    elif time_range == 'custom' and custom_start:
-                        from datetime import datetime as dt
-                        # Parse custom datetime strings from HTML datetime-local input (YYYY-MM-DDTHH:MM format)
-                        try:
-                            if 'T' in custom_start:
-                                # Format: 2025-08-25T12:00
-                                start_time = dt.strptime(custom_start, '%Y-%m-%dT%H:%M') if custom_start else None
-                                end_time = dt.strptime(custom_end, '%Y-%m-%dT%H:%M') if custom_end else now
-                            else:
-                                # Fallback: try ISO format
-                                start_time = dt.fromisoformat(custom_start) if custom_start else None
-                                end_time = dt.fromisoformat(custom_end) if custom_end else now
-                        except Exception as e:
-                            print(f"[Search] Error parsing custom datetime: {e}, start='{custom_start}', end='{custom_end}'")
-                            start_time = None
-                            end_time = None
-                    
-                # Date range filtering using proper date range queries on .date field
-                if start_time:
-                    # Format timestamps for OpenSearch date range query
-                    # Convert to ISO format (YYYY-MM-DDTHH:MM:SS)
-                    start_iso = start_time.strftime('%Y-%m-%dT%H:%M:%S')
-                    end_iso = end_time.strftime('%Y-%m-%dT%H:%M:%S') if end_time else now.strftime('%Y-%m-%dT%H:%M:%S')
-                    
-                    print(f"[Search] Time filter: range={time_range}, start={start_iso}, end={end_iso}")
-                    
-                    # Use range query on the .date field (which has proper date type mapping)
-                    # This is much more efficient than wildcards and handles all date ranges
-                    # NOTE: evtx_dump uses #attributes for XML attributes
-                    # Use OR query to support both new (#attributes) and legacy (@) field names
-                    time_filter = {
-                        "bool": {
-                            "should": [
-                                {
-                                    "range": {
-                                        "System.TimeCreated.#attributes.SystemTime.date": {
-                                            "gte": start_iso,
-                                            "lte": end_iso,
-                                            "format": "strict_date_optional_time"
-                                        }
-                                    }
-                                },
-                                {
-                                    "range": {
-                                        "System.TimeCreated.@SystemTime.date": {
-                                            "gte": start_iso,
-                                            "lte": end_iso,
-                                            "format": "strict_date_optional_time"
-                                        }
+                # Use range query on the .date field (which has proper date type mapping)
+                # This is much more efficient than wildcards and handles all date ranges
+                # NOTE: evtx_dump uses #attributes for XML attributes
+                # Use OR query to support both new (#attributes) and legacy (@) field names
+                time_filter = {
+                    "bool": {
+                        "should": [
+                            {
+                                "range": {
+                                    "System.TimeCreated.#attributes.SystemTime.date": {
+                                        "gte": start_iso,
+                                        "lte": end_iso,
+                                        "format": "strict_date_optional_time"
                                     }
                                 }
-                            ],
-                            "minimum_should_match": 1
-                        }
-                    }
-                    
-                    filters.append(time_filter)
-                
-                # Combine base query with filters
-                if filters:
-                    os_query = {
-                        "bool": {
-                            "must": [base_query],
-                            "filter": filters
-                        }
-                    }
-                    print(f"[Search] Final query with filters: {os_query}")
-                else:
-                    os_query = base_query
-                    print(f"[Search] Query without filters: {os_query}")
-                
-                # Search across all indices for this case
-                from_offset = (page - 1) * per_page
-                
-                # Build sort configuration
-                print(f"[Search] Sort parameters: field={sort_field}, order={sort_order}")
-                if sort_field == 'timestamp':
-                    # Sort by timestamp using the date field mapping
-                    # Try both new (#attributes) and legacy (@) field names for backward compatibility
-                    sort_config = [
-                        {
-                            "System.TimeCreated.#attributes.SystemTime.date": {
-                                "order": sort_order,
-                                "unmapped_type": "date"
+                            },
+                            {
+                                "range": {
+                                    "System.TimeCreated.@SystemTime.date": {
+                                        "gte": start_iso,
+                                        "lte": end_iso,
+                                        "format": "strict_date_optional_time"
+                                    }
+                                }
                             }
-                        },
-                        {
-                            "System.TimeCreated.@SystemTime.date": {
-                                "order": sort_order,
-                                "unmapped_type": "date"
-                            }
-                        },
-                        "_score"  # Secondary sort by relevance
-                    ]
-                    print(f"[Search] Using timestamp sort: {sort_order} (trying both new and legacy field names)")
-                else:
-                    # Default: sort by relevance only
-                    sort_config = ["_score"]
-                    print(f"[Search] Using relevance sort")
-                
-                # Execute search (outside if/else blocks - runs for all sort types)
-                search_body = {
-                    "query": os_query,
-                    "from": from_offset,
-                    "size": per_page,
-                    "sort": sort_config,
-                    "_source": True
+                        ],
+                        "minimum_should_match": 1
+                    }
                 }
                 
-                response = opensearch_client.search(
-                    index=','.join(indices),
-                    body=search_body,
-                    ignore_unavailable=True
-                )
-                
-                total_hits = response['hits']['total']['value']
-                log_audit('search', 'search', f'Searched case {case.name} for "{query_str}" - {total_hits} results')
-                
-                # Add to search history
-                try:
-                    history = SearchHistory(
-                        user_id=current_user.id,
-                        case_id=case.id,
-                        query=query_str,
-                        time_range=time_range,
+                filters.append(time_filter)
+            
+            # Combine base query with filters
+            if filters:
+                os_query = {
+                    "bool": {
+                        "must": [base_query],
+                        "filter": filters
+                    }
+                }
+                print(f"[Search] Final query with filters: {os_query}")
+            else:
+                os_query = base_query
+                print(f"[Search] Query without filters: {os_query}")
+            
+            # Search across all indices for this case
+            from_offset = (page - 1) * per_page
+            
+            # Build sort configuration
+            print(f"[Search] Sort parameters: field={sort_field}, order={sort_order}")
+            if sort_field == 'timestamp':
+                # Sort by timestamp using the date field mapping
+                # Try both new (#attributes) and legacy (@) field names for backward compatibility
+                sort_config = [
+                    {
+                        "System.TimeCreated.#attributes.SystemTime.date": {
+                            "order": sort_order,
+                            "unmapped_type": "date"
+                        }
+                    },
+                    {
+                        "System.TimeCreated.@SystemTime.date": {
+                            "order": sort_order,
+                            "unmapped_type": "date"
+                        }
+                    },
+                    "_score"  # Secondary sort by relevance
+                ]
+                print(f"[Search] Using timestamp sort: {sort_order} (trying both new and legacy field names)")
+            else:
+                # Default: sort by relevance only
+                sort_config = ["_score"]
+                print(f"[Search] Using relevance sort")
+            
+            # Execute search (outside if/else blocks - runs for all sort types)
+            search_body = {
+                "query": os_query,
+                "from": from_offset,
+                "size": per_page,
+                "sort": sort_config,
+                "_source": True
+            }
+            
+            response = opensearch_client.search(
+                index=','.join(indices),
+                body=search_body,
+                ignore_unavailable=True
+            )
+            
+            total_hits = response['hits']['total']['value']
+            log_audit('search', 'search', f'Searched case {case.name} for "{query_str}" - {total_hits} results')
+            
+            # Add to search history
+            try:
+                history = SearchHistory(
+                    user_id=current_user.id,
+                    case_id=case.id,
+                    query=query_str,
+                    time_range=time_range,
                     violations_only=(threat_filter == 'sigma'),  # For backward compatibility
-                        result_count=total_hits
-                    )
-                    db.session.add(history)
-                    db.session.commit()
-                except:
-                    db.session.rollback()
+                    result_count=total_hits
+                )
+                db.session.add(history)
+                db.session.commit()
+            except:
+                db.session.rollback()
+            
+            for hit in response['hits']['hits']:
+                source = hit['_source']
                 
-                for hit in response['hits']['hits']:
-                    source = hit['_source']
-                    
-                    # DEBUG: Print first few results to see what fields exist
-                    if len(results) < 3 and threat_filter == 'sigma':
-                        print(f"[Search] DEBUG - SIGMA result keys: {list(source.keys())[:20]}")
-                        if '_casescope_metadata' in source:
-                            print(f"[Search] DEBUG - Metadata: {source['_casescope_metadata']}")
-                        else:
-                            print(f"[Search] DEBUG - NO _casescope_metadata field!")
-                    
-                    # Get timestamp from various possible fields
-                    # NOTE: evtx_dump uses #attributes for XML attributes, not @ prefix
-                    timestamp = source.get('System.TimeCreated.#attributes.SystemTime') or \
-                               source.get('System.TimeCreated.@SystemTime') or \
-                                   source.get('System.TimeCreated.SystemTime') or \
-                                   source.get('System_TimeCreated_SystemTime') or \
-                                   source.get('@timestamp') or \
-                                   'N/A'
-                    
-                    # Get Event ID (XML text node notation)
-                    event_id = source.get('System.EventID.#text') or \
-                              source.get('System.EventID') or \
-                              source.get('System_EventID') or \
-                              source.get('EventID') or \
-                              'N/A'
-                    
-                    # Get source filename from metadata
-                    metadata = source.get('_casescope_metadata', {})
-                    source_file = metadata.get('filename', 'Unknown')
-                    
-                    # Get computer name (EVTX or EDR)
-                    computer = source.get('System.Computer') or \
-                              source.get('System_Computer') or \
-                              source.get('Computer') or \
-                              source.get('host', {}).get('hostname') or \
-                              source.get('host', {}).get('name') or \
-                              'N/A'
-                    
-                    # Get channel (EVTX only)
-                    channel = source.get('System.Channel') or \
-                             source.get('System_Channel') or \
-                             'N/A'
-                    
-                    # Get provider (EVTX XML attribute notation)
-                    # NOTE: evtx_dump uses #attributes for XML attributes
-                    provider = source.get('System.Provider.#attributes.Name') or \
-                              source.get('System.Provider.@Name') or \
-                                  source.get('System.Provider.Name') or \
-                                  source.get('System_Provider_Name') or \
-                                  'N/A'
-                    
-                    # Determine source type and get appropriate event description
-                    source_type = metadata.get('source_type', 'evtx')
-                    
-                    if source_type == 'ndjson':
-                        # EDR telemetry - use command_line as Event Type
-                        process_data = source.get('process', {})
-                        command_line = process_data.get('command_line', '')
-                        
-                        # Use command_line as the event description/type
-                        if command_line:
-                            event_description = command_line
-                        else:
-                            # Fallback to process name if no command line
-                            process_name = process_data.get('name', 'Unknown Process')
-                            event_description = f"Process: {process_name}"
-                        
-                        event_id = 'EDR'  # Tag EDR events
+                # DEBUG: Print first few results to see what fields exist
+                if len(results) < 3 and threat_filter == 'sigma':
+                    print(f"[Search] DEBUG - SIGMA result keys: {list(source.keys())[:20]}")
+                    if '_casescope_metadata' in source:
+                        print(f"[Search] DEBUG - Metadata: {source['_casescope_metadata']}")
                     else:
-                        # EVTX - use traditional event description
-                        event_description = get_event_description(event_id, channel, provider, source)
-                    
-                    # Get SIGMA violations if present
-                    sigma_violations = source.get('sigma_detections', [])
-                    has_violations = source.get('has_violations', False)
-                    
-                    # Check for IOC matches for this event
-                    ioc_matches = []
-                    try:
-                        event_doc_id = hit['_id']
-                        matches = db.session.query(IOCMatch).filter_by(
-                            case_id=case.id,
-                            event_id=event_doc_id
-                        ).all()
-                        
-                        for match in matches:
-                            ioc = match.ioc
-                            ioc_matches.append({
-                                'type': ioc.ioc_type,
-                                'value': ioc.ioc_value,
-                                'severity': ioc.severity
-                            })
-                    except Exception as e:
-                        print(f"[Search] Error checking IOC matches: {e}")
-                    
-                    # Add result to list (always, not just on error)
-                    results.append({
-                        'index': hit['_index'],
-                        'id': hit['_id'],
-                        'doc_id': hit['_id'],  # OpenSearch document ID for tagging
-                        'score': hit['_score'],
-                        'timestamp': timestamp,
-                        'event_id': event_id,
-                        'event_type': event_description,
-                        'source_file': source_file,
-                        'computer': computer,
-                        'channel': channel,
-                        'provider': provider,
-                        'full_data': source,
-                        'sigma_violations': sigma_violations,
-                        'has_violations': has_violations,
-                        'ioc_matches': ioc_matches
-                    })
+                        print(f"[Search] DEBUG - NO _casescope_metadata field!")
                 
-            except Exception as e:
-                import traceback
-                error_message = f"Search error: {str(e)}"
-                print(f"[Search] Error: {e}")
-                traceback.print_exc()
+                # Get timestamp from various possible fields
+                # NOTE: evtx_dump uses #attributes for XML attributes, not @ prefix
+                timestamp = source.get('System.TimeCreated.#attributes.SystemTime') or \
+                           source.get('System.TimeCreated.@SystemTime') or \
+                               source.get('System.TimeCreated.SystemTime') or \
+                               source.get('System_TimeCreated_SystemTime') or \
+                               source.get('@timestamp') or \
+                               'N/A'
+                
+                # Get Event ID (XML text node notation)
+                event_id = source.get('System.EventID.#text') or \
+                          source.get('System.EventID') or \
+                          source.get('System_EventID') or \
+                          source.get('EventID') or \
+                          'N/A'
+                
+                # Get source filename from metadata
+                metadata = source.get('_casescope_metadata', {})
+                source_file = metadata.get('filename', 'Unknown')
+                
+                # Get computer name (EVTX or EDR)
+                computer = source.get('System.Computer') or \
+                          source.get('System_Computer') or \
+                          source.get('Computer') or \
+                          source.get('host', {}).get('hostname') or \
+                          source.get('host', {}).get('name') or \
+                          'N/A'
+                
+                # Get channel (EVTX only)
+                channel = source.get('System.Channel') or \
+                         source.get('System_Channel') or \
+                         'N/A'
+                
+                # Get provider (EVTX XML attribute notation)
+                # NOTE: evtx_dump uses #attributes for XML attributes
+                provider = source.get('System.Provider.#attributes.Name') or \
+                          source.get('System.Provider.@Name') or \
+                              source.get('System.Provider.Name') or \
+                              source.get('System_Provider_Name') or \
+                              'N/A'
+                
+                # Determine source type and get appropriate event description
+                source_type = metadata.get('source_type', 'evtx')
+                
+                if source_type == 'ndjson':
+                    # EDR telemetry - use command_line as Event Type
+                    process_data = source.get('process', {})
+                    command_line = process_data.get('command_line', '')
+                    
+                    # Use command_line as the event description/type
+                    if command_line:
+                        event_description = command_line
+                    else:
+                        # Fallback to process name if no command line
+                        process_name = process_data.get('name', 'Unknown Process')
+                        event_description = f"Process: {process_name}"
+                    
+                    event_id = 'EDR'  # Tag EDR events
+                else:
+                    # EVTX - use traditional event description
+                    event_description = get_event_description(event_id, channel, provider, source)
+                
+                # Get SIGMA violations if present
+                sigma_violations = source.get('sigma_detections', [])
+                has_violations = source.get('has_violations', False)
+                
+                # Check for IOC matches for this event
+                ioc_matches = []
+                try:
+                    event_doc_id = hit['_id']
+                    matches = db.session.query(IOCMatch).filter_by(
+                        case_id=case.id,
+                        event_id=event_doc_id
+                    ).all()
+                    
+                    for match in matches:
+                        ioc = match.ioc
+                        ioc_matches.append({
+                            'type': ioc.ioc_type,
+                            'value': ioc.ioc_value,
+                            'severity': ioc.severity
+                        })
+                except Exception as e:
+                    print(f"[Search] Error checking IOC matches: {e}")
+                
+                # Add result to list (always, not just on error)
+                results.append({
+                    'index': hit['_index'],
+                    'id': hit['_id'],
+                    'doc_id': hit['_id'],  # OpenSearch document ID for tagging
+                    'score': hit['_score'],
+                    'timestamp': timestamp,
+                    'event_id': event_id,
+                    'event_type': event_description,
+                    'source_file': source_file,
+                    'computer': computer,
+                    'channel': channel,
+                    'provider': provider,
+                    'full_data': source,
+                    'sigma_violations': sigma_violations,
+                    'has_violations': has_violations,
+                    'ioc_matches': ioc_matches
+                })
+        
+        except Exception as e:
+            import traceback
+            error_message = f"Search error: {str(e)}"
+            print(f"[Search] Error: {e}")
+            traceback.print_exc()
     
     # Get search history for this case (last 10)
     recent_searches = db.session.query(SearchHistory).filter_by(
