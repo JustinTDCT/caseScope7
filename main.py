@@ -1287,6 +1287,65 @@ def upload_files():
     # GET request - show upload form
     return render_upload_form(case)
 
+@app.route('/api/case/stats/<int:case_id>')
+@login_required
+def get_case_stats(case_id):
+    """API endpoint for real-time case statistics (updates every 5s)"""
+    # Verify access
+    active_case_id = session.get('active_case_id')
+    if not active_case_id or int(case_id) != active_case_id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    case = db.session.get(Case, case_id)
+    if not case:
+        return jsonify({'error': 'Case not found'}), 404
+    
+    # Get file counts by status
+    from sqlalchemy import func
+    
+    status_counts = db.session.query(
+        CaseFile.indexing_status,
+        func.count(CaseFile.id)
+    ).filter_by(
+        case_id=case_id,
+        is_deleted=False
+    ).group_by(CaseFile.indexing_status).all()
+    
+    # Convert to dict
+    status_dict = {status: count for status, count in status_counts}
+    
+    # Calculate totals
+    total_files = sum(status_dict.values())
+    total_events = db.session.query(func.sum(CaseFile.event_count)).filter_by(
+        case_id=case_id, is_deleted=False
+    ).scalar() or 0
+    total_violations = db.session.query(func.sum(CaseFile.violation_count)).filter_by(
+        case_id=case_id, is_deleted=False
+    ).scalar() or 0
+    
+    # Count events with IOC matches
+    events_with_iocs = db.session.query(
+        func.count(func.distinct(IOCMatch.event_id))
+    ).filter_by(case_id=case_id).scalar() or 0
+    
+    return jsonify({
+        'status_counts': {
+            'queued': status_dict.get('Queued', 0),
+            'estimating': status_dict.get('Estimating', 0),
+            'indexing': status_dict.get('Indexing', 0),
+            'sigma_hunting': status_dict.get('SIGMA Hunting', 0),
+            'ioc_hunting': status_dict.get('IOC Hunting', 0),
+            'completed': status_dict.get('Completed', 0),
+            'failed': status_dict.get('Failed', 0)
+        },
+        'totals': {
+            'total_files': total_files,
+            'total_events': total_events,
+            'total_violations': total_violations,
+            'events_with_iocs': events_with_iocs
+        }
+    })
+
 @app.route('/files')
 @login_required
 def list_files():
@@ -4539,6 +4598,63 @@ def render_file_list(case, files):
                 
                 {flash_messages_html}
                 
+                <!-- Real-time Statistics Tiles -->
+                <div class="stats-tiles" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 30px;">
+                    <!-- Tile 1: File Status Breakdown -->
+                    <div class="stat-tile" style="background: linear-gradient(145deg, #1e293b, #334155); padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                        <h3 style="margin: 0 0 15px 0; color: #f1f5f9; font-size: 1.1em;">📊 File Status</h3>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                            <div class="stat-item">
+                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">Completed</div>
+                                <div id="stat-completed" class="stat-value" style="color: #4caf50; font-size: 1.8em; font-weight: 700;">-</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">Queued</div>
+                                <div id="stat-queued" class="stat-value" style="color: #9ca3af; font-size: 1.8em; font-weight: 700;">-</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">Indexing</div>
+                                <div id="stat-indexing" class="stat-value" style="color: #ff9800; font-size: 1.8em; font-weight: 700;">-</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">SIGMA Hunting</div>
+                                <div id="stat-sigma" class="stat-value" style="color: #fbbf24; font-size: 1.8em; font-weight: 700;">-</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">IOC Hunting</div>
+                                <div id="stat-ioc-hunting" class="stat-value" style="color: #60a5fa; font-size: 1.8em; font-weight: 700;">-</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">Failed</div>
+                                <div id="stat-failed" class="stat-value" style="color: #f44336; font-size: 1.8em; font-weight: 700;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tile 2: Overall Metrics -->
+                    <div class="stat-tile" style="background: linear-gradient(145deg, #1e293b, #334155); padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                        <h3 style="margin: 0 0 15px 0; color: #f1f5f9; font-size: 1.1em;">📈 Overall Metrics</h3>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                            <div class="stat-item">
+                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">Total Files</div>
+                                <div id="stat-total-files" class="stat-value" style="color: #3b82f6; font-size: 1.8em; font-weight: 700;">-</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">Total Events</div>
+                                <div id="stat-total-events" class="stat-value" style="color: #10b981; font-size: 1.8em; font-weight: 700;">-</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">SIGMA Violations</div>
+                                <div id="stat-total-violations" class="stat-value" style="color: #ef4444; font-size: 1.8em; font-weight: 700;">-</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">Events with IOCs</div>
+                                <div id="stat-events-iocs" class="stat-value" style="color: #f59e0b; font-size: 1.8em; font-weight: 700;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <div style="margin: 20px 0; display: flex; gap: 15px; align-items: center;">
                     <a href="/upload" class="btn">📤 Upload Files</a>
                     <button onclick="reindexAllFilesBulk()" class="btn" style="background: linear-gradient(145deg, #2196f3, #1976d2);">🔄 Re-index All Files</button>
@@ -4784,6 +4900,37 @@ def render_file_list(case, files):
                     alert('Error: ' + error.message);
                 }});
             }}
+            
+            // Real-time Case Statistics Update (every 5 seconds)
+            function updateCaseStats() {{
+                fetch('/api/case/stats/{case.id}')
+                    .then(response => response.json())
+                    .then(data => {{
+                        // Update status counts
+                        document.getElementById('stat-completed').textContent = data.status_counts.completed.toLocaleString();
+                        document.getElementById('stat-queued').textContent = data.status_counts.queued.toLocaleString();
+                        document.getElementById('stat-indexing').textContent = data.status_counts.indexing.toLocaleString();
+                        document.getElementById('stat-sigma').textContent = data.status_counts.sigma_hunting.toLocaleString();
+                        document.getElementById('stat-ioc-hunting').textContent = data.status_counts.ioc_hunting.toLocaleString();
+                        document.getElementById('stat-failed').textContent = data.status_counts.failed.toLocaleString();
+                        
+                        // Update overall metrics
+                        document.getElementById('stat-total-files').textContent = data.totals.total_files.toLocaleString();
+                        document.getElementById('stat-total-events').textContent = data.totals.total_events.toLocaleString();
+                        document.getElementById('stat-total-violations').textContent = data.totals.total_violations.toLocaleString();
+                        document.getElementById('stat-events-iocs').textContent = data.totals.events_with_iocs.toLocaleString();
+                    }})
+                    .catch(error => {{
+                        console.error('Error updating case stats:', error);
+                    }});
+            }}
+            
+            // Update stats immediately on page load
+            document.addEventListener('DOMContentLoaded', function() {{
+                updateCaseStats();
+                // Update every 5 seconds
+                setInterval(updateCaseStats, 5000);
+            }});
         </script>
     </body>
     </html>
