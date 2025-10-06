@@ -3078,6 +3078,19 @@ def search():
             for hit in response['hits']['hits']:
                 source = hit['_source']
                 
+                # DEBUG: Print first few SIGMA results to see what fields exist
+                if len(results) < 3 and threat_filter in ['sigma', 'either', 'both']:
+                    print(f"[Search] DEBUG - Threat filter {threat_filter} result keys: {list(source.keys())[:30]}")
+                    if '_casescope_metadata' in source:
+                        print(f"[Search] DEBUG - Has metadata: {source['_casescope_metadata']}")
+                    else:
+                        print(f"[Search] DEBUG - NO _casescope_metadata field!")
+                    if 'System.EventID' in source:
+                        print(f"[Search] DEBUG - Has System.EventID")
+                    if 'System.EventID.#text' in source:
+                        print(f"[Search] DEBUG - Has System.EventID.#text")
+                    print(f"[Search] DEBUG - Document ID: {hit['_id']}")
+                
                 # Extract standardized fields (uses dual-mapping aware helper)
                 extracted = extract_event_fields(source, hit['_id'])
                 
