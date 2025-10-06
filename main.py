@@ -2507,13 +2507,30 @@ def search():
                 # Use range query on the .date field (which has proper date type mapping)
                 # This is much more efficient than wildcards and handles all date ranges
                 # NOTE: evtx_dump uses #attributes for XML attributes
+                # Use OR query to support both new (#attributes) and legacy (@) field names
                 time_filter = {
-                    "range": {
-                        "System.TimeCreated.#attributes.SystemTime.date": {
-                            "gte": start_iso,
-                            "lte": end_iso,
-                            "format": "strict_date_optional_time"
-                        }
+                    "bool": {
+                        "should": [
+                            {
+                                "range": {
+                                    "System.TimeCreated.#attributes.SystemTime.date": {
+                                        "gte": start_iso,
+                                        "lte": end_iso,
+                                        "format": "strict_date_optional_time"
+                                    }
+                                }
+                            },
+                            {
+                                "range": {
+                                    "System.TimeCreated.@SystemTime.date": {
+                                        "gte": start_iso,
+                                        "lte": end_iso,
+                                        "format": "strict_date_optional_time"
+                                    }
+                                }
+                            }
+                        ],
+                        "minimum_should_match": 1
                     }
                 }
                 
@@ -2539,6 +2556,7 @@ def search():
             print(f"[Search] Sort parameters: field={sort_field}, order={sort_order}")
             if sort_field == 'timestamp':
                 # Sort by timestamp using the date field mapping
+                # Try both new (#attributes) and legacy (@) field names for backward compatibility
                 sort_config = [
                     {
                         "System.TimeCreated.#attributes.SystemTime.date": {
@@ -2546,9 +2564,15 @@ def search():
                             "unmapped_type": "date"
                         }
                     },
+                    {
+                        "System.TimeCreated.@SystemTime.date": {
+                            "order": sort_order,
+                            "unmapped_type": "date"
+                        }
+                    },
                     "_score"  # Secondary sort by relevance
                 ]
-                print(f"[Search] Using timestamp sort: {sort_order}")
+                print(f"[Search] Using timestamp sort: {sort_order} (trying both new and legacy field names)")
             else:
                 # Default: sort by relevance only
                 sort_config = ["_score"]
