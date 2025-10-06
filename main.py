@@ -219,7 +219,7 @@ class CaseFile(db.Model):
     event_count = db.Column(db.Integer, default=0)
     estimated_event_count = db.Column(db.Integer, default=0)  # Estimated total events for progress
     violation_count = db.Column(db.Integer, default=0)
-    indexing_status = db.Column(db.String(20), default='Uploaded')  # Uploaded, Pending, Indexing, Running SIGMA, Hunting IOCs, Completed, Failed
+    indexing_status = db.Column(db.String(20), default='Queued')  # Queued, Estimating, Indexing, SIGMA Hunting, IOC Hunting, Completed, Failed
     celery_task_id = db.Column(db.String(100), nullable=True)  # Current Celery task ID for progress tracking
     
     # Relationships
@@ -841,7 +841,7 @@ def case_dashboard():
     total_files = db.session.query(CaseFile).filter_by(case_id=case.id, is_deleted=False).count()
     indexed_files = db.session.query(CaseFile).filter_by(case_id=case.id, is_deleted=False, is_indexed=True).count()
     processing_files = db.session.query(CaseFile).filter_by(case_id=case.id, is_deleted=False).filter(
-        CaseFile.indexing_status.in_(['Counting Events', 'Indexing', 'Running SIGMA', 'Hunting IOCs', 'Preparing to Index'])
+        CaseFile.indexing_status.in_(['Queued', 'Estimating', 'Indexing', 'SIGMA Hunting', 'IOC Hunting'])
     ).count()
     total_events = db.session.query(db.func.sum(CaseFile.event_count)).filter_by(case_id=case.id, is_deleted=False).scalar() or 0
     total_violations = db.session.query(db.func.sum(CaseFile.violation_count)).filter_by(case_id=case.id, is_deleted=False).scalar() or 0
@@ -1044,7 +1044,7 @@ def file_management():
 @app.route('/file/reindex/<int:file_id>', methods=['POST'])
 @login_required
 def reindex_file(file_id):
-    """Re-index a file (discard existing index and re-process)"""
+    """Re-index a file: Clear all existing data and re-process from scratch"""
     case_file = db.session.get(CaseFile, file_id) or abort(404)
     
     # Verify file belongs to active case
@@ -1054,15 +1054,61 @@ def reindex_file(file_id):
         return redirect(url_for('list_files'))
     
     try:
-        # Reset file status
-        case_file.indexing_status = 'Uploaded'
+        print(f"[Re-index] Starting comprehensive cleanup for file ID {file_id}: {case_file.original_filename}")
+        
+        # STEP 1: Delete OpenSearch index
+        try:
+            from opensearchpy import OpenSearch
+            from tasks import make_index_name
+            
+            es = OpenSearch(
+                hosts=[{'host': 'localhost', 'port': 9200}],
+                http_auth=('admin', 'caseScope2024!'),
+                use_ssl=True,
+                verify_certs=False,
+                ssl_show_warn=False
+            )
+            
+            index_name = make_index_name(case_file.case_id, case_file.original_filename)
+            
+            if es.indices.exists(index=index_name):
+                es.indices.delete(index=index_name)
+                print(f"[Re-index] Deleted OpenSearch index: {index_name}")
+            else:
+                print(f"[Re-index] OpenSearch index does not exist (skipped): {index_name}")
+                
+        except Exception as es_error:
+            print(f"[Re-index] Error deleting OpenSearch index: {es_error}")
+            # Continue anyway - don't fail the re-index
+        
+        # STEP 2: Delete all SIGMA violations for this file
+        violations_deleted = db.session.query(SigmaViolation).filter_by(file_id=file_id).delete()
+        if violations_deleted > 0:
+            print(f"[Re-index] Deleted {violations_deleted} SIGMA violations")
+        
+        # STEP 3: Delete all IOC matches for this file
+        ioc_matches_deleted = db.session.query(IOCMatch).filter_by(source_filename=case_file.original_filename, case_id=case_file.case_id).delete()
+        if ioc_matches_deleted > 0:
+            print(f"[Re-index] Deleted {ioc_matches_deleted} IOC matches")
+        
+        # STEP 4: Delete all timeline tags for events from this file
+        # Note: EventTag doesn't have file_id, so we can't directly delete by file
+        # These will be orphaned but that's acceptable - they reference non-existent events
+        print(f"[Re-index] Note: Timeline tags for deleted events will be orphaned (no file_id reference)")
+        
+        # STEP 5: Reset file status for fresh processing
+        case_file.indexing_status = 'Queued'
         case_file.is_indexed = False
         case_file.indexed_at = None
         case_file.event_count = 0
+        case_file.estimated_event_count = 0
         case_file.violation_count = 0
+        case_file.celery_task_id = None
         db.session.commit()
         
-        # Queue indexing task
+        print(f"[Re-index] Reset file status to 'Queued', all counters cleared")
+        
+        # STEP 6: Queue fresh indexing task
         try:
             if celery_app:
                 celery_app.send_task(
@@ -1071,11 +1117,11 @@ def reindex_file(file_id):
                     queue='celery',
                     priority=0,
                 )
-                flash(f'Re-indexing started for {case_file.original_filename}', 'success')
-                print(f"[Re-index] Queued re-indexing for file ID {file_id}: {case_file.original_filename}")
+                flash(f'✓ Re-indexing started for {case_file.original_filename}', 'success')
+                print(f"[Re-index] Queued fresh indexing task for file ID {file_id}")
             else:
                 flash(f'Celery worker not available', 'error')
-                print(f"[Re-index] ERROR: Celery not available for file ID {file_id}")
+                print(f"[Re-index] ERROR: Celery not available")
         except Exception as e:
             print(f"[Re-index] Error queuing task: {e}")
             flash(f'Re-index queued but worker may not be running. Check logs.', 'warning')
@@ -1084,6 +1130,8 @@ def reindex_file(file_id):
         db.session.rollback()
         flash(f'Error re-indexing file: {str(e)}', 'error')
         print(f"[Re-index] Database error: {e}")
+        import traceback
+        traceback.print_exc()
     
     return redirect(url_for('list_files'))
 
@@ -1091,7 +1139,14 @@ def reindex_file(file_id):
 @app.route('/file/rerun-rules/<int:file_id>', methods=['POST'])
 @login_required
 def rerun_rules(file_id):
-    """Re-run SIGMA rules on a file (discard existing violations and re-process)"""
+    """
+    Re-run SIGMA rules on a file
+    
+    Workflow: Queued → SIGMA Hunting → Completed
+    - Keeps event data intact
+    - Clears existing SIGMA violations
+    - Re-processes with Chainsaw SIGMA engine
+    """
     case_file = db.session.get(CaseFile, file_id) or abort(404)
     
     # Verify file belongs to active case
@@ -1106,60 +1161,98 @@ def rerun_rules(file_id):
         return redirect(url_for('list_files'))
     
     try:
-        # Delete existing violations for this file
-        existing_violations = db.session.query(SigmaViolation).filter_by(file_id=file_id).all()
-        if existing_violations:
-            print(f"[Re-run Rules] Deleting {len(existing_violations)} existing violations for file ID {file_id}")
-            for violation in existing_violations:
-                db.session.delete(violation)
+        print(f"[Re-run Rules] Starting SIGMA re-processing for file ID {file_id}: {case_file.original_filename}")
         
-        # Reset violation status
-        case_file.violation_count = 0
-        case_file.indexing_status = 'Running SIGMA'
-        db.session.commit()
-        print(f"[Re-run Rules] Reset status to 'Running SIGMA' for file ID {file_id}")
+        # STEP 1: Delete existing SIGMA violations
+        violations_deleted = db.session.query(SigmaViolation).filter_by(file_id=file_id).delete()
+        if violations_deleted > 0:
+            print(f"[Re-run Rules] Deleted {violations_deleted} existing SIGMA violations")
         
-        # Queue SIGMA rule processing
+        # STEP 2: Clear has_violations flag in OpenSearch (event data remains)
         try:
-            # Import shared index name helper
+            from opensearchpy import OpenSearch
+            from opensearchpy.helpers import bulk as opensearch_bulk
             from tasks import make_index_name
             
-            # Generate index name using shared helper (single source of truth)
+            es = OpenSearch(
+                hosts=[{'host': 'localhost', 'port': 9200}],
+                http_auth=('admin', 'caseScope2024!'),
+                use_ssl=True,
+                verify_certs=False,
+                ssl_show_warn=False
+            )
+            
             index_name = make_index_name(case_file.case_id, case_file.original_filename)
             
-            print(f"[Re-run Rules] DEBUG: celery_app exists: {celery_app is not None}")
-            if celery_app:
-                print(f"[Re-run Rules] DEBUG: celery_app broker: {celery_app.conf.broker_url}")
-                print(f"[Re-run Rules] DEBUG: celery_app backend: {celery_app.conf.result_backend}")
-                print(f"[Re-run Rules] DEBUG: Calling send_task with task='tasks.process_sigma_rules', args=[{file_id}, '{index_name}']")
+            if es.indices.exists(index=index_name):
+                # Bulk update all events to clear SIGMA-related fields
+                update_actions = []
                 
-                # Use send_task with the SHARED celery_app (same instance as worker)
+                # Query all document IDs
+                scroll_query = {"query": {"match_all": {}}, "_source": False}
+                scroll = es.search(index=index_name, body=scroll_query, scroll='2m', size=1000)
+                scroll_id = scroll['_scroll_id']
+                hits = scroll['hits']['hits']
+                
+                while hits:
+                    for hit in hits:
+                        update_actions.append({
+                            '_op_type': 'update',
+                            '_index': index_name,
+                            '_id': hit['_id'],
+                            'doc': {
+                                'has_violations': False,
+                                'violation_count': 0,
+                                'sigma_detections': []
+                            }
+                        })
+                    
+                    # Get next batch
+                    scroll = es.scroll(scroll_id=scroll_id, scroll='2m')
+                    hits = scroll['hits']['hits']
+                
+                # Clear scroll
+                es.clear_scroll(scroll_id=scroll_id)
+                
+                # Bulk update
+                if update_actions:
+                    success, failed = opensearch_bulk(es, update_actions, raise_on_error=False)
+                    print(f"[Re-run Rules] Cleared SIGMA flags for {success} events in OpenSearch")
+                    
+        except Exception as es_error:
+            print(f"[Re-run Rules] Error clearing OpenSearch SIGMA flags: {es_error}")
+            # Continue anyway - SIGMA will re-enrich
+        
+        # STEP 3: Reset file status to Queued
+        case_file.violation_count = 0
+        case_file.indexing_status = 'Queued'
+        case_file.celery_task_id = None
+        db.session.commit()
+        print(f"[Re-run Rules] Reset status to 'Queued' for SIGMA re-processing")
+        
+        # STEP 4: Queue SIGMA processing task (will move to SIGMA Hunting status)
+        try:
+            from tasks import make_index_name
+            
+            index_name = make_index_name(case_file.case_id, case_file.original_filename)
+            
+            if celery_app:
                 task = celery_app.send_task(
                     'tasks.process_sigma_rules',
                     args=[file_id, index_name],
                     queue='celery',
-                    priority=0,  # Force single list key
+                    priority=0,
                 )
                 
                 # Save task ID for progress tracking
                 case_file.celery_task_id = task.id
                 db.session.commit()
-                print(f"[Re-run Rules] Queued task ID: {task.id}, saved to DB")
                 
-                flash(f'Re-running SIGMA rules for {case_file.original_filename}', 'success')
-                print(f"[Re-run Rules] Queued rule processing task {task.id} for file ID {file_id}: {case_file.original_filename}, index: {index_name}")
-                
-                # Check Redis queue
-                try:
-                    import redis
-                    r = redis.Redis(host='localhost', port=6379, db=0)
-                    queue_length = r.llen('celery')
-                    print(f"[Re-run Rules] DEBUG: Redis queue 'celery' length: {queue_length}")
-                except Exception as redis_err:
-                    print(f"[Re-run Rules] DEBUG: Could not check Redis: {redis_err}")
+                flash(f'✓ Re-running SIGMA rules for {case_file.original_filename}', 'success')
+                print(f"[Re-run Rules] Queued SIGMA task {task.id} for file ID {file_id}")
             else:
                 flash(f'Celery worker not available', 'error')
-                print(f"[Re-run Rules] ERROR: Celery not available for file ID {file_id}")
+                print(f"[Re-run Rules] ERROR: Celery not available")
         except Exception as e:
             print(f"[Re-run Rules] Error queuing task: {e}")
             import traceback
@@ -1170,6 +1263,8 @@ def rerun_rules(file_id):
         db.session.rollback()
         flash(f'Error re-running rules: {str(e)}', 'error')
         print(f"[Re-run Rules] Database error: {e}")
+        import traceback
+        traceback.print_exc()
     
     return redirect(url_for('list_files'))
 
@@ -4068,41 +4163,55 @@ def render_file_list(case, files):
         status_class = file.indexing_status.lower().replace(' ', '-')
         
         # Determine status display with progress - will be updated via JavaScript
-        if file.indexing_status == 'Uploaded':
-            # Check if we're still counting events
-            if file.estimated_event_count and file.estimated_event_count > 0:
-                status_display = '<div id="status-{0}" class="status-text">Preparing to Index...</div>'.format(file.id)
-            else:
-                status_display = '<div id="status-{0}" class="status-text">Counting Events...</div>'.format(file.id)
-            status_class = 'uploaded'
+        # STATUS COLORS: Queued=#9ca3af, Indexing=#ff9800, SIGMA=#fbbf24, IOC=#60a5fa, Complete=#4caf50, Failed=#f44336
+        if file.indexing_status == 'Queued':
+            status_html = '''<div id="status-{0}" class="status-text" data-file-id="{0}">
+                <div style="font-weight: 600; color: #9ca3af;">Queued</div>
+            </div>'''.format(file.id)
+            status_display = status_html
+            status_class = 'queued'
+        elif file.indexing_status == 'Estimating':
+            status_html = '''<div id="status-{0}" class="status-text" data-file-id="{0}">
+                <div style="font-weight: 600; color: #9ca3af;">Estimating...</div>
+            </div>'''.format(file.id)
+            status_display = status_html
+            status_class = 'estimating'
         elif file.indexing_status == 'Indexing':
-            # Show current/total counts without progress bar
+            # Show current/total counts - updated every 5s
             estimated = file.estimated_event_count or int((file.file_size / 1048576) * 1000)
             current_events = file.event_count or 0
             
             status_html = '''<div id="status-{0}" class="status-text" data-file-id="{0}">
-                <div style="font-weight: 600; color: #4caf50;">Indexing...</div>
+                <div style="font-weight: 600; color: #ff9800;">Indexing...</div>
                 <div id="events-{0}" style="font-size: 0.9em; color: rgba(255,255,255,0.8); margin-top: 4px;">{1:,} / {2:,} events</div>
             </div>'''.format(file.id, current_events, estimated)
             status_display = status_html
             status_class = 'indexing'
-        elif file.indexing_status == 'Running SIGMA':
+        elif file.indexing_status == 'SIGMA Hunting':
             status_html = '''<div id="status-{0}" class="status-text" data-file-id="{0}">
-                <div style="font-weight: 600; color: #ff9800;">Running SIGMA...</div>
+                <div style="font-weight: 600; color: #fbbf24;">SIGMA Hunting...</div>
+                <div id="sigma-progress-{0}" style="font-size: 0.9em; color: rgba(255,255,255,0.8); margin-top: 4px;">Processing...</div>
             </div>'''.format(file.id)
             status_display = status_html
-            status_class = 'running-sigma'
-        elif file.indexing_status == 'Hunting IOCs':
+            status_class = 'sigma-hunting'
+        elif file.indexing_status == 'IOC Hunting':
             status_html = '''<div id="status-{0}" class="status-text" data-file-id="{0}">
-                <div style="font-weight: 600; color: #9c27b0;">Hunting IOCs...</div>
+                <div style="font-weight: 600; color: #60a5fa;">IOC Hunting...</div>
+                <div id="ioc-progress-{0}" style="font-size: 0.9em; color: rgba(255,255,255,0.8); margin-top: 4px;">Processing...</div>
             </div>'''.format(file.id)
             status_display = status_html
-            status_class = 'hunting-iocs'
+            status_class = 'ioc-hunting'
         elif file.indexing_status == 'Completed':
-            status_display = '<div id="status-{0}" class="status-text">Completed</div>'.format(file.id)
+            status_html = '''<div id="status-{0}" class="status-text">
+                <div style="font-weight: 600; color: #4caf50;">Completed</div>
+            </div>'''.format(file.id)
+            status_display = status_html
             status_class = 'completed'
         elif file.indexing_status == 'Failed':
-            status_display = '<div id="status-{0}" class="status-text">Failed</div>'.format(file.id)
+            status_html = '''<div id="status-{0}" class="status-text">
+                <div style="font-weight: 600; color: #f44336;">Failed</div>
+            </div>'''.format(file.id)
+            status_display = status_html
             status_class = 'failed'
         else:
             status_display = '<div id="status-{0}" class="status-text">{1}</div>'.format(file.id, file.indexing_status)
