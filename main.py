@@ -2668,21 +2668,21 @@ def search():
                         })
                 except Exception as e:
                     print(f"[Search] Error checking IOC matches: {e}")
-                    
-                    results.append({
-                        'index': hit['_index'],
-                        'id': hit['_id'],
+                
+                results.append({
+                    'index': hit['_index'],
+                    'id': hit['_id'],
                     'doc_id': hit['_id'],  # OpenSearch document ID for tagging
-                        'score': hit['_score'],
-                        'timestamp': timestamp,
-                        'event_id': event_id,
-                        'event_type': event_description,
-                        'source_file': source_file,
-                        'computer': computer,
-                        'channel': channel,
-                        'provider': provider,
-                        'full_data': source,
-                        'sigma_violations': sigma_violations,
+                    'score': hit['_score'],
+                    'timestamp': timestamp,
+                    'event_id': event_id,
+                    'event_type': event_description,
+                    'source_file': source_file,
+                    'computer': computer,
+                    'channel': channel,
+                    'provider': provider,
+                    'full_data': source,
+                    'sigma_violations': sigma_violations,
                     'has_violations': has_violations,
                     'ioc_matches': ioc_matches
                 })
