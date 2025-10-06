@@ -14,6 +14,142 @@ from opensearchpy import OpenSearch
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# IRIS Timeline Sync Helper Functions (Refactored from _sync_timeline)
+# ============================================================================
+
+def extract_event_title_for_iris(event_data):
+    """
+    Extract event title from event data for IRIS timeline.
+    
+    Args:
+        event_data: OpenSearch event document
+        
+    Returns:
+        str: Event title
+    """
+    # For EVTX files: use event_type field (added during indexing)
+    event_type = event_data.get('event_type')
+    
+    if event_type:
+        return event_type
+    
+    # NDJSON/EDR file - build meaningful title from available fields
+    command_line = event_data.get('command_line', '')
+    process_name = event_data.get('process', {}).get('name', '') if isinstance(event_data.get('process'), dict) else ''
+    image = event_data.get('image', '')
+    
+    # Try to extract just the executable name from command_line
+    if command_line:
+        # Get first part before space (the executable)
+        exe = command_line.split()[0] if command_line.split() else command_line
+        # Get just filename from path
+        if '\\' in exe:
+            exe = exe.split('\\')[-1]
+        elif '/' in exe:
+            exe = exe.split('/')[-1]
+        # Remove quotes
+        exe = exe.strip('"\'')
+        return f"Process: {exe}"
+    elif process_name:
+        return f"Process: {process_name}"
+    elif image:
+        # Get just filename from image path
+        image_name = image.split('\\')[-1] if '\\' in image else image.split('/')[-1] if '/' in image else image
+        return f"Process: {image_name}"
+    
+    return 'EDR Event'
+
+def format_timestamp_for_iris(raw_timestamp):
+    """
+    Format timestamp for DFIR-IRIS (must have exactly 6-digit microseconds, no timezone).
+    
+    Args:
+        raw_timestamp: Raw timestamp string
+        
+    Returns:
+        str: Formatted timestamp (YYYY-MM-DDTHH:MM:SS.mmmmmm)
+    """
+    event_timestamp = str(raw_timestamp)
+    
+    # Replace space with T (for timestamps like "2025-08-21 22:19:53")
+    event_timestamp = event_timestamp.replace(' ', 'T', 1)
+    
+    # Remove timezone indicators from END of string only
+    if event_timestamp.endswith('Z'):
+        event_timestamp = event_timestamp[:-1]
+    
+    # Handle +HH:MM or -HH:MM timezone
+    if 'T' in event_timestamp:
+        date_part, time_part = event_timestamp.split('T', 1)
+        if '+' in time_part:
+            time_part = time_part.split('+')[0]
+        elif time_part.count('-') > 0:
+            parts = time_part.split('-')
+            if len(parts) > 1 and ':' in parts[0]:
+                time_part = parts[0]
+        event_timestamp = f"{date_part}T{time_part}"
+    
+    # Ensure exactly 6 digits for microseconds
+    if '.' in event_timestamp:
+        base_time, fractional = event_timestamp.rsplit('.', 1)
+        fractional = fractional.ljust(6, '0')[:6]
+        event_timestamp = f"{base_time}.{fractional}"
+    else:
+        # No fractional seconds - add .000000
+        event_timestamp = f"{event_timestamp}.000000"
+    
+    return event_timestamp
+
+def extract_event_source_for_iris(event_data):
+    """
+    Extract event source information for IRIS timeline.
+    
+    Args:
+        event_data: OpenSearch event document
+        
+    Returns:
+        tuple: (filename, computer_name, combined_source)
+    """
+    # Get filename from metadata
+    filename = event_data.get('_casescope_metadata', {}).get('filename', 'Unknown')
+    
+    # Extract computer/hostname - different fields for EVTX vs NDJSON
+    computer = None
+    
+    # Try EVTX fields first
+    if 'System.Computer' in event_data:
+        computer = event_data['System.Computer']
+    elif 'System_Computer' in event_data:
+        computer = event_data['System_Computer']
+    # Try NDJSON/EDR fields
+    elif 'hostname' in event_data:
+        computer = event_data['hostname']
+    elif 'host' in event_data and isinstance(event_data['host'], dict):
+        computer = event_data['host'].get('name') or event_data['host'].get('hostname')
+    elif 'computer_name' in event_data:
+        computer = event_data['computer_name']
+    elif 'endpoint_id' in event_data:
+        computer = event_data['endpoint_id']
+    
+    # If still no computer, try to extract from filename
+    if not computer and filename and filename != 'Unknown':
+        if '_' in filename:
+            computer = filename.split('_')[0].replace('.ndjson', '').replace('.evtx', '')
+        elif '-' in filename:
+            parts = filename.split('-')
+            if len(parts) >= 2:
+                computer = '-'.join(parts[:-1])
+    
+    if not computer:
+        computer = 'Unknown'
+    
+    # Combine filename and computer
+    event_source = f"{filename}-{computer}"
+    
+    return (filename, computer, event_source)
+
+
 class IrisSyncService:
     """
     Service for synchronizing caseScope data to DFIR-IRIS
@@ -419,131 +555,23 @@ class IrisSyncService:
                             logger.warning(f"Search fallback also failed for {event.event_id}: {str(search_err)}")
                             event_data = {}
                     
-                    # Extract Event Information
-                    # For EVTX files: use event_type field (added during indexing)
-                    # For NDJSON/EDR files: extract from command_line or process info
-                    event_type = event_data.get('event_type')
-                    
-                    if event_type:
-                        # EVTX file with event_type field
-                        event_title = event_type
-                    else:
-                        # NDJSON/EDR file - build meaningful title from available fields
-                        command_line = event_data.get('command_line', '')
-                        process_name = event_data.get('process', {}).get('name', '') if isinstance(event_data.get('process'), dict) else ''
-                        image = event_data.get('image', '')
-                        
-                        # Try to extract just the executable name from command_line
-                        if command_line:
-                            # Get first part before space (the executable)
-                            exe = command_line.split()[0] if command_line.split() else command_line
-                            # Get just filename from path
-                            if '\\' in exe:
-                                exe = exe.split('\\')[-1]
-                            elif '/' in exe:
-                                exe = exe.split('/')[-1]
-                            # Remove quotes
-                            exe = exe.strip('"\'')
-                            event_title = f"Process: {exe}"
-                        elif process_name:
-                            event_title = f"Process: {process_name}"
-                        elif image:
-                            # Get just filename from image path
-                            image_name = image.split('\\')[-1] if '\\' in image else image.split('/')[-1] if '/' in image else image
-                            event_title = f"Process: {image_name}"
-                        else:
-                            event_title = 'EDR Event'
+                    # Extract Event Information using helper
+                    event_title = extract_event_title_for_iris(event_data)
                     
                     # Extract actual event timestamp from the event source
-                    # EVTX: System.TimeCreated.#attributes.SystemTime (evtx_dump format)
-                    # NDJSON: @timestamp
-                    raw_timestamp = None
-                    if 'System.TimeCreated.#attributes.SystemTime' in event_data:
-                        raw_timestamp = event_data['System.TimeCreated.#attributes.SystemTime']
-                    elif 'System.TimeCreated.@SystemTime' in event_data:
-                        raw_timestamp = event_data['System.TimeCreated.@SystemTime']
-                    elif 'System_TimeCreated_SystemTime' in event_data:
-                        raw_timestamp = event_data['System_TimeCreated_SystemTime']
-                    elif '@timestamp' in event_data:
-                        raw_timestamp = event_data['@timestamp']
-                    else:
-                        # Fall back to EventTag timestamp
-                        raw_timestamp = event.event_timestamp
+                    raw_timestamp = (
+                        event_data.get('System.TimeCreated.#attributes.SystemTime') or
+                        event_data.get('System.TimeCreated.@SystemTime') or
+                        event_data.get('System_TimeCreated_SystemTime') or
+                        event_data.get('@timestamp') or
+                        event.event_timestamp
+                    )
                     
-                    # Format timestamp for IRIS (must have exactly 6-digit microseconds, no timezone)
-                    event_timestamp = str(raw_timestamp)
+                    # Format timestamp for IRIS using helper
+                    event_timestamp = format_timestamp_for_iris(raw_timestamp)
                     
-                    # Replace space with T (for timestamps like "2025-08-21 22:19:53")
-                    event_timestamp = event_timestamp.replace(' ', 'T', 1)
-                    
-                    # Remove timezone indicators from END of string only
-                    # Handle Z suffix
-                    if event_timestamp.endswith('Z'):
-                        event_timestamp = event_timestamp[:-1]
-                    # Handle +HH:MM or -HH:MM timezone (only at end after time)
-                    if 'T' in event_timestamp:
-                        # Split on T to separate date and time
-                        date_part, time_part = event_timestamp.split('T', 1)
-                        # Remove timezone from time part only (after the last : or after numbers)
-                        if '+' in time_part:
-                            time_part = time_part.split('+')[0]
-                        elif time_part.count('-') > 0:  # Negative timezone offset
-                            # Only remove timezone if it's after the time (contains colons before the -)
-                            parts = time_part.split('-')
-                            if len(parts) > 1 and ':' in parts[0]:  # Has time before the -
-                                time_part = parts[0]
-                        event_timestamp = f"{date_part}T{time_part}"
-                    
-                    # Ensure exactly 6 digits for microseconds
-                    if '.' in event_timestamp:
-                        # Split into date/time and fractional seconds
-                        base_time, fractional = event_timestamp.rsplit('.', 1)
-                        # Pad or truncate to exactly 6 digits
-                        fractional = fractional.ljust(6, '0')[:6]
-                        event_timestamp = f"{base_time}.{fractional}"
-                    else:
-                        # No fractional seconds, add .000000
-                        event_timestamp = event_timestamp + '.000000'
-                    
-                    # Extract filename and computer for event source
-                    # Format: {filename}-{computer}
-                    filename = event_data.get('_casescope_metadata', {}).get('filename', 'Unknown')
-                    
-                    # Extract computer/hostname - different fields for EVTX vs NDJSON
-                    computer = None
-                    
-                    # Try EVTX fields first
-                    if 'System.Computer' in event_data:
-                        computer = event_data['System.Computer']
-                    elif 'System_Computer' in event_data:
-                        computer = event_data['System_Computer']
-                    # Try NDJSON/EDR fields
-                    elif 'hostname' in event_data:
-                        computer = event_data['hostname']
-                    elif 'host' in event_data and isinstance(event_data['host'], dict):
-                        computer = event_data['host'].get('name') or event_data['host'].get('hostname')
-                    elif 'computer_name' in event_data:
-                        computer = event_data['computer_name']
-                    elif 'endpoint_id' in event_data:
-                        computer = event_data['endpoint_id']
-                    
-                    # If still no computer, try to extract from filename
-                    if not computer and filename and filename != 'Unknown':
-                        # Filename might be like "accounting-DAFFOJD_2108320.ndjson"
-                        # Try to extract computer from filename
-                        if '_' in filename:
-                            # Split on underscore and take first part
-                            computer = filename.split('_')[0].replace('.ndjson', '').replace('.evtx', '')
-                        elif '-' in filename:
-                            # Split on dash and take first parts
-                            parts = filename.split('-')
-                            if len(parts) >= 2:
-                                computer = '-'.join(parts[:-1])  # All but last part
-                    
-                    if not computer:
-                        computer = 'Unknown'
-                    
-                    event_source = f"{filename}-{computer}"
+                    # Extract Event Source using helper
+                    filename, computer, event_source = extract_event_source_for_iris(event_data)
                     
                     # Get IOC matches for this event
                     # Query IOCMatch table to find IOCs linked to this event
