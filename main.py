@@ -1903,85 +1903,70 @@ def api_rehunt_all_iocs():
         
         print(f"[Bulk Re-hunt IOCs] Found {len(files)} indexed file(s) in case {case_id}")
         
+        # Create OpenSearch connection ONCE (not 66 times - prevents timeout!)
+        from opensearchpy import OpenSearch, RequestsHttpConnection
+        from tasks import make_index_name
+        
+        es = OpenSearch(
+            hosts=[{'host': 'localhost', 'port': 9200}],
+            http_compress=True,
+            use_ssl=False,
+            verify_certs=False,
+            ssl_assert_hostname=False,
+            ssl_show_warn=False,
+            connection_class=RequestsHttpConnection,
+            timeout=5  # Fast timeout for existence checks
+        )
+        
         files_queued = 0
         files_skipped = 0
         skipped_details = []
         
+        # Bulk delete ALL IOC matches for case (faster than per-file)
+        total_ioc_matches_deleted = db.session.query(IOCMatch).filter_by(case_id=case_id).delete()
+        if total_ioc_matches_deleted > 0:
+            print(f"[Bulk Re-hunt IOCs] Deleted {total_ioc_matches_deleted} total IOC matches")
+        db.session.commit()
+        
         for case_file in files:
             try:
-                # Delete existing IOC matches for this file
-                ioc_matches_deleted = db.session.query(IOCMatch).filter_by(
-                    source_filename=case_file.original_filename,
-                    case_id=case_file.case_id
-                ).delete()
+                # Check if index exists for this file
+                index_name = make_index_name(case_file.case_id, case_file.original_filename)
                 
-                if ioc_matches_deleted > 0:
-                    print(f"[Bulk Re-hunt IOCs] Deleted {ioc_matches_deleted} IOC matches for file ID {case_file.id}")
-                
-                # Clear has_ioc_matches flags in OpenSearch (skip if index doesn't exist)
-                try:
-                    from opensearchpy import OpenSearch, RequestsHttpConnection
-                    from opensearchpy.helpers import bulk as opensearch_bulk
-                    from tasks import make_index_name
+                # Clear has_ioc_matches flags in OpenSearch (use shared connection)
+                if es.indices.exists(index=index_name):
+                    try:
+                        # Quick update - set has_ioc_matches to false for all docs (async)
+                        update_body = {
+                            "script": {
+                                "source": "ctx._source.has_ioc_matches = false; ctx._source.ioc_matches = []",
+                                "lang": "painless"
+                            },
+                            "query": {"match_all": {}}
+                        }
+                        es.update_by_query(index=index_name, body=update_body, conflicts='proceed', wait_for_completion=False)
+                        print(f"[Bulk Re-hunt IOCs] Cleared IOC flags for index {index_name}")
+                    except Exception as update_error:
+                        print(f"[Bulk Re-hunt IOCs] Could not clear IOC flags for {index_name}: {update_error}")
                     
-                    # Use same OpenSearch config as tasks.py
-                    es = OpenSearch(
-                        hosts=[{'host': 'localhost', 'port': 9200}],
-                        http_compress=True,
-                        use_ssl=False,
-                        verify_certs=False,
-                        ssl_assert_hostname=False,
-                        ssl_show_warn=False,
-                        connection_class=RequestsHttpConnection,
-                        timeout=30
-                    )
+                    # Queue IOC hunting if index exists
+                    case_file.indexing_status = 'Queued'
+                    case_file.celery_task_id = None
+                    db.session.commit()
                     
-                    index_name = make_index_name(case_file.case_id, case_file.original_filename)
-                    
-                    if es.indices.exists(index=index_name):
-                        try:
-                            # Quick update - set has_ioc_matches to false for all docs
-                            update_body = {
-                                "script": {
-                                    "source": "ctx._source.has_ioc_matches = false; ctx._source.ioc_matches = []",
-                                    "lang": "painless"
-                                },
-                                "query": {"match_all": {}}
-                            }
-                            es.update_by_query(index=index_name, body=update_body, conflicts='proceed')
-                            print(f"[Bulk Re-hunt IOCs] Cleared IOC flags for index {index_name}")
-                        except Exception as update_error:
-                            print(f"[Bulk Re-hunt IOCs] Could not clear IOC flags for {index_name}: {update_error}")
-                    else:
-                        print(f"[Bulk Re-hunt IOCs] Skipping {case_file.original_filename} - index doesn't exist (file not indexed yet)")
-                        files_skipped += 1
-                        skipped_details.append(f"{case_file.original_filename} (index missing)")
-                        continue  # Skip to next file - don't queue IOC hunting for non-indexed files
-                except Exception as es_error:
-                    print(f"[Bulk Re-hunt IOCs] Error with OpenSearch for {case_file.original_filename}: {es_error}")
+                    if celery_app:
+                        celery_app.send_task(
+                            'tasks.hunt_iocs_for_file',
+                            args=[case_file.id, index_name],
+                            queue='celery',
+                            priority=0,
+                        )
+                        files_queued += 1
+                        print(f"[Bulk Re-hunt IOCs] Queued file ID {case_file.id}: {case_file.original_filename}")
+                else:
+                    print(f"[Bulk Re-hunt IOCs] Skipping {case_file.original_filename} - index doesn't exist")
                     files_skipped += 1
-                    skipped_details.append(f"{case_file.original_filename} (OpenSearch error)")
-                    continue  # Skip this file on error
-                
-                # Only queue IOC hunting if index exists
-                # Reset file status to Queued for IOC hunting
-                case_file.indexing_status = 'Queued'
-                case_file.celery_task_id = None
-                db.session.commit()
-                
-                # Queue IOC hunting task
-                if celery_app:
-                    from tasks import make_index_name
-                    index_name = make_index_name(case_file.case_id, case_file.original_filename)
-                    
-                    celery_app.send_task(
-                        'tasks.hunt_iocs_for_file',
-                        args=[case_file.id, index_name],
-                        queue='celery',
-                        priority=0,
-                    )
-                    files_queued += 1
-                    print(f"[Bulk Re-hunt IOCs] Queued file ID {case_file.id}: {case_file.original_filename}")
+                    skipped_details.append(f"{case_file.original_filename} (index missing)")
             except Exception as e:
                 print(f"[Bulk Re-hunt IOCs] Error queuing file {case_file.id}: {e}")
                 files_skipped += 1
