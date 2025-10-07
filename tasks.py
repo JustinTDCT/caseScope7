@@ -35,6 +35,63 @@ logger.info("="*80)
 logger.info("TASKS MODULE LOADED")
 logger.info("="*80)
 
+# ══════════════════════════════════════════════════════════════════════════════
+# AUDIT PROCESSING LOGS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def write_audit_log(log_type, case_name, filename, message):
+    """
+    Write to dedicated audit processing log files.
+    
+    Args:
+        log_type: 'SIGMA', 'INDEX', or 'IOC'
+        case_name: Name of the case
+        filename: Name of the file being processed
+        message: Log message (e.g., 'Started SIGMA processing est. 1000 events')
+    
+    Log Format:
+        <DATE/TIME> - <CASE> - <FILE> <MESSAGE>
+    
+    Example:
+        2025-10-07 13:45:23 - Case Alpha - Security.evtx Started indexing est. 5000 events
+        2025-10-07 13:46:01 - Case Alpha - Security.evtx Finished indexing, 5000 events indexed
+        2025-10-07 13:46:05 - Case Alpha - Security.evtx Started SIGMA processing est. 5000 events
+        2025-10-07 13:46:42 - Case Alpha - Security.evtx Finished SIGMA processing, 5000 events with 23 violations
+        2025-10-07 13:46:45 - Case Alpha - Security.evtx Started IOC hunting est. 5000 events
+        2025-10-07 13:47:12 - Case Alpha - Security.evtx Finished IOC hunting, 5000 events with 7 IOC matches
+        2025-10-07 13:50:15 - Case Beta - Application.evtx ERROR: Failed to index: Connection timeout
+    """
+    try:
+        log_dir = '/opt/casescope/logs'
+        
+        # Ensure logs directory exists
+        os.makedirs(log_dir, exist_ok=True)
+        
+        # Map log type to filename
+        log_files = {
+            'SIGMA': f'{log_dir}/SIGMA.log',
+            'INDEX': f'{log_dir}/INDEX.log',
+            'IOC': f'{log_dir}/IOC.log'
+        }
+        
+        if log_type not in log_files:
+            logger.error(f"[Audit Log] Invalid log type: {log_type}")
+            return
+        
+        log_path = log_files[log_type]
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Format: <DATE/TIME> - <CASE> - <FILE> <MESSAGE>
+        log_line = f"{timestamp} - {case_name} - {filename} {message}\n"
+        
+        # Append to log file (thread-safe with 'a' mode)
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(log_line)
+        
+    except Exception as e:
+        # Don't crash on audit log failures, just log to main logger
+        logger.error(f"[Audit Log] Failed to write to {log_type}.log: {e}")
+
 def commit_with_retry(session, max_retries=5, initial_delay=0.1, logger_instance=None):
     """
     Commit database session with automatic retry on lock errors.
@@ -639,6 +696,11 @@ def index_evtx_file(self, file_id):
             
             logger.info(f"TASK SUMMARY: TaskID={self.request.id}, FileID={file_id}, Filename={case_file.original_filename}, Index={index_name}")
             
+            # AUDIT LOG: Started indexing
+            estimated_events = case_file.estimated_event_count or 'unknown'
+            write_audit_log('INDEX', case.name, case_file.original_filename, 
+                          f"Started indexing est. {estimated_events} events")
+            
             # Check if file exists
             if not os.path.exists(case_file.file_path):
                 case_file.indexing_status = 'Failed'
@@ -773,6 +835,10 @@ def index_evtx_file(self, file_id):
             logger.info(f"INDEXING COMPLETED: {event_count:,} events indexed from {case_file.original_filename}")
             logger.info("="*80)
             
+            # AUDIT LOG: Finished indexing
+            write_audit_log('INDEX', case.name, case_file.original_filename, 
+                          f"Finished indexing, {event_count} events indexed")
+            
             # Queue SIGMA rule processing for EVTX files only
             # SIGMA rules are Windows Event Log specific and don't apply to NDJSON/EDR data
             logger.info("Queueing SIGMA rule processing for EVTX file...")
@@ -805,6 +871,11 @@ def index_evtx_file(self, file_id):
             case_file = db.session.get(CaseFile, file_id)
             if case_file:
                 case_file.indexing_status = 'Failed'
+                case = db.session.get(Case, case_file.case_id)
+                if case:
+                    # AUDIT LOG: Error during indexing
+                    write_audit_log('INDEX', case.name, case_file.original_filename, 
+                                  f"ERROR: evtx_dump failed - {str(e.stderr)[:100]}")
                 db.session.commit()
             
             return {'status': 'error', 'message': f'evtx_dump failed: {e.stderr}'}
@@ -820,6 +891,11 @@ def index_evtx_file(self, file_id):
             case_file = db.session.get(CaseFile, file_id)
             if case_file:
                 case_file.indexing_status = 'Failed'
+                case = db.session.get(Case, case_file.case_id)
+                if case:
+                    # AUDIT LOG: Error during indexing
+                    write_audit_log('INDEX', case.name, case_file.original_filename, 
+                                  f"ERROR: {str(e)[:100]}")
                 db.session.commit()
             
             return {'status': 'error', 'message': str(e)}
@@ -882,6 +958,11 @@ def process_sigma_rules(self, file_id, index_name):
                 return {'status': 'error', 'message': f'Case ID {case_file.case_id} not found'}
             
             logger.info(f"Processing rules for case: {case.name}")
+            
+            # AUDIT LOG: Started SIGMA processing
+            estimated_events = case_file.event_count or case_file.estimated_event_count or 'unknown'
+            write_audit_log('SIGMA', case.name, case_file.original_filename, 
+                          f"Started SIGMA processing est. {estimated_events} events")
             
             # SIGMA rules only work on Windows Event Logs (EVTX format)
             # Skip SIGMA processing for NDJSON/EDR files
@@ -1150,6 +1231,11 @@ def process_sigma_rules(self, file_id, index_name):
             logger.info(f"Duration: {task_duration:.2f} seconds ({task_duration/60:.2f} minutes)")
             logger.info("="*80)
             
+            # AUDIT LOG: Finished SIGMA processing
+            events_processed = case_file.event_count or 0
+            write_audit_log('SIGMA', case.name, case_file.original_filename, 
+                          f"Finished SIGMA processing, {events_processed} events with {total_violations} violations")
+            
             return {
                 'status': 'success',
                 'message': f'Chainsaw processed {len(enabled_rules)} rules, found {total_violations} violations',
@@ -1183,6 +1269,11 @@ def process_sigma_rules(self, file_id, index_name):
                 if case_file:
                     case_file.indexing_status = 'Failed'
                     case_file.celery_task_id = None  # Clear task ID on failure
+                    case = db.session.get(Case, case_file.case_id)
+                    if case:
+                        # AUDIT LOG: Error during SIGMA processing
+                        write_audit_log('SIGMA', case.name, case_file.original_filename, 
+                                      f"ERROR: {str(e)[:100]}")
                     commit_with_retry(db.session, logger_instance=logger)
             except Exception as db_err:
                 logger.error(f"Failed to update case_file status: {db_err}")
@@ -1769,6 +1860,13 @@ def hunt_iocs_for_file(self, file_id, index_name):
             db.session.commit()
             logger.info(f"Status updated to 'IOC Hunting' for file: {case_file.original_filename}")
             
+            # AUDIT LOG: Started IOC hunting
+            case = db.session.get(Case, case_file.case_id)
+            if case:
+                estimated_events = case_file.event_count or case_file.estimated_event_count or 'unknown'
+                write_audit_log('IOC', case.name, case_file.original_filename, 
+                              f"Started IOC hunting est. {estimated_events} events")
+            
             # Get all active IOCs for this case
             iocs = db.session.query(IOC).filter_by(case_id=case_file.case_id, is_active=True).all()
             
@@ -1927,6 +2025,12 @@ def hunt_iocs_for_file(self, file_id, index_name):
             logger.info(f"Duration: {task_duration:.2f} seconds")
             logger.info("="*80)
             
+            # AUDIT LOG: Finished IOC hunting
+            if case:
+                events_processed = case_file.event_count or 0
+                write_audit_log('IOC', case.name, case_file.original_filename, 
+                              f"Finished IOC hunting, {events_processed} events with {total_matches} IOC matches")
+            
             return {
                 'status': 'success',
                 'file_id': file_id,
@@ -1943,11 +2047,16 @@ def hunt_iocs_for_file(self, file_id, index_name):
         # Mark file as failed
         try:
             with app.app_context():
-                from main import CaseFile
+                from main import CaseFile, Case
                 case_file = db.session.get(CaseFile, file_id)
                 if case_file:
                     case_file.indexing_status = 'Failed'
                     case_file.celery_task_id = None
+                    case = db.session.get(Case, case_file.case_id)
+                    if case:
+                        # AUDIT LOG: Error during IOC hunting
+                        write_audit_log('IOC', case.name, case_file.original_filename, 
+                                      f"ERROR: {str(e)[:100]}")
                     db.session.commit()
         except:
             pass
