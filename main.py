@@ -1398,15 +1398,19 @@ def reindex_file(file_id):
         
         # STEP 1: Delete OpenSearch index
         try:
-            from opensearchpy import OpenSearch
+            from opensearchpy import OpenSearch, RequestsHttpConnection
             from tasks import make_index_name
             
+            # Use same OpenSearch config as tasks.py
             es = OpenSearch(
                 hosts=[{'host': 'localhost', 'port': 9200}],
-                http_auth=('admin', 'caseScope2024!'),
-                use_ssl=True,
+                http_compress=True,
+                use_ssl=False,
                 verify_certs=False,
-                ssl_show_warn=False
+                ssl_assert_hostname=False,
+                ssl_show_warn=False,
+                connection_class=RequestsHttpConnection,
+                timeout=30
             )
             
             index_name = make_index_name(case_file.case_id, case_file.original_filename)
@@ -1510,16 +1514,20 @@ def rerun_rules(file_id):
         
         # STEP 2: Clear has_violations flag in OpenSearch (event data remains)
         try:
-            from opensearchpy import OpenSearch
+            from opensearchpy import OpenSearch, RequestsHttpConnection
             from opensearchpy.helpers import bulk as opensearch_bulk
             from tasks import make_index_name
             
+            # Use same OpenSearch config as tasks.py
             es = OpenSearch(
                 hosts=[{'host': 'localhost', 'port': 9200}],
-                http_auth=('admin', 'caseScope2024!'),
-                use_ssl=True,
+                http_compress=True,
+                use_ssl=False,
                 verify_certs=False,
-                ssl_show_warn=False
+                ssl_assert_hostname=False,
+                ssl_show_warn=False,
+                connection_class=RequestsHttpConnection,
+                timeout=30
             )
             
             index_name = make_index_name(case_file.case_id, case_file.original_filename)
@@ -1646,16 +1654,20 @@ def rehunt_iocs(file_id):
         
         # STEP 2: Clear has_ioc_matches flag in OpenSearch (event data remains)
         try:
-            from opensearchpy import OpenSearch
+            from opensearchpy import OpenSearch, RequestsHttpConnection
             from opensearchpy.helpers import bulk as opensearch_bulk
             from tasks import make_index_name
             
+            # Use same OpenSearch config as tasks.py
             es = OpenSearch(
                 hosts=[{'host': 'localhost', 'port': 9200}],
-                http_auth=('admin', 'caseScope2024!'),
-                use_ssl=True,
+                http_compress=True,
+                use_ssl=False,
                 verify_certs=False,
-                ssl_show_warn=False
+                ssl_assert_hostname=False,
+                ssl_show_warn=False,
+                connection_class=RequestsHttpConnection,
+                timeout=30
             )
             
             index_name = make_index_name(case_file.case_id, case_file.original_filename)
@@ -1908,16 +1920,20 @@ def api_rehunt_all_iocs():
                 
                 # Clear has_ioc_matches flags in OpenSearch (skip if index doesn't exist)
                 try:
-                    from opensearchpy import OpenSearch
+                    from opensearchpy import OpenSearch, RequestsHttpConnection
                     from opensearchpy.helpers import bulk as opensearch_bulk
                     from tasks import make_index_name
                     
+                    # Use same OpenSearch config as tasks.py
                     es = OpenSearch(
                         hosts=[{'host': 'localhost', 'port': 9200}],
-                        http_auth=('admin', 'caseScope2024!'),
-                        use_ssl=True,
+                        http_compress=True,
+                        use_ssl=False,
                         verify_certs=False,
-                        ssl_show_warn=False
+                        ssl_assert_hostname=False,
+                        ssl_show_warn=False,
+                        connection_class=RequestsHttpConnection,
+                        timeout=30
                     )
                     
                     index_name = make_index_name(case_file.case_id, case_file.original_filename)
@@ -2770,13 +2786,17 @@ def ioc_delete(ioc_id):
     # For each affected event, check if it still has IOC matches from OTHER IOCs
     # If not, clear the has_ioc_matches flag in OpenSearch
     if affected_events:
-        from opensearchpy import OpenSearch
+        from opensearchpy import OpenSearch, RequestsHttpConnection
+        # Use same OpenSearch config as tasks.py
         es = OpenSearch(
             hosts=[{'host': 'localhost', 'port': 9200}],
-            http_auth=('admin', 'caseScope2024!'),
-            use_ssl=True,
+            http_compress=True,
+            use_ssl=False,
             verify_certs=False,
-            ssl_show_warn=False
+            ssl_assert_hostname=False,
+            ssl_show_warn=False,
+            connection_class=RequestsHttpConnection,
+            timeout=30
         )
         
         events_to_clear = []
