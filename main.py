@@ -1889,7 +1889,12 @@ def api_rehunt_all_iocs():
         if not files:
             return jsonify({'success': False, 'message': 'No indexed files found in this case'}), 404
         
+        print(f"[Bulk Re-hunt IOCs] Found {len(files)} indexed file(s) in case {case_id}")
+        
         files_queued = 0
+        files_skipped = 0
+        skipped_details = []
+        
         for case_file in files:
             try:
                 # Delete existing IOC matches for this file
@@ -1933,9 +1938,13 @@ def api_rehunt_all_iocs():
                             print(f"[Bulk Re-hunt IOCs] Could not clear IOC flags for {index_name}: {update_error}")
                     else:
                         print(f"[Bulk Re-hunt IOCs] Skipping {case_file.original_filename} - index doesn't exist (file not indexed yet)")
+                        files_skipped += 1
+                        skipped_details.append(f"{case_file.original_filename} (index missing)")
                         continue  # Skip to next file - don't queue IOC hunting for non-indexed files
                 except Exception as es_error:
                     print(f"[Bulk Re-hunt IOCs] Error with OpenSearch for {case_file.original_filename}: {es_error}")
+                    files_skipped += 1
+                    skipped_details.append(f"{case_file.original_filename} (OpenSearch error)")
                     continue  # Skip this file on error
                 
                 # Only queue IOC hunting if index exists
@@ -1959,14 +1968,31 @@ def api_rehunt_all_iocs():
                     print(f"[Bulk Re-hunt IOCs] Queued file ID {case_file.id}: {case_file.original_filename}")
             except Exception as e:
                 print(f"[Bulk Re-hunt IOCs] Error queuing file {case_file.id}: {e}")
+                files_skipped += 1
+                skipped_details.append(f"{case_file.original_filename} (error: {str(e)[:50]})")
                 continue
         
         db.session.commit()
         
+        # Build message
+        message_parts = []
+        if files_queued > 0:
+            message_parts.append(f"Queued {files_queued} file(s) for IOC re-hunting")
+        if files_skipped > 0:
+            message_parts.append(f"Skipped {files_skipped} file(s)")
+        
+        message = ". ".join(message_parts) if message_parts else "No files processed"
+        
+        print(f"[Bulk Re-hunt IOCs] Complete: {files_queued} queued, {files_skipped} skipped")
+        if skipped_details:
+            print(f"[Bulk Re-hunt IOCs] Skipped files: {', '.join(skipped_details[:5])}")  # Show first 5
+        
         return jsonify({
             'success': True,
             'files_queued': files_queued,
-            'message': f'Queued {files_queued} file(s) for IOC re-hunting'
+            'files_skipped': files_skipped,
+            'skipped_details': skipped_details[:10],  # Limit to first 10 for UI
+            'message': message
         })
     except Exception as e:
         print(f"[Bulk Re-hunt IOCs] Error: {e}")
@@ -5024,7 +5050,11 @@ def render_file_list(case, files):
                 .then(response => response.json())
                 .then(data => {{
                     if (data.success) {{
-                        alert('Successfully queued ' + data.files_queued + ' file(s) for IOC re-hunting.');
+                        let message = data.message;
+                        if (data.files_skipped > 0 && data.skipped_details) {{
+                            message += '\\n\\nSkipped files:\\n' + data.skipped_details.join('\\n');
+                        }}
+                        alert(message);
                         location.reload();
                     }} else {{
                         alert('Error: ' + (data.message || 'Failed to queue files for IOC hunting'));
