@@ -1867,6 +1867,105 @@ def api_rerun_all_rules():
         traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/api/rehunt-all-iocs', methods=['POST'])
+@login_required
+def api_rehunt_all_iocs():
+    """API endpoint to re-hunt IOCs on all indexed files in a case"""
+    try:
+        data = request.get_json()
+        case_id = data.get('case_id')
+        
+        if not case_id:
+            return jsonify({'success': False, 'message': 'Missing case_id'}), 400
+        
+        # Verify access
+        active_case_id = session.get('active_case_id')
+        if not active_case_id or int(case_id) != active_case_id:
+            return jsonify({'success': False, 'message': 'Access denied'}), 403
+        
+        # Get all indexed files for this case
+        files = db.session.query(CaseFile).filter_by(case_id=case_id, is_deleted=False, is_indexed=True).all()
+        
+        if not files:
+            return jsonify({'success': False, 'message': 'No indexed files found in this case'}), 404
+        
+        files_queued = 0
+        for case_file in files:
+            try:
+                # Delete existing IOC matches for this file
+                ioc_matches_deleted = db.session.query(IOCMatch).filter_by(
+                    source_filename=case_file.original_filename,
+                    case_id=case_file.case_id
+                ).delete()
+                
+                if ioc_matches_deleted > 0:
+                    print(f"[Bulk Re-hunt IOCs] Deleted {ioc_matches_deleted} IOC matches for file ID {case_file.id}")
+                
+                # Clear has_ioc_matches flags in OpenSearch
+                try:
+                    from opensearchpy import OpenSearch
+                    from opensearchpy.helpers import bulk as opensearch_bulk
+                    from tasks import make_index_name
+                    
+                    es = OpenSearch(
+                        hosts=[{'host': 'localhost', 'port': 9200}],
+                        http_auth=('admin', 'caseScope2024!'),
+                        use_ssl=True,
+                        verify_certs=False,
+                        ssl_show_warn=False
+                    )
+                    
+                    index_name = make_index_name(case_file.case_id, case_file.original_filename)
+                    
+                    if es.indices.exists(index=index_name):
+                        # Quick update - set has_ioc_matches to false for all docs
+                        update_body = {
+                            "script": {
+                                "source": "ctx._source.has_ioc_matches = false; ctx._source.ioc_matches = []",
+                                "lang": "painless"
+                            },
+                            "query": {"match_all": {}}
+                        }
+                        es.update_by_query(index=index_name, body=update_body, conflicts='proceed')
+                        print(f"[Bulk Re-hunt IOCs] Cleared IOC flags for index {index_name}")
+                except Exception as es_error:
+                    print(f"[Bulk Re-hunt IOCs] Error clearing OpenSearch IOC flags: {es_error}")
+                
+                # Reset file status to Queued for IOC hunting
+                case_file.indexing_status = 'Queued'
+                case_file.celery_task_id = None
+                db.session.commit()
+                
+                # Queue IOC hunting task
+                if celery_app:
+                    from tasks import make_index_name
+                    index_name = make_index_name(case_file.case_id, case_file.original_filename)
+                    
+                    celery_app.send_task(
+                        'tasks.hunt_iocs_for_file',
+                        args=[case_file.id, index_name],
+                        queue='celery',
+                        priority=0,
+                    )
+                    files_queued += 1
+                    print(f"[Bulk Re-hunt IOCs] Queued file ID {case_file.id}: {case_file.original_filename}")
+            except Exception as e:
+                print(f"[Bulk Re-hunt IOCs] Error queuing file {case_file.id}: {e}")
+                continue
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'files_queued': files_queued,
+            'message': f'Queued {files_queued} file(s) for IOC re-hunting'
+        })
+    except Exception as e:
+        print(f"[Bulk Re-hunt IOCs] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/update-event-ids', methods=['GET'])
 @login_required
 def update_event_ids():
@@ -4659,6 +4758,7 @@ def render_file_list(case, files):
                     <a href="/upload" class="btn">📤 Upload Files</a>
                     <button onclick="reindexAllFilesBulk()" class="btn" style="background: linear-gradient(145deg, #2196f3, #1976d2);">🔄 Re-index All Files</button>
                     <button onclick="rerunAllRulesBulk()" class="btn" style="background: linear-gradient(145deg, #ff9800, #f57c00);">⚡ Re-run All Rules</button>
+                    <button onclick="rehuntAllIocsBulk()" class="btn" style="background: linear-gradient(145deg, #10b981, #059669);">🎯 Re-hunt All IOCs</button>
                 </div>
                 
                 <table class="file-table">
@@ -4894,6 +4994,32 @@ def render_file_list(case, files):
                         location.reload();
                     }} else {{
                         alert('Error: ' + (data.message || 'Failed to queue files for processing'));
+                    }}
+                }})
+                .catch(error => {{
+                    alert('Error: ' + error.message);
+                }});
+            }}
+            
+            function rehuntAllIocsBulk() {{
+                if (!confirm('This will re-hunt IOCs on ALL indexed files in this case. Existing IOC matches will be cleared and re-scanned. Continue?')) {{
+                    return;
+                }}
+                
+                fetch('/api/rehunt-all-iocs', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                    }},
+                    body: JSON.stringify({{ case_id: {case.id} }})
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) {{
+                        alert('Successfully queued ' + data.files_queued + ' file(s) for IOC re-hunting.');
+                        location.reload();
+                    }} else {{
+                        alert('Error: ' + (data.message || 'Failed to queue files for IOC hunting'));
                     }}
                 }})
                 .catch(error => {{
