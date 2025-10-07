@@ -1870,7 +1870,14 @@ def api_rerun_all_rules():
 @app.route('/api/rehunt-all-iocs', methods=['POST'])
 @login_required
 def api_rehunt_all_iocs():
-    """API endpoint to re-hunt IOCs on all indexed files in a case"""
+    """
+    V8.1 UNIFIED API endpoint to re-hunt IOCs across entire case
+    
+    New approach:
+    - Single task for entire case (not per-file)
+    - Bulk clear + hunt all IOCs at once
+    - Much faster, consistent results
+    """
     try:
         data = request.get_json()
         case_id = data.get('case_id')
@@ -1883,108 +1890,46 @@ def api_rehunt_all_iocs():
         if not active_case_id or int(case_id) != active_case_id:
             return jsonify({'success': False, 'message': 'Access denied'}), 403
         
-        # Get all indexed files for this case
-        files = db.session.query(CaseFile).filter_by(case_id=case_id, is_deleted=False, is_indexed=True).all()
+        # Get case
+        case = db.session.get(Case, case_id)
+        if not case:
+            return jsonify({'success': False, 'message': 'Case not found'}), 404
         
+        # Check if we have indexed files
+        files = db.session.query(CaseFile).filter_by(case_id=case_id, is_deleted=False, is_indexed=True).all()
         if not files:
             return jsonify({'success': False, 'message': 'No indexed files found in this case'}), 404
         
-        print(f"[Bulk Re-hunt IOCs] Found {len(files)} indexed file(s) in case {case_id}")
+        # Check if we have active IOCs
+        active_iocs = db.session.query(IOC).filter_by(case_id=case_id, is_active=True).count()
+        if active_iocs == 0:
+            return jsonify({'success': False, 'message': 'No active IOCs to hunt. Add IOCs first.'}), 400
         
-        # Create OpenSearch connection ONCE (not 66 times - prevents timeout!)
-        from opensearchpy import OpenSearch, RequestsHttpConnection
-        from tasks import make_index_name
+        print(f"[V8.1 Unified IOC Hunt] Starting for case {case_id} ({case.name})")
+        print(f"[V8.1 Unified IOC Hunt] Files: {len(files)}, Active IOCs: {active_iocs}")
         
-        es = OpenSearch(
-            hosts=[{'host': 'localhost', 'port': 9200}],
-            http_compress=True,
-            use_ssl=False,
-            verify_certs=False,
-            ssl_assert_hostname=False,
-            ssl_show_warn=False,
-            connection_class=RequestsHttpConnection,
-            timeout=5  # Fast timeout for existence checks
-        )
-        
-        files_queued = 0
-        files_skipped = 0
-        skipped_details = []
-        
-        # Bulk delete ALL IOC matches for case (faster than per-file)
-        total_ioc_matches_deleted = db.session.query(IOCMatch).filter_by(case_id=case_id).delete()
-        if total_ioc_matches_deleted > 0:
-            print(f"[Bulk Re-hunt IOCs] Deleted {total_ioc_matches_deleted} total IOC matches")
-        db.session.commit()
-        
-        for case_file in files:
-            try:
-                # Check if index exists for this file
-                index_name = make_index_name(case_file.case_id, case_file.original_filename)
-                
-                # Clear has_ioc_matches flags in OpenSearch (use shared connection)
-                if es.indices.exists(index=index_name):
-                    try:
-                        # Quick update - set has_ioc_matches to false for all docs (async)
-                        update_body = {
-                            "script": {
-                                "source": "ctx._source.has_ioc_matches = false; ctx._source.ioc_matches = []",
-                                "lang": "painless"
-                            },
-                            "query": {"match_all": {}}
-                        }
-                        es.update_by_query(index=index_name, body=update_body, conflicts='proceed', wait_for_completion=False)
-                        print(f"[Bulk Re-hunt IOCs] Cleared IOC flags for index {index_name}")
-                    except Exception as update_error:
-                        print(f"[Bulk Re-hunt IOCs] Could not clear IOC flags for {index_name}: {update_error}")
-                    
-                    # Queue v8.0 sequential processing (IOC only)
-                    case_file.indexing_status = 'Queued'
-                    case_file.celery_task_id = None
-                    db.session.commit()
-                    
-                    if celery_app:
-                        celery_app.send_task(
-                            'tasks.process_file_complete',
-                            args=[case_file.id, 'ioc_only'],
-                            queue='celery',
-                            priority=0,
-                        )
-                        files_queued += 1
-                        print(f"[Bulk Re-hunt IOCs] Queued v8.0 sequential processing for file ID {case_file.id}: {case_file.original_filename}")
-                else:
-                    print(f"[Bulk Re-hunt IOCs] Skipping {case_file.original_filename} - index doesn't exist")
-                    files_skipped += 1
-                    skipped_details.append(f"{case_file.original_filename} (index missing)")
-            except Exception as e:
-                print(f"[Bulk Re-hunt IOCs] Error queuing file {case_file.id}: {e}")
-                files_skipped += 1
-                skipped_details.append(f"{case_file.original_filename} (error: {str(e)[:50]})")
-                continue
-        
-        db.session.commit()
-        
-        # Build message
-        message_parts = []
-        if files_queued > 0:
-            message_parts.append(f"Queued {files_queued} file(s) for IOC re-hunting")
-        if files_skipped > 0:
-            message_parts.append(f"Skipped {files_skipped} file(s)")
-        
-        message = ". ".join(message_parts) if message_parts else "No files processed"
-        
-        print(f"[Bulk Re-hunt IOCs] Complete: {files_queued} queued, {files_skipped} skipped")
-        if skipped_details:
-            print(f"[Bulk Re-hunt IOCs] Skipped files: {', '.join(skipped_details[:5])}")  # Show first 5
-        
-        return jsonify({
-            'success': True,
-            'files_queued': files_queued,
-            'files_skipped': files_skipped,
-            'skipped_details': skipped_details[:10],  # Limit to first 10 for UI
-            'message': message
-        })
+        # Trigger V8.1 unified IOC hunting task (single task for entire case)
+        if celery_app:
+            from tasks import hunt_iocs_for_case
+            task = hunt_iocs_for_case.delay(case_id)
+            
+            print(f"[V8.1 Unified IOC Hunt] Queued task {task.id}")
+            log_audit('bulk_ioc_rehunt', 'bulk_operations', 
+                     f'Started V8.1 unified IOC hunt for {active_iocs} IOCs across {len(files)} files in case {case.name}', 
+                     success=True)
+            
+            return jsonify({
+                'success': True,
+                'task_id': task.id,
+                'files_count': len(files),
+                'iocs_count': active_iocs,
+                'message': f'Started unified IOC hunt for {active_iocs} IOCs across {len(files)} files'
+            })
+        else:
+            return jsonify({'success': False, 'message': 'Background worker not available. IOC hunting requires Celery.'}), 500
+            
     except Exception as e:
-        print(f"[Bulk Re-hunt IOCs] Error: {e}")
+        print(f"[V8.1 Unified IOC Hunt] Error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -2856,13 +2801,13 @@ def ioc_hunt():
         flash('No active IOCs to hunt for. Add IOCs first.', 'warning')
         return redirect(url_for('ioc_list'))
     
-    # Trigger background hunt task
+    # Trigger V8.1 unified IOC hunting task
     if celery_app:
-        from tasks import hunt_iocs
-        task = hunt_iocs.delay(case_id)
+        from tasks import hunt_iocs_for_case
+        task = hunt_iocs_for_case.delay(case_id)
         
-        log_audit('ioc_hunt', 'ioc_management', f'Started IOC hunt for {active_iocs} indicators in case {case.name}', success=True)
-        flash(f'🔍 IOC hunt started for {active_iocs} indicators. This may take a few minutes...', 'success')
+        log_audit('ioc_hunt', 'ioc_management', f'Started V8.1 unified IOC hunt for {active_iocs} indicators in case {case.name}', success=True)
+        flash(f'🔍 IOC hunt started for {active_iocs} indicators (V8.1 unified hunt). This may take a few minutes...', 'success')
     else:
         flash('Background worker not available. IOC hunting requires Celery.', 'error')
     

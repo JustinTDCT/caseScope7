@@ -2301,6 +2301,324 @@ def enrich_events_with_ioc_flags(hits, case_id, opensearch_client, db_session, l
         logger.warning(f"Failed to enrich events with IOC flags: {enrich_err}")
 
 
+def bulk_clear_ioc_data(case_id, logger):
+    """
+    Bulk clear ALL IOC data for a case in one operation.
+    This is used by both 'Hunt Now' and 'Re-hunt All IOCs' to ensure clean slate.
+    
+    Steps:
+    1. Delete all IOCMatch records for case (one database query)
+    2. Clear has_ioc_matches flags from all OpenSearch indices (bulk operation)
+    3. Reset IOC statistics
+    
+    Args:
+        case_id: Case ID to clear IOC data for
+        logger: Logger instance for output
+    
+    Returns:
+        dict with cleared_matches and cleared_events counts
+    """
+    from main import IOCMatch, IOC, CaseFile
+    
+    logger.info("="*80)
+    logger.info(f"BULK CLEAR IOC DATA - Case ID: {case_id}")
+    logger.info("="*80)
+    
+    try:
+        # Step 1: Get all IOC matches for this case before deleting (for OpenSearch clearing)
+        ioc_matches = db.session.query(IOCMatch).filter_by(case_id=case_id).all()
+        match_count = len(ioc_matches)
+        
+        # Collect unique (index_name, event_id) tuples for OpenSearch clearing
+        events_to_clear = set()
+        for match in ioc_matches:
+            if match.index_name and match.event_id:
+                events_to_clear.add((match.index_name, match.event_id))
+        
+        logger.info(f"Found {match_count} IOC matches to clear across {len(events_to_clear)} unique events")
+        
+        # Step 2: Bulk delete ALL IOCMatch records for this case
+        deleted = db.session.query(IOCMatch).filter_by(case_id=case_id).delete(synchronize_session=False)
+        commit_with_retry(db.session, logger_instance=logger)
+        logger.info(f"✓ Deleted {deleted} IOCMatch records from database")
+        
+        # Step 3: Bulk clear has_ioc_matches flags in OpenSearch
+        if events_to_clear:
+            from opensearchpy.helpers import bulk
+            actions = []
+            for index_name, event_id in events_to_clear:
+                actions.append({
+                    '_op_type': 'update',
+                    '_index': index_name,
+                    '_id': event_id,
+                    'doc': {
+                        'has_ioc_matches': False,
+                        'ioc_match_count': 0,
+                        'matched_iocs': []
+                    },
+                    'doc_as_upsert': False
+                })
+            
+            if actions:
+                try:
+                    success, failed = bulk(opensearch_client, actions, raise_on_error=False, ignore_status=404)
+                    logger.info(f"✓ Cleared IOC flags for {success} events in OpenSearch")
+                    if failed:
+                        logger.warning(f"Failed to clear flags for {len(failed)} events (may be deleted)")
+                except Exception as e:
+                    logger.warning(f"Error clearing IOC flags in OpenSearch: {e}")
+        
+        # Step 4: Reset IOC statistics
+        iocs = db.session.query(IOC).filter_by(case_id=case_id).all()
+        for ioc in iocs:
+            ioc.match_count = 0
+        commit_with_retry(db.session, logger_instance=logger)
+        logger.info(f"✓ Reset statistics for {len(iocs)} IOCs")
+        
+        logger.info("="*80)
+        logger.info(f"BULK CLEAR COMPLETE - Cleared {deleted} matches, {len(events_to_clear)} events")
+        logger.info("="*80)
+        
+        return {
+            'cleared_matches': deleted,
+            'cleared_events': len(events_to_clear)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error during bulk IOC clear: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {
+            'cleared_matches': 0,
+            'cleared_events': 0,
+            'error': str(e)
+        }
+
+
+@celery_app.task(bind=True, name='tasks.hunt_iocs_for_case')
+def hunt_iocs_for_case(self, case_id):
+    """
+    V8.1 UNIFIED IOC HUNTING
+    
+    This is the NEW unified IOC hunting task that replaces both:
+    - Old hunt_iocs (Hunt Now button)
+    - Old per-file IOC hunting (Re-hunt All IOCs button)
+    
+    Process:
+    1. Bulk clear ALL IOC data for case (one operation)
+    2. Hunt ALL IOCs across ALL files (all-fields search, v8.0.3 approach)
+    3. Bulk insert matches and update OpenSearch flags
+    
+    This ensures:
+    - Both operations use same code path
+    - No duplicate matches (always clear first)
+    - Consistent results (same search logic)
+    - Fast performance (bulk operations)
+    
+    Args:
+        case_id: Case ID to hunt IOCs for
+        
+    Returns:
+        dict with status, total_iocs, matches, cleared_matches
+    """
+    from datetime import datetime
+    import time
+    
+    logger.info("="*80)
+    logger.info(f"V8.1 UNIFIED IOC HUNT STARTED - Case ID: {case_id}")
+    logger.info("="*80)
+    
+    task_start_time = time.time()
+    
+    try:
+        with app.app_context():
+            # Import models
+            from main import Case, IOC, IOCMatch, CaseFile
+            
+            # Get case
+            case = db.session.get(Case, case_id)
+            if not case:
+                logger.error(f"Case {case_id} not found")
+                return {'status': 'error', 'message': 'Case not found'}
+            
+            # STEP 1: BULK CLEAR ALL IOC DATA
+            logger.info("STEP 1: Bulk clearing all IOC data for case")
+            clear_result = bulk_clear_ioc_data(case_id, logger)
+            cleared_matches = clear_result.get('cleared_matches', 0)
+            logger.info(f"✓ Cleared {cleared_matches} existing IOC matches")
+            
+            # Get all active IOCs for this case
+            iocs = db.session.query(IOC).filter_by(case_id=case_id, is_active=True).all()
+            
+            if not iocs:
+                logger.warning(f"No active IOCs found for case {case_id}")
+                return {
+                    'status': 'success',
+                    'message': 'No active IOCs to hunt',
+                    'total_iocs': 0,
+                    'matches': 0,
+                    'cleared_matches': cleared_matches
+                }
+            
+            logger.info(f"Found {len(iocs)} active IOCs to hunt")
+            
+            # Get all indexed files for this case
+            indexed_files = db.session.query(CaseFile).filter_by(
+                case_id=case_id,
+                is_indexed=True,
+                is_deleted=False
+            ).all()
+            
+            if not indexed_files:
+                logger.warning(f"No indexed files found for case {case_id}")
+                return {
+                    'status': 'success',
+                    'message': 'No indexed files',
+                    'total_iocs': len(iocs),
+                    'matches': 0,
+                    'cleared_matches': cleared_matches
+                }
+            
+            # Build list of indices
+            indices = [make_index_name(case_id, f.original_filename) for f in indexed_files]
+            logger.info(f"Searching across {len(indices)} indices")
+            
+            # STEP 2: HUNT ALL IOCs (using v8.0.3 all-fields approach)
+            logger.info("="*80)
+            logger.info("STEP 2: Hunting all IOCs with all-fields search")
+            logger.info("="*80)
+            
+            total_matches = 0
+            
+            # Process each IOC
+            for idx, ioc in enumerate(iocs, 1):
+                logger.info(f"Processing IOC {idx}/{len(iocs)}: {ioc.ioc_type}={ioc.ioc_value}")
+                
+                # Update progress
+                try:
+                    if self.request.id:
+                        self.update_state(
+                            state='PROGRESS',
+                            meta={
+                                'current': idx,
+                                'total': len(iocs),
+                                'ioc_type': ioc.ioc_type,
+                                'ioc_value': ioc.ioc_value[:50],
+                                'matches': total_matches
+                            }
+                        )
+                except (AttributeError, ValueError):
+                    pass
+                
+                # V8.0.3 ALL-FIELDS SEARCH (not field-specific)
+                search_value = ioc.ioc_value_normalized or ioc.ioc_value.lower()
+                query = {
+                    "query": {
+                        "query_string": {
+                            "query": f"*{search_value}*",
+                            "default_operator": "AND",
+                            "lenient": True
+                        }
+                    },
+                    "size": 10000
+                }
+                
+                try:
+                    # Search across ALL indices at once
+                    response = opensearch_client.search(
+                        index=','.join(indices),
+                        body=query,
+                        ignore_unavailable=True
+                    )
+                    
+                    hits = response['hits']['hits']
+                    logger.info(f"Found {len(hits)} matches for IOC {ioc.ioc_value}")
+                    
+                    ioc_match_count = 0
+                    
+                    # STEP 3: BULK INSERT MATCHES (no duplicate checks - we cleared first!)
+                    for hit in hits:
+                        event_id = hit['_id']
+                        index_name = hit['_index']
+                        source = hit['_source']
+                        
+                        # Extract metadata
+                        metadata = extract_ioc_match_metadata(source)
+                        event_timestamp = metadata['timestamp']
+                        source_filename = metadata['filename']
+                        
+                        # Create match (no duplicate check - we cleared first!)
+                        match = IOCMatch(
+                            case_id=case_id,
+                            ioc_id=ioc.id,
+                            event_id=event_id,
+                            index_name=index_name,
+                            event_timestamp=event_timestamp,
+                            source_filename=source_filename,
+                            matched_field='all_fields',  # All-fields search
+                            matched_value=ioc.ioc_value,
+                            hunt_type='auto'
+                        )
+                        db.session.add(match)
+                        ioc_match_count += 1
+                    
+                    # Update IOC statistics
+                    ioc.match_count = ioc_match_count
+                    if ioc_match_count > 0:
+                        ioc.last_seen = datetime.utcnow()
+                    ioc.last_hunted = datetime.utcnow()
+                    
+                    commit_with_retry(db.session, logger_instance=logger)
+                    total_matches += ioc_match_count
+                    
+                    logger.info(f"✓ Created {ioc_match_count} matches for IOC {ioc.ioc_value}")
+                    
+                    # Enrich OpenSearch events with IOC match flags
+                    if ioc_match_count > 0:
+                        enrich_events_with_ioc_flags(
+                            hits, case_id, opensearch_client, db.session, logger
+                        )
+                    
+                except Exception as ioc_err:
+                    logger.error(f"Error processing IOC {ioc.ioc_value}: {ioc_err}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    continue
+            
+            elapsed_time = time.time() - task_start_time
+            
+            logger.info("="*80)
+            logger.info("V8.1 UNIFIED IOC HUNT COMPLETED")
+            logger.info(f"IOCs Processed: {len(iocs)}")
+            logger.info(f"Total Matches: {total_matches}")
+            logger.info(f"Cleared Old Matches: {cleared_matches}")
+            logger.info(f"Duration: {elapsed_time:.2f}s")
+            logger.info("="*80)
+            
+            return {
+                'status': 'success',
+                'message': f'Found {total_matches} IOC matches',
+                'total_iocs': len(iocs),
+                'matches': total_matches,
+                'cleared_matches': cleared_matches,
+                'elapsed_time': elapsed_time
+            }
+            
+    except Exception as e:
+        logger.error("="*80)
+        logger.error(f"IOC HUNT FAILED: {e}")
+        logger.error("="*80)
+        import traceback
+        logger.error(traceback.format_exc())
+        
+        return {
+            'status': 'error',
+            'message': str(e),
+            'total_iocs': 0,
+            'matches': 0
+        }
+
+
 @celery_app.task(bind=True, name='tasks.hunt_iocs')
 def hunt_iocs(self, case_id):
     """
