@@ -2845,10 +2845,13 @@ def _hunt_iocs_helper(celery_task, file_id, case_file, index_name):
                             ioc_id=ioc.id,
                             case_id=case_file.case_id,
                             event_id=event_id,
+                            index_name=index_name,
                             source_filename=case_file.original_filename,
                             matched_field='auto_detected',
+                            matched_value=ioc.ioc_value,
                             event_timestamp=timestamp,
-                            detected_at=datetime.utcnow()
+                            detected_at=datetime.utcnow(),
+                            hunt_type='auto'
                         )
                         db.session.add(ioc_match)
                         total_matches += 1
