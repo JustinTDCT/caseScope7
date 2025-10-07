@@ -1323,7 +1323,11 @@ def get_case_stats(case_id):
         case_id=case_id, is_deleted=False
     ).scalar() or 0
     
-    # Count events with IOC matches
+    # Count IOC matches (total and unique events)
+    total_ioc_matches = db.session.query(
+        func.count(IOCMatch.id)
+    ).filter_by(case_id=case_id).scalar() or 0
+    
     events_with_iocs = db.session.query(
         func.count(func.distinct(IOCMatch.event_id))
     ).filter_by(case_id=case_id).scalar() or 0
@@ -1342,7 +1346,8 @@ def get_case_stats(case_id):
             'total_files': total_files,
             'total_events': total_events,
             'total_violations': total_violations,
-            'events_with_iocs': events_with_iocs
+            'total_ioc_matches': total_ioc_matches,  # NEW: Total IOCMatch records
+            'events_with_iocs': events_with_iocs  # Kept for compatibility
         }
     })
 
@@ -4719,7 +4724,7 @@ def render_file_list(case, files):
                                 <div id="stat-total-violations" class="stat-value" style="color: #ef4444; font-size: 1.8em; font-weight: 700;">-</div>
                             </div>
                             <div class="stat-item">
-                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">Events with IOCs</div>
+                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">Total IOC Matches</div>
                                 <div id="stat-events-iocs" class="stat-value" style="color: #f59e0b; font-size: 1.8em; font-weight: 700;">-</div>
                             </div>
                         </div>
@@ -5020,7 +5025,7 @@ def render_file_list(case, files):
                         document.getElementById('stat-total-files').textContent = data.totals.total_files.toLocaleString();
                         document.getElementById('stat-total-events').textContent = data.totals.total_events.toLocaleString();
                         document.getElementById('stat-total-violations').textContent = data.totals.total_violations.toLocaleString();
-                        document.getElementById('stat-events-iocs').textContent = data.totals.events_with_iocs.toLocaleString();
+                        document.getElementById('stat-events-iocs').textContent = data.totals.total_ioc_matches.toLocaleString();
                     }})
                     .catch(error => {{
                         console.error('Error updating case stats:', error);
