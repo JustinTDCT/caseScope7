@@ -2474,3 +2474,780 @@ def hunt_iocs(self, case_id):
         import traceback
         logger.error(traceback.format_exc())
         return {'status': 'error', 'message': str(e)}
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# V8.0 SEQUENTIAL FILE PROCESSING - HELPER FUNCTIONS
+# ════════════════════════════════════════════════════════════════════════════════
+#
+# These are INTERNAL helper functions (not Celery tasks)
+# Called by process_file_complete master task
+# Do NOT call these directly - use the master task
+#
+# ════════════════════════════════════════════════════════════════════════════════
+
+# ──────────────────────────────────────────────────────────────────────────────
+# INDEXING HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _index_evtx_helper(celery_task, file_id, case_file, file_path, index_name):
+    """
+    Index EVTX file to OpenSearch
+    
+    Returns:
+        dict: {'status': 'success'|'error', 'event_count': int, 'message': str}
+    """
+    import subprocess
+    import tempfile
+    
+    logger.info(f"[Index EVTX] Converting to JSONL: {file_path}")
+    
+    # Get case name once
+    case = db.session.get(Case, case_file.case_id)
+    case_name = case.name if case else ''
+    
+    jsonl_file = tempfile.mktemp(suffix='.jsonl')
+    
+    try:
+        # Convert EVTX to JSONL
+        subprocess.run([
+            '/opt/casescope/bin/evtx_dump',
+            '-t', '1',
+            '-o', 'jsonl',
+            '-f', jsonl_file,
+            file_path
+        ], check=True, capture_output=True, text=True, timeout=600)
+        
+        # Parse and index
+        events = []
+        event_count = 0
+        record_number = 0
+        last_progress = time.time()
+        
+        with open(jsonl_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                record_number += 1
+                try:
+                    event_dict = json.loads(line)
+                    if 'Event' in event_dict:
+                        event_data = event_dict['Event']
+                        flat_event = flatten_event(event_data)
+                        flat_event = normalize_event_fields(flat_event)
+                        
+                        # Add event type description
+                        from main import get_event_description
+                        event_id = (flat_event.get('System.EventID.#text') or 
+                                   flat_event.get('System.EventID') or 'N/A')
+                        channel = flat_event.get('System.Channel') or ''
+                        provider = (flat_event.get('System.Provider.#attributes.Name') or 
+                                   flat_event.get('System.Provider') or '')
+                        flat_event['event_type'] = get_event_description(event_id, channel, provider, flat_event)
+                        
+                        # Add metadata
+                        event_record_id = (flat_event.get('System.EventRecordID') or 
+                                         flat_event.get('System_EventRecordID') or record_number)
+                        
+                        flat_event['_casescope_metadata'] = {
+                            'case_id': case_file.case_id,
+                            'case_name': case_name,
+                            'file_id': file_id,
+                            'filename': case_file.original_filename,
+                            'indexed_at': datetime.utcnow().isoformat(),
+                            'record_number': str(event_record_id),
+                            'source_type': 'evtx'
+                        }
+                        
+                        events.append(flat_event)
+                        event_count += 1
+                        
+                        # Bulk index every 100 events
+                        if len(events) >= 100:
+                            bulk_index_events(index_name, events)
+                            events = []
+                            
+                            # Update progress every 5 seconds
+                            if time.time() - last_progress >= 5.0:
+                                case_file.event_count = event_count
+                                commit_with_retry(db.session, logger_instance=logger)
+                                celery_task.update_state(
+                                    state='PROGRESS',
+                                    meta={'current': event_count, 'total': case_file.estimated_event_count or event_count}
+                                )
+                                last_progress = time.time()
+                
+                except (json.JSONDecodeError, Exception) as e:
+                    logger.warning(f"Error processing record {record_number}: {e}")
+                    continue
+        
+        # Index remaining events
+        if events:
+            bulk_index_events(index_name, events)
+        
+        return {'status': 'success', 'event_count': event_count, 'message': f'Indexed {event_count:,} events'}
+    
+    finally:
+        if jsonl_file and os.path.exists(jsonl_file):
+            try:
+                os.remove(jsonl_file)
+            except:
+                pass
+
+
+def _index_ndjson_helper(celery_task, file_id, case_file, file_path, index_name):
+    """
+    Index NDJSON file to OpenSearch
+    
+    Returns:
+        dict: {'status': 'success'|'error', 'event_count': int, 'message': str}
+    """
+    logger.info(f"[Index NDJSON] Processing: {file_path}")
+    
+    # Get case name once
+    case = db.session.get(Case, case_file.case_id)
+    case_name = case.name if case else ''
+    
+    events = []
+    event_count = 0
+    last_progress = time.time()
+    
+    with open(file_path, 'r', encoding='utf-8') as f:
+        for line_num, line in enumerate(f, 1):
+            if not line.strip():
+                continue
+            
+            try:
+                event_data = json.loads(line)
+                flat_event = flatten_event(event_data)
+                flat_event = normalize_event_fields(flat_event)
+                
+                # Add metadata
+                flat_event['_casescope_metadata'] = {
+                    'case_id': case_file.case_id,
+                    'case_name': case_name,
+                    'file_id': file_id,
+                    'filename': case_file.original_filename,
+                    'indexed_at': datetime.utcnow().isoformat(),
+                    'record_number': str(line_num),
+                    'source_type': 'ndjson'
+                }
+                
+                events.append(flat_event)
+                event_count += 1
+                
+                # Bulk index every 100 events
+                if len(events) >= 100:
+                    bulk_index_events(index_name, events)
+                    events = []
+                    
+                    # Update progress every 5 seconds
+                    if time.time() - last_progress >= 5.0:
+                        case_file.event_count = event_count
+                        commit_with_retry(db.session, logger_instance=logger)
+                        celery_task.update_state(
+                            state='PROGRESS',
+                            meta={'current': event_count, 'total': case_file.estimated_event_count or event_count}
+                        )
+                        last_progress = time.time()
+            
+            except (json.JSONDecodeError, Exception) as e:
+                logger.warning(f"Error processing line {line_num}: {e}")
+                continue
+    
+    # Index remaining events
+    if events:
+        bulk_index_events(index_name, events)
+    
+    return {'status': 'success', 'event_count': event_count, 'message': f'Indexed {event_count:,} events'}
+
+
+def _process_sigma_helper(celery_task, file_id, case_file, file_path, index_name):
+    """
+    Process SIGMA rules using Chainsaw
+    
+    Returns:
+        dict: {'status': 'success'|'error', 'violations': int, 'message': str}
+    """
+    import subprocess
+    import tempfile
+    import shutil
+    
+    logger.info(f"[SIGMA] Processing rules for: {file_path}")
+    
+    # Get enabled rules
+    enabled_rules = db.session.query(SigmaRule).filter_by(is_enabled=True).all()
+    if not enabled_rules:
+        logger.warning("[SIGMA] No enabled rules found")
+        return {'status': 'success', 'violations': 0, 'message': 'No enabled rules'}
+    
+    logger.info(f"[SIGMA] Found {len(enabled_rules)} enabled rules")
+    
+    temp_dir = tempfile.mkdtemp(prefix='casescope_chainsaw_')
+    
+    try:
+        # Export rules
+        rules_dir = os.path.join(temp_dir, 'sigma_rules')
+        os.makedirs(rules_dir, exist_ok=True)
+        
+        for rule in enabled_rules:
+            rule_file = os.path.join(rules_dir, f"{rule.id}_{sanitize_filename(rule.title)}.yml")
+            with open(rule_file, 'w') as f:
+                f.write(rule.rule_yaml)
+        
+        # Run Chainsaw
+        chainsaw_output = os.path.join(temp_dir, 'detections.json')
+        subprocess.run([
+            '/opt/casescope/bin/chainsaw',
+            'hunt',
+            file_path,
+            '--sigma', rules_dir,
+            '--mapping', '/opt/casescope/chainsaw/mappings/sigma-event-logs-all.yml',
+            '--json',
+            '--output', chainsaw_output
+        ], check=True, capture_output=True, text=True, timeout=600)
+        
+        # Parse detections and create violations
+        total_violations = 0
+        detections_by_record = {}
+        
+        if os.path.exists(chainsaw_output) and os.path.getsize(chainsaw_output) > 0:
+            with open(chainsaw_output, 'r') as f:
+                chainsaw_results = json.load(f)
+            
+            for detection in chainsaw_results:
+                rule_name = detection.get('name', 'Unknown')
+                doc = detection.get('document', {})
+                
+                if not doc:
+                    continue
+                
+                # Extract EventRecordID
+                event = doc.get('data', {}).get('Event', {})
+                system = event.get('System', {})
+                event_record_id = str(system.get('EventRecordID', ''))
+                
+                if not event_record_id:
+                    continue
+                
+                # Create violation
+                import hashlib
+                event_id = hashlib.sha256(f"{file_id}_{event_record_id}".encode()).hexdigest()[:16]
+                
+                # Find matching rule
+                matching_rule = _find_matching_rule(enabled_rules, rule_name, detection.get('id', ''))
+                if not matching_rule:
+                    logger.warning(f"[SIGMA] Could not find rule for {rule_name}")
+                    continue
+                
+                violation = SigmaViolation(
+                    case_id=case_file.case_id,
+                    file_id=file_id,
+                    rule_id=matching_rule.id,
+                    event_id=event_id,
+                    event_data=json.dumps(doc.get('data', {})),
+                    matched_fields=json.dumps({'rule_name': rule_name}),
+                    severity=detection.get('level', 'medium')
+                )
+                db.session.add(violation)
+                total_violations += 1
+                
+                # Track for enrichment
+                if event_record_id not in detections_by_record:
+                    detections_by_record[event_record_id] = []
+                detections_by_record[event_record_id].append(detection)
+            
+            commit_with_retry(db.session, logger_instance=logger)
+            
+            # Enrich events
+            if detections_by_record:
+                enrich_events_with_detections(index_name, detections_by_record, file_id)
+        
+        return {'status': 'success', 'violations': total_violations, 'message': f'Found {total_violations} violations'}
+    
+    finally:
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+
+
+def _find_matching_rule(enabled_rules, rule_name, rule_id_yaml):
+    """Find matching rule in database"""
+    for rule in enabled_rules:
+        if rule.title == rule_name or rule_id_yaml in rule.rule_yaml:
+            return rule
+    return None
+
+
+def _hunt_iocs_helper(celery_task, file_id, case_file, index_name):
+    """
+    Hunt for IOCs in indexed events
+    
+    Returns:
+        dict: {'status': 'success'|'error', 'matches': int, 'message': str}
+    """
+    from main import IOC, IOCMatch
+    
+    logger.info(f"[IOC Hunt] Searching for IOCs in: {index_name}")
+    
+    # Get case IOCs
+    iocs = db.session.query(IOC).filter_by(case_id=case_file.case_id, is_active=True).all()
+    
+    if not iocs:
+        logger.warning("[IOC Hunt] No active IOCs found")
+        return {'status': 'success', 'matches': 0, 'message': 'No active IOCs'}
+    
+    logger.info(f"[IOC Hunt] Found {len(iocs)} active IOCs to hunt")
+    
+    total_matches = 0
+    field_mapping = get_ioc_field_mapping()
+    
+    for ioc in iocs:
+        search_fields = field_mapping.get(ioc.ioc_type, ['*'])
+        search_value = ioc.ioc_value_normalized or ioc.ioc_value.lower()
+        
+        # Build query
+        should_clauses = []
+        for field in search_fields:
+            should_clauses.append({
+                "query_string": {
+                    "query": f"*{search_value}*",
+                    "fields": [f"{field}*"],
+                    "default_operator": "AND",
+                    "lenient": True
+                }
+            })
+        
+        query = {
+            "query": {"bool": {"should": should_clauses, "minimum_should_match": 1}},
+            "size": 1000
+        }
+        
+        try:
+            response = opensearch_client.search(index=index_name, body=query)
+            hits = response['hits']['hits']
+            
+            if hits:
+                # Create IOCMatch records
+                for hit in hits:
+                    event_id = hit['_id']
+                    event_source = hit['_source']
+                    
+                    # Check if match already exists
+                    existing = db.session.query(IOCMatch).filter_by(
+                        ioc_id=ioc.id,
+                        event_id=event_id,
+                        case_id=case_file.case_id
+                    ).first()
+                    
+                    if not existing:
+                        timestamp = (event_source.get('System', {}).get('TimeCreated', {}).get('#attributes', {}).get('SystemTime') or 
+                                   event_source.get('@timestamp') or datetime.utcnow().isoformat())
+                        
+                        ioc_match = IOCMatch(
+                            ioc_id=ioc.id,
+                            case_id=case_file.case_id,
+                            event_id=event_id,
+                            source_filename=case_file.original_filename,
+                            matched_field='auto_detected',
+                            event_timestamp=timestamp,
+                            detected_at=datetime.utcnow()
+                        )
+                        db.session.add(ioc_match)
+                        total_matches += 1
+                
+                commit_with_retry(db.session, logger_instance=logger)
+                
+                # Enrich events with IOC flags
+                from opensearchpy.helpers import bulk as opensearch_bulk
+                bulk_updates = []
+                for hit in hits:
+                    bulk_updates.append({
+                        '_op_type': 'update',
+                        '_index': index_name,
+                        '_id': hit['_id'],
+                        'doc': {
+                            'has_ioc_matches': True,
+                            'ioc_matches': [{'ioc_id': ioc.id, 'ioc_value': ioc.ioc_value, 'ioc_type': ioc.ioc_type}]
+                        },
+                        'doc_as_upsert': True
+                    })
+                
+                if bulk_updates:
+                    opensearch_bulk(opensearch_client, bulk_updates, raise_on_error=False)
+        
+        except Exception as e:
+            logger.error(f"[IOC Hunt] Error searching for IOC {ioc.ioc_value}: {e}")
+            continue
+    
+    return {'status': 'success', 'matches': total_matches, 'message': f'Found {total_matches} IOC matches'}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DATA CLEARING HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _clear_all_file_data(file_id, case_file, index_name):
+    """Clear ALL data for file (reindex operation)"""
+    logger.info("[Clear Data] Removing all existing data for reindex...")
+    
+    # Delete OpenSearch index
+    if opensearch_client.indices.exists(index=index_name):
+        opensearch_client.indices.delete(index=index_name)
+        logger.info(f"[Clear Data] Deleted OpenSearch index: {index_name}")
+    
+    # Delete SIGMA violations
+    violations_deleted = db.session.query(SigmaViolation).filter_by(file_id=file_id).delete()
+    if violations_deleted > 0:
+        logger.info(f"[Clear Data] Deleted {violations_deleted} SIGMA violations")
+    
+    # Delete IOC matches
+    from main import IOCMatch
+    ioc_matches_deleted = db.session.query(IOCMatch).filter_by(
+        source_filename=case_file.original_filename,
+        case_id=case_file.case_id
+    ).delete()
+    if ioc_matches_deleted > 0:
+        logger.info(f"[Clear Data] Deleted {ioc_matches_deleted} IOC matches")
+    
+    # Reset file record
+    case_file.is_indexed = False
+    case_file.indexed_at = None
+    case_file.event_count = 0
+    case_file.violation_count = 0
+    case_file.estimated_event_count = None
+    
+    commit_with_retry(db.session, logger_instance=logger)
+    logger.info("[Clear Data] ✓ All data cleared - clean slate")
+
+
+def _clear_sigma_data(file_id, case_file):
+    """Clear only SIGMA data (re-run rules operation)"""
+    logger.info("[Clear SIGMA] Removing existing SIGMA detections...")
+    
+    violations_deleted = db.session.query(SigmaViolation).filter_by(file_id=file_id).delete()
+    if violations_deleted > 0:
+        logger.info(f"[Clear SIGMA] Deleted {violations_deleted} violations")
+    
+    case_file.violation_count = 0
+    commit_with_retry(db.session, logger_instance=logger)
+    logger.info("[Clear SIGMA] ✓ SIGMA data cleared")
+
+
+def _clear_ioc_data(file_id, case_file, index_name):
+    """Clear only IOC data (re-hunt operation)"""
+    logger.info("[Clear IOC] Removing existing IOC matches...")
+    
+    from main import IOCMatch
+    ioc_matches_deleted = db.session.query(IOCMatch).filter_by(
+        source_filename=case_file.original_filename,
+        case_id=case_file.case_id
+    ).delete()
+    if ioc_matches_deleted > 0:
+        logger.info(f"[Clear IOC] Deleted {ioc_matches_deleted} IOC matches")
+    
+    commit_with_retry(db.session, logger_instance=logger)
+    logger.info("[Clear IOC] ✓ IOC data cleared")
+
+
+def _count_evtx_events_helper(file_path):
+    """Count events in EVTX file using evtx_dump"""
+    import subprocess
+    
+    logger.info(f"[Count] Counting EVTX events: {file_path}")
+    
+    result = subprocess.run(
+        ['/opt/casescope/bin/evtx_dump', '-t', '1', '--no-confirm-overwrite', file_path],
+        capture_output=True,
+        text=True,
+        timeout=300
+    )
+    
+    if result.returncode != 0:
+        raise Exception(f"evtx_dump failed: {result.stderr}")
+    
+    # Parse output for event count
+    for line in result.stdout.split('\n'):
+        if 'Parsed' in line and 'records' in line:
+            parts = line.split()
+            for i, part in enumerate(parts):
+                if part == 'Parsed' and i+1 < len(parts):
+                    count = int(parts[i+1])
+                    logger.info(f"[Count] ✓ Found {count:,} events")
+                    return count
+    
+    # Fallback: estimate from file size
+    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    estimated = int(file_size_mb * 1000)
+    logger.warning(f"[Count] Could not parse count, estimating {estimated:,} events")
+    return estimated
+
+
+def _count_ndjson_events_helper(file_path):
+    """Count events in NDJSON file"""
+    logger.info(f"[Count] Counting NDJSON events: {file_path}")
+    
+    count = 0
+    with open(file_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.strip():
+                count += 1
+    
+    logger.info(f"[Count] ✓ Found {count:,} events")
+    return count
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# V8.0 SEQUENTIAL FILE PROCESSING - MASTER TASK
+# ════════════════════════════════════════════════════════════════════════════════
+#
+# PURPOSE: Process files sequentially (Index → SIGMA → IOC) without releasing worker
+# BENEFIT: Eliminates database lock issues from parallel processing
+# ARCHITECTURE: One worker owns one file completely from start to finish
+#
+# ════════════════════════════════════════════════════════════════════════════════
+
+@celery_app.task(bind=True, name='tasks.process_file_complete')
+def process_file_complete(self, file_id, operation='full'):
+    """
+    V8.0 Master Task - Sequential file processing without worker release
+    
+    Processes a file completely (Index → SIGMA → IOC) in ONE worker session.
+    Worker is not released until file reaches 'Completed' or 'Failed' status.
+    
+    Args:
+        file_id: CaseFile database ID
+        operation: Processing type
+            - 'full': Full processing (count → index → SIGMA → IOC)
+            - 'reindex': Clear all data, then full processing
+            - 'sigma_only': Clear SIGMA, run SIGMA → IOC
+            - 'ioc_only': Clear IOC, run IOC only
+    
+    Status Progression:
+        Queued → Estimating → Indexing → SIGMA Hunting → IOC Hunting → Completed
+    
+    Benefits:
+        - No database locks (one worker = one file)
+        - No transaction rollbacks
+        - Predictable sequential processing
+        - Worker failures isolated to single file
+    
+    Returns:
+        dict: {'status': 'success'|'error', 'message': str, 'stats': dict}
+    """
+    import time
+    import subprocess
+    import tempfile
+    import shutil
+    
+    task_start_time = time.time()
+    
+    logger.info("="*80)
+    logger.info(f"V8.0 SEQUENTIAL FILE PROCESSING STARTED")
+    logger.info(f"Task ID: {self.request.id}")
+    logger.info(f"File ID: {file_id}")
+    logger.info(f"Operation: {operation}")
+    logger.info(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("="*80)
+    
+    with app.app_context():
+        try:
+            # Get file record
+            case_file = db.session.get(CaseFile, file_id)
+            if not case_file:
+                logger.error(f"File ID {file_id} not found in database")
+                return {'status': 'error', 'message': f'File ID {file_id} not found'}
+            
+            case = db.session.get(Case, case_file.case_id)
+            if not case:
+                logger.error(f"Case ID {case_file.case_id} not found")
+                return {'status': 'error', 'message': f'Case not found'}
+            
+            filename = case_file.original_filename
+            file_path = case_file.file_path
+            
+            logger.info(f"Processing: {filename}")
+            logger.info(f"Case: {case.name}")
+            logger.info(f"File path: {file_path}")
+            
+            # Verify file exists
+            if not os.path.exists(file_path):
+                case_file.indexing_status = 'Failed'
+                commit_with_retry(db.session, logger_instance=logger)
+                return {'status': 'error', 'message': f'File not found: {file_path}'}
+            
+            # Determine file type
+            is_evtx = filename.lower().endswith('.evtx')
+            is_ndjson = filename.lower().endswith('.ndjson')
+            
+            if not (is_evtx or is_ndjson):
+                logger.warning(f"Unknown file type: {filename}, attempting EVTX processing")
+                is_evtx = True
+            
+            # Generate index name
+            index_name = make_index_name(case.id, filename)
+            logger.info(f"Target index: {index_name}")
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # STEP 1: HANDLE OPERATION TYPE (Clear data if needed)
+            # ═══════════════════════════════════════════════════════════════════
+            
+            if operation == 'reindex':
+                logger.info("Operation: REINDEX - Clearing all existing data...")
+                _clear_all_file_data(file_id, case_file, index_name)
+            elif operation == 'sigma_only':
+                logger.info("Operation: SIGMA ONLY - Clearing SIGMA data...")
+                _clear_sigma_data(file_id, case_file)
+            elif operation == 'ioc_only':
+                logger.info("Operation: IOC ONLY - Clearing IOC data...")
+                _clear_ioc_data(file_id, case_file, index_name)
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # STEP 2: COUNT EVENTS (if full/reindex operation)
+            # ═══════════════════════════════════════════════════════════════════
+            
+            if operation in ['full', 'reindex']:
+                logger.info("STEP: Event Counting")
+                case_file.indexing_status = 'Estimating'
+                commit_with_retry(db.session, logger_instance=logger)
+                
+                if is_evtx:
+                    event_count = _count_evtx_events_helper(file_path)
+                else:
+                    event_count = _count_ndjson_events_helper(file_path)
+                
+                case_file.estimated_event_count = event_count
+                commit_with_retry(db.session, logger_instance=logger)
+                logger.info(f"✓ Counted {event_count:,} events")
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # STEP 3: INDEX EVENTS (if full/reindex operation)
+            # ═══════════════════════════════════════════════════════════════════
+            
+            if operation in ['full', 'reindex']:
+                logger.info("STEP: Indexing Events")
+                case_file.indexing_status = 'Indexing'
+                commit_with_retry(db.session, logger_instance=logger)
+                
+                write_audit_log('INDEX', case.name, filename, 
+                              f"Started indexing est. {case_file.estimated_event_count or 'unknown'} events")
+                
+                if is_evtx:
+                    result = _index_evtx_helper(self, file_id, case_file, file_path, index_name)
+                else:
+                    result = _index_ndjson_helper(self, file_id, case_file, file_path, index_name)
+                
+                if result['status'] == 'error':
+                    case_file.indexing_status = 'Failed'
+                    commit_with_retry(db.session, logger_instance=logger)
+                    write_audit_log('INDEX', case.name, filename, f"ERROR: {result['message'][:100]}")
+                    return result
+                
+                case_file.event_count = result['event_count']
+                case_file.indexed_at = datetime.utcnow()
+                case_file.is_indexed = True
+                commit_with_retry(db.session, logger_instance=logger)
+                
+                write_audit_log('INDEX', case.name, filename, 
+                              f"Finished indexing, {result['event_count']} events indexed")
+                logger.info(f"✓ Indexed {result['event_count']:,} events")
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # STEP 4: SIGMA PROCESSING (if EVTX and not ioc_only)
+            # ═══════════════════════════════════════════════════════════════════
+            
+            if is_evtx and operation != 'ioc_only':
+                logger.info("STEP: SIGMA Rule Processing")
+                case_file.indexing_status = 'SIGMA Hunting'
+                commit_with_retry(db.session, logger_instance=logger)
+                
+                write_audit_log('SIGMA', case.name, filename, 
+                              f"Started SIGMA processing est. {case_file.event_count or 'unknown'} events")
+                
+                result = _process_sigma_helper(self, file_id, case_file, file_path, index_name)
+                
+                if result['status'] == 'error':
+                    case_file.indexing_status = 'Failed'
+                    commit_with_retry(db.session, logger_instance=logger)
+                    write_audit_log('SIGMA', case.name, filename, f"ERROR: {result['message'][:100]}")
+                    return result
+                
+                case_file.violation_count = result['violations']
+                commit_with_retry(db.session, logger_instance=logger)
+                
+                write_audit_log('SIGMA', case.name, filename, 
+                              f"Finished SIGMA processing, {case_file.event_count} events with {result['violations']} violations")
+                logger.info(f"✓ Found {result['violations']} SIGMA violations")
+            else:
+                if not is_evtx:
+                    logger.info("STEP: SIGMA Processing - SKIPPED (NDJSON file)")
+                elif operation == 'ioc_only':
+                    logger.info("STEP: SIGMA Processing - SKIPPED (ioc_only operation)")
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # STEP 5: IOC HUNTING (always run unless reindex-only)
+            # ═══════════════════════════════════════════════════════════════════
+            
+            logger.info("STEP: IOC Hunting")
+            case_file.indexing_status = 'IOC Hunting'
+            commit_with_retry(db.session, logger_instance=logger)
+            
+            write_audit_log('IOC', case.name, filename, 
+                          f"Started IOC hunting est. {case_file.event_count or 'unknown'} events")
+            
+            result = _hunt_iocs_helper(self, file_id, case_file, index_name)
+            
+            if result['status'] == 'error':
+                case_file.indexing_status = 'Failed'
+                commit_with_retry(db.session, logger_instance=logger)
+                write_audit_log('IOC', case.name, filename, f"ERROR: {result['message'][:100]}")
+                return result
+            
+            write_audit_log('IOC', case.name, filename, 
+                          f"Finished IOC hunting, {case_file.event_count} events with {result['matches']} IOC matches")
+            logger.info(f"✓ Found {result['matches']} IOC matches")
+            
+            # ═══════════════════════════════════════════════════════════════════
+            # STEP 6: MARK COMPLETED
+            # ═══════════════════════════════════════════════════════════════════
+            
+            case_file.indexing_status = 'Completed'
+            case_file.celery_task_id = None
+            commit_with_retry(db.session, logger_instance=logger)
+            
+            task_duration = time.time() - task_start_time
+            
+            logger.info("="*80)
+            logger.info(f"V8.0 SEQUENTIAL PROCESSING COMPLETED")
+            logger.info(f"File: {filename}")
+            logger.info(f"Events: {case_file.event_count:,}")
+            logger.info(f"SIGMA Violations: {case_file.violation_count}")
+            logger.info(f"IOC Matches: {result.get('matches', 0)}")
+            logger.info(f"Duration: {task_duration:.2f} seconds ({task_duration/60:.2f} minutes)")
+            logger.info("="*80)
+            
+            return {
+                'status': 'success',
+                'message': 'File processing completed',
+                'stats': {
+                    'event_count': case_file.event_count,
+                    'violations': case_file.violation_count,
+                    'ioc_matches': result.get('matches', 0),
+                    'duration': task_duration
+                }
+            }
+        
+        except Exception as e:
+            logger.error("="*80)
+            logger.error(f"V8.0 SEQUENTIAL PROCESSING FAILED: {e}")
+            logger.error("="*80)
+            import traceback
+            logger.error(traceback.format_exc())
+            
+            try:
+                case_file = db.session.get(CaseFile, file_id)
+                if case_file:
+                    case_file.indexing_status = 'Failed'
+                    case_file.celery_task_id = None
+                    commit_with_retry(db.session, logger_instance=logger)
+            except Exception as db_err:
+                logger.error(f"Failed to update file status: {db_err}")
+            
+            return {'status': 'error', 'message': str(e)}

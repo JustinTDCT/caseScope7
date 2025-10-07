@@ -48,6 +48,7 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,  # CRITICAL: Only fetch 1 task at a time (enables queue limiting)
     worker_max_tasks_per_child=50,
     # NOTE: worker_concurrency is set in systemd service file (--concurrency=2)
+    # V8.0: With sequential processing (Index→SIGMA→IOC in ONE task), 2 workers = 2 files at once, no overlaps
     # Explicit queue configuration
     task_default_queue='celery',
     task_default_exchange='celery',

@@ -1452,17 +1452,17 @@ def reindex_file(file_id):
         
         print(f"[Re-index] Reset file status to 'Queued', all counters cleared")
         
-        # STEP 6: Queue fresh indexing task
+        # STEP 6: Queue v8.0 sequential processing task
         try:
             if celery_app:
                 celery_app.send_task(
-                    'tasks.start_file_indexing',
-                    args=[file_id],
+                    'tasks.process_file_complete',
+                    args=[file_id, 'reindex'],
                     queue='celery',
                     priority=0,
                 )
                 flash(f'✓ Re-indexing started for {case_file.original_filename}', 'success')
-                print(f"[Re-index] Queued fresh indexing task for file ID {file_id}")
+                print(f"[Re-index] Queued v8.0 sequential processing (reindex) for file ID {file_id}")
             else:
                 flash(f'Celery worker not available', 'error')
                 print(f"[Re-index] ERROR: Celery not available")
@@ -1578,16 +1578,12 @@ def rerun_rules(file_id):
         db.session.commit()
         print(f"[Re-run Rules] Reset status to 'Queued' for SIGMA re-processing")
         
-        # STEP 4: Queue SIGMA processing task (will move to SIGMA Hunting status)
+        # STEP 4: Queue v8.0 sequential processing (SIGMA + IOC)
         try:
-            from tasks import make_index_name
-            
-            index_name = make_index_name(case_file.case_id, case_file.original_filename)
-            
             if celery_app:
                 task = celery_app.send_task(
-                    'tasks.process_sigma_rules',
-                    args=[file_id, index_name],
+                    'tasks.process_file_complete',
+                    args=[file_id, 'sigma_only'],
                     queue='celery',
                     priority=0,
                 )
@@ -1597,7 +1593,7 @@ def rerun_rules(file_id):
                 db.session.commit()
                 
                 flash(f'✓ Re-running SIGMA rules for {case_file.original_filename}', 'success')
-                print(f"[Re-run Rules] Queued SIGMA task {task.id} for file ID {file_id}")
+                print(f"[Re-run Rules] Queued v8.0 sequential processing (sigma_only) task {task.id} for file ID {file_id}")
             else:
                 flash(f'Celery worker not available', 'error')
                 print(f"[Re-run Rules] ERROR: Celery not available")
@@ -1716,17 +1712,12 @@ def rehunt_iocs(file_id):
         db.session.commit()
         print(f"[Re-hunt IOCs] Reset status to 'Queued' for IOC re-hunting")
         
-        # STEP 4: Queue IOC hunting task
+        # STEP 4: Queue v8.0 sequential processing (IOC only)
         try:
-            from tasks import make_index_name
-            
-            index_name = make_index_name(case_file.case_id, case_file.original_filename)
-            
             if celery_app:
-                # Call hunt_iocs_for_file as a Celery task
                 task = celery_app.send_task(
-                    'tasks.hunt_iocs_for_file',
-                    args=[file_id, index_name],
+                    'tasks.process_file_complete',
+                    args=[file_id, 'ioc_only'],
                     queue='celery',
                     priority=0,
                 )
@@ -1736,7 +1727,7 @@ def rehunt_iocs(file_id):
                 db.session.commit()
                 
                 flash(f'✓ Re-hunting IOCs for {case_file.original_filename}', 'success')
-                print(f"[Re-hunt IOCs] Queued IOC hunting task {task.id} for file ID {file_id}")
+                print(f"[Re-hunt IOCs] Queued v8.0 sequential processing (ioc_only) task {task.id} for file ID {file_id}")
             else:
                 flash(f'Celery worker not available', 'error')
                 print(f"[Re-hunt IOCs] ERROR: Celery not available")
@@ -1789,16 +1780,16 @@ def api_reindex_all_files():
                 case_file.violation_count = 0
                 db.session.commit()
                 
-                # Queue indexing task
+                # Queue v8.0 sequential processing task
                 if celery_app:
                     celery_app.send_task(
-                        'tasks.start_file_indexing',
-                        args=[case_file.id],
+                        'tasks.process_file_complete',
+                        args=[case_file.id, 'reindex'],
                         queue='celery',
                         priority=0,
                     )
                     files_queued += 1
-                    print(f"[Bulk Re-index] Queued file ID {case_file.id}: {case_file.original_filename}")
+                    print(f"[Bulk Re-index] Queued v8.0 sequential processing for file ID {case_file.id}: {case_file.original_filename}")
             except Exception as e:
                 print(f"[Bulk Re-index] Error queuing file {case_file.id}: {e}")
                 continue
@@ -1851,19 +1842,16 @@ def api_rerun_all_rules():
                 case_file.violation_count = 0
                 db.session.commit()
                 
-                # Queue SIGMA rule processing
+                # Queue v8.0 sequential processing (SIGMA + IOC)
                 if celery_app:
-                    from tasks import make_index_name
-                    index_name = make_index_name(case_file.case_id, case_file.original_filename)
-                    
                     celery_app.send_task(
-                        'tasks.process_sigma_rules',
-                        args=[case_file.id, index_name],
+                        'tasks.process_file_complete',
+                        args=[case_file.id, 'sigma_only'],
                         queue='celery',
                         priority=0,
                     )
                     files_queued += 1
-                    print(f"[Bulk Re-run Rules] Queued file ID {case_file.id}: {case_file.original_filename}")
+                    print(f"[Bulk Re-run Rules] Queued v8.0 sequential processing for file ID {case_file.id}: {case_file.original_filename}")
             except Exception as e:
                 print(f"[Bulk Re-run Rules] Error queuing file {case_file.id}: {e}")
                 continue
@@ -1949,20 +1937,20 @@ def api_rehunt_all_iocs():
                     except Exception as update_error:
                         print(f"[Bulk Re-hunt IOCs] Could not clear IOC flags for {index_name}: {update_error}")
                     
-                    # Queue IOC hunting if index exists
+                    # Queue v8.0 sequential processing (IOC only)
                     case_file.indexing_status = 'Queued'
                     case_file.celery_task_id = None
                     db.session.commit()
                     
                     if celery_app:
                         celery_app.send_task(
-                            'tasks.hunt_iocs_for_file',
-                            args=[case_file.id, index_name],
+                            'tasks.process_file_complete',
+                            args=[case_file.id, 'ioc_only'],
                             queue='celery',
                             priority=0,
                         )
                         files_queued += 1
-                        print(f"[Bulk Re-hunt IOCs] Queued file ID {case_file.id}: {case_file.original_filename}")
+                        print(f"[Bulk Re-hunt IOCs] Queued v8.0 sequential processing for file ID {case_file.id}: {case_file.original_filename}")
                 else:
                     print(f"[Bulk Re-hunt IOCs] Skipping {case_file.original_filename} - index doesn't exist")
                     files_skipped += 1
