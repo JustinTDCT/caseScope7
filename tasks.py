@@ -1929,12 +1929,13 @@ def hunt_iocs_for_file(self, file_id, index_name):
                 # Build multi-field query with nested field support
                 should_clauses = []
                 for field in search_fields:
-                    # Use wildcard query for nested field support (e.g., EventData.Data_12.#text)
+                    # Use query_string with lenient flag to ignore incompatible field types
                     should_clauses.append({
                         "query_string": {
                             "query": f"*{search_value}*",
                             "fields": [f"{field}*"],  # Wildcard to match nested paths
-                            "default_operator": "AND"
+                            "default_operator": "AND",
+                            "lenient": True  # Ignore field type errors
                         }
                     })
                 
