@@ -2826,35 +2826,30 @@ def _hunt_iocs_helper(celery_task, file_id, case_file, index_name):
             
             if hits:
                 # Create IOCMatch records
+                # NOTE: We don't check for duplicates because:
+                # 1. ioc_only operation clears all IOC data first (no duplicates possible)
+                # 2. Checking every match = hundreds/thousands of DB queries (CPU killer!)
                 for hit in hits:
                     event_id = hit['_id']
                     event_source = hit['_source']
                     
-                    # Check if match already exists
-                    existing = db.session.query(IOCMatch).filter_by(
-                        ioc_id=ioc.id,
-                        event_id=event_id,
-                        case_id=case_file.case_id
-                    ).first()
+                    timestamp = (event_source.get('System', {}).get('TimeCreated', {}).get('#attributes', {}).get('SystemTime') or 
+                               event_source.get('@timestamp') or datetime.utcnow().isoformat())
                     
-                    if not existing:
-                        timestamp = (event_source.get('System', {}).get('TimeCreated', {}).get('#attributes', {}).get('SystemTime') or 
-                                   event_source.get('@timestamp') or datetime.utcnow().isoformat())
-                        
-                        ioc_match = IOCMatch(
-                            ioc_id=ioc.id,
-                            case_id=case_file.case_id,
-                            event_id=event_id,
-                            index_name=index_name,
-                            source_filename=case_file.original_filename,
-                            matched_field='auto_detected',
-                            matched_value=ioc.ioc_value,
-                            event_timestamp=timestamp,
-                            detected_at=datetime.utcnow(),
-                            hunt_type='auto'
-                        )
-                        db.session.add(ioc_match)
-                        total_matches += 1
+                    ioc_match = IOCMatch(
+                        ioc_id=ioc.id,
+                        case_id=case_file.case_id,
+                        event_id=event_id,
+                        index_name=index_name,
+                        source_filename=case_file.original_filename,
+                        matched_field='auto_detected',
+                        matched_value=ioc.ioc_value,
+                        event_timestamp=timestamp,
+                        detected_at=datetime.utcnow(),
+                        hunt_type='auto'
+                    )
+                    db.session.add(ioc_match)
+                    total_matches += 1
                 
                 commit_with_retry(db.session, logger_instance=logger)
                 
