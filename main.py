@@ -7169,6 +7169,15 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
                 document.querySelectorAll('.event-json-interactive').forEach(container => {{
                     const jsonData = JSON.parse(container.getAttribute('data-event-json'));
                     container.innerHTML = renderInteractiveJson(jsonData, '');
+                    
+                    // Add event delegation for IOC buttons (safer than inline onclick)
+                    container.querySelectorAll('.ioc-add-btn').forEach(btn => {{
+                        btn.addEventListener('click', function() {{
+                            const value = this.getAttribute('data-ioc-value');
+                            const fieldPath = this.getAttribute('data-ioc-path');
+                            showIocModal(value, fieldPath);
+                        }});
+                    }});
                 }});
             }}
             
@@ -7177,9 +7186,13 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
                 if (typeof obj === 'boolean') return '<span style="color: #3b82f6;">' + obj + '</span>';
                 if (typeof obj === 'number') return '<span style="color: #10b981;">' + obj + '</span>';
                 if (typeof obj === 'string') {{
-                    const escaped = obj.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    // HTML escape for display
+                    const displayEscaped = obj.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    // HTML attribute escape for data attributes (safer than inline onclick)
+                    const attrEscaped = obj.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const pathEscaped = path.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     const fullPath = path;
-                    return `<span style="color: #f59e0b;">"${{escaped}}"</span><button class="ioc-add-btn" onclick="showIocModal('${{escaped}}', '${{fullPath}}')" title="Add as IOC">+</button>`;
+                    return `<span style="color: #f59e0b;">"${{displayEscaped}}"</span><button class="ioc-add-btn" data-ioc-value="${{attrEscaped}}" data-ioc-path="${{pathEscaped}}" title="Add as IOC">+</button>`;
                 }}
                 
                 if (Array.isArray(obj)) {{
