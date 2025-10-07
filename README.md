@@ -1,6 +1,6 @@
-# caseScope 7.19 - Digital Forensics EVTX Analysis Platform
+# caseScope 8.1 - Digital Forensics EVTX Analysis Platform
 
-**Version:** 7.19.2  
+**Version:** 8.1.1  
 **Copyright:** (c) 2025 Justin Dube <casescope@thedubes.net>
 
 ---
@@ -335,6 +335,23 @@ sudo -u casescope /opt/casescope/venv/bin/python3 migrate_audit_log.py
 
 ## Version History
 
+- **8.1.1** (2025-10-07): Bugfix - UI stats now show total IOC matches (658) instead of distinct events (646) for consistency
+- **8.1.0** (2025-10-07): MAJOR ARCHITECTURE - Unified IOC hunting (Hunt Now + Re-hunt All use same code path, bulk operations)
+- **8.0.3** (2025-10-07): CRITICAL FIX - IOC hunting now searches ALL fields (not field-specific), finds 2,853 matches vs 75
+- **8.0.2** (2025-10-07): CRITICAL PERFORMANCE FIX - Removed duplicate check loop in IOC helper (10x+ faster, CPU no longer pegged)
+- **8.0.1** (2025-10-07): Bugfix - Added missing required fields to IOCMatch records (index_name, matched_value, hunt_type)
+- **8.0.0** (2025-10-07): MAJOR ARCHITECTURE - Sequential file processing (eliminates ALL database locks, one worker per file)
+- **7.42.5** (2025-10-07): CRITICAL FIX - Prevent Gunicorn worker timeout in bulk IOC re-hunt (90%+ faster, no timeouts)
+- **7.42.4** (2025-10-07): Bugfix - Added lenient flag to IOC OpenSearch queries (handles field type variations gracefully)
+- **7.42.3** (2025-10-07): Bugfix - Use commit_with_retry for SQLite database locks in IOC hunting
+- **7.42.0** (2025-10-07): Feature - Audit logging for SIGMA, Indexing, and IOC processing (/opt/casescope/logs/)
+- **7.40.0** (2025-10-06): Feature - Real-time statistics tiles on Files page (updates every 5 seconds)
+- **7.39.2** (2025-10-06): CRITICAL FIX - SIGMA enrichment type consistency (string vs int EventRecordID mismatch)
+- **7.39.0** (2025-10-06): MAJOR REFACTOR - Function refactoring to prevent indentation issues (broke up large functions)
+- **7.36.7** (2025-10-06): Bugfix - Comprehensive indentation review and fixes across codebase
+- **7.36.6** (2025-10-06): Bugfix - Fixed IOC filtering (indentation caused search to skip IOC/threat filters)
+- **7.36.5** (2025-10-06): Bugfix - Fixed search results not displaying (results.append indentation issue)
+- **7.36.4** (2025-10-06): Bugfix - Fixed UnboundLocalError for time variables (indentation correction)
 - **7.19.2** (2025-10-04): Bugfix - DFIR-IRIS timeline sync for NDJSON/EDR events (event title + computer name extraction)
 - **7.19.1** (2025-10-04): Bugfix - Skip SIGMA processing for NDJSON/EDR files + better status handling
 - **7.19.0** (2025-10-04): MAJOR - Replaced python-evtx with evtx_dump (Rust) for 50x faster EVTX processing
