@@ -2797,27 +2797,21 @@ def _hunt_iocs_helper(celery_task, file_id, case_file, index_name):
     logger.info(f"[IOC Hunt] Found {len(iocs)} active IOCs to hunt")
     
     total_matches = 0
-    field_mapping = get_ioc_field_mapping()
     
     for ioc in iocs:
-        search_fields = field_mapping.get(ioc.ioc_type, ['*'])
         search_value = ioc.ioc_value_normalized or ioc.ioc_value.lower()
         
-        # Build query
-        should_clauses = []
-        for field in search_fields:
-            should_clauses.append({
+        # Search ALL fields - IOC can appear anywhere in event
+        # Same approach as regular search (finds ALL occurrences)
+        query = {
+            "query": {
                 "query_string": {
                     "query": f"*{search_value}*",
-                    "fields": [f"{field}*"],
                     "default_operator": "AND",
                     "lenient": True
                 }
-            })
-        
-        query = {
-            "query": {"bool": {"should": should_clauses, "minimum_should_match": 1}},
-            "size": 1000
+            },
+            "size": 10000  # Increased from 1000 to handle more matches
         }
         
         try:
