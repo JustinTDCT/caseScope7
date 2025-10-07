@@ -1901,7 +1901,7 @@ def api_rehunt_all_iocs():
                 if ioc_matches_deleted > 0:
                     print(f"[Bulk Re-hunt IOCs] Deleted {ioc_matches_deleted} IOC matches for file ID {case_file.id}")
                 
-                # Clear has_ioc_matches flags in OpenSearch
+                # Clear has_ioc_matches flags in OpenSearch (skip if index doesn't exist)
                 try:
                     from opensearchpy import OpenSearch
                     from opensearchpy.helpers import bulk as opensearch_bulk
@@ -1918,19 +1918,27 @@ def api_rehunt_all_iocs():
                     index_name = make_index_name(case_file.case_id, case_file.original_filename)
                     
                     if es.indices.exists(index=index_name):
-                        # Quick update - set has_ioc_matches to false for all docs
-                        update_body = {
-                            "script": {
-                                "source": "ctx._source.has_ioc_matches = false; ctx._source.ioc_matches = []",
-                                "lang": "painless"
-                            },
-                            "query": {"match_all": {}}
-                        }
-                        es.update_by_query(index=index_name, body=update_body, conflicts='proceed')
-                        print(f"[Bulk Re-hunt IOCs] Cleared IOC flags for index {index_name}")
+                        try:
+                            # Quick update - set has_ioc_matches to false for all docs
+                            update_body = {
+                                "script": {
+                                    "source": "ctx._source.has_ioc_matches = false; ctx._source.ioc_matches = []",
+                                    "lang": "painless"
+                                },
+                                "query": {"match_all": {}}
+                            }
+                            es.update_by_query(index=index_name, body=update_body, conflicts='proceed')
+                            print(f"[Bulk Re-hunt IOCs] Cleared IOC flags for index {index_name}")
+                        except Exception as update_error:
+                            print(f"[Bulk Re-hunt IOCs] Could not clear IOC flags for {index_name}: {update_error}")
+                    else:
+                        print(f"[Bulk Re-hunt IOCs] Skipping {case_file.original_filename} - index doesn't exist (file not indexed yet)")
+                        continue  # Skip to next file - don't queue IOC hunting for non-indexed files
                 except Exception as es_error:
-                    print(f"[Bulk Re-hunt IOCs] Error clearing OpenSearch IOC flags: {es_error}")
+                    print(f"[Bulk Re-hunt IOCs] Error with OpenSearch for {case_file.original_filename}: {es_error}")
+                    continue  # Skip this file on error
                 
+                # Only queue IOC hunting if index exists
                 # Reset file status to Queued for IOC hunting
                 case_file.indexing_status = 'Queued'
                 case_file.celery_task_id = None
