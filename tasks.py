@@ -1857,7 +1857,7 @@ def hunt_iocs_for_file(self, file_id, index_name):
             
             # Update status
             case_file.indexing_status = 'IOC Hunting'
-            db.session.commit()
+            commit_with_retry(db.session, logger_instance=logger)
             logger.info(f"Status updated to 'IOC Hunting' for file: {case_file.original_filename}")
             
             # AUDIT LOG: Started IOC hunting
@@ -1873,7 +1873,7 @@ def hunt_iocs_for_file(self, file_id, index_name):
             if not iocs:
                 logger.warning(f"No active IOCs found for case {case_file.case_id}")
                 case_file.indexing_status = 'Completed'
-                db.session.commit()
+                commit_with_retry(db.session, logger_instance=logger)
                 return {'status': 'success', 'message': 'No active IOCs to hunt', 'total_iocs': 0, 'matches': 0}
             
             logger.info(f"Found {len(iocs)} active IOCs to hunt")
@@ -1987,7 +1987,7 @@ def hunt_iocs_for_file(self, file_id, index_name):
                                 total_matches += 1
                         
                         # Commit matches in batches
-                        db.session.commit()
+                        commit_with_retry(db.session, logger_instance=logger)
                         
                         # Enrich OpenSearch events with IOC match flags
                         bulk_updates = []
@@ -2015,7 +2015,7 @@ def hunt_iocs_for_file(self, file_id, index_name):
             # Mark file as completed
             case_file.indexing_status = 'Completed'
             case_file.celery_task_id = None
-            db.session.commit()
+            commit_with_retry(db.session, logger_instance=logger)
             
             task_duration = time.time() - task_start_time
             logger.info("="*80)
@@ -2057,7 +2057,7 @@ def hunt_iocs_for_file(self, file_id, index_name):
                         # AUDIT LOG: Error during IOC hunting
                         write_audit_log('IOC', case.name, case_file.original_filename, 
                                       f"ERROR: {str(e)[:100]}")
-                    db.session.commit()
+                    commit_with_retry(db.session, logger_instance=logger)
         except:
             pass
         
