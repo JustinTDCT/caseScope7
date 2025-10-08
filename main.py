@@ -468,6 +468,77 @@ def set_setting(key, value, setting_type='string', description=None):
 # Search Helper Functions (Refactored from 401-line search() function)
 # ============================================================================
 
+def extract_field_by_path(source_dict, field_path):
+    """
+    Extract a field value from OpenSearch document by path.
+    
+    Supports:
+    - Simple fields: "Computer"
+    - Dot notation: "process.name", "EventData.User"
+    - Nested complex: "EventData.Data_12.#text"
+    - Arrays: "EventData.Data[5]"
+    
+    Args:
+        source_dict: OpenSearch _source dictionary
+        field_path: Field path (e.g., "process.command_line")
+        
+    Returns:
+        Field value (string, number, etc.) or None if not found
+    """
+    if not field_path or not source_dict:
+        return None
+    
+    # Try exact match first (e.g., "process.command_line" as flattened key)
+    if field_path in source_dict:
+        return source_dict[field_path]
+    
+    # Try underscore notation (e.g., "process_command_line")
+    underscore_path = field_path.replace('.', '_')
+    if underscore_path in source_dict:
+        return source_dict[underscore_path]
+    
+    # Try nested path traversal (e.g., source['process']['command_line'])
+    parts = field_path.split('.')
+    current = source_dict
+    
+    for part in parts:
+        if isinstance(current, dict):
+            current = current.get(part)
+            if current is None:
+                break
+        else:
+            return None
+    
+    if current is not None:
+        return current
+    
+    # Deep search fallback (handles complex nested structures)
+    def search_nested(obj, target_key):
+        """Recursively search for key in nested structure"""
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if key == target_key or key.endswith('.' + target_key):
+                    return value
+                result = search_nested(value, target_key)
+                if result is not None:
+                    return result
+        elif isinstance(obj, list):
+            for item in obj:
+                result = search_nested(item, target_key)
+                if result is not None:
+                    return result
+        return None
+    
+    # Try searching for the last part of the path (e.g., "User" from "EventData.User")
+    if '.' in field_path:
+        last_part = field_path.split('.')[-1]
+        result = search_nested(source_dict, last_part)
+        if result is not None:
+            return result
+    
+    return None
+
+
 def extract_event_fields(source_dict, hit_id):
     """
     Extract standardized fields from an OpenSearch event document.
@@ -1944,6 +2015,97 @@ def api_rehunt_all_iocs():
         traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/api/search/add-column', methods=['POST'])
+@login_required
+def api_add_search_column():
+    """Add a custom column to search results (session-based, Wazuh Discover-style)"""
+    try:
+        data = request.get_json()
+        field_path = data.get('field_path')
+        
+        if not field_path:
+            return jsonify({'success': False, 'message': 'Missing field_path'}), 400
+        
+        # Initialize custom columns in session if not exists
+        if 'custom_columns' not in session:
+            session['custom_columns'] = []
+        
+        custom_columns = session['custom_columns']
+        
+        # Add if not already present
+        if field_path not in custom_columns:
+            custom_columns.append(field_path)
+            session['custom_columns'] = custom_columns
+            session.modified = True  # Force session save
+            
+            return jsonify({
+                'success': True,
+                'field_path': field_path,
+                'total_columns': len(custom_columns),
+                'message': f'Added column: {field_path}'
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'message': f'Column already exists: {field_path}',
+                'total_columns': len(custom_columns)
+            })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/search/remove-column', methods=['POST'])
+@login_required
+def api_remove_search_column():
+    """Remove a custom column from search results"""
+    try:
+        data = request.get_json()
+        field_path = data.get('field_path')
+        
+        if not field_path:
+            return jsonify({'success': False, 'message': 'Missing field_path'}), 400
+        
+        custom_columns = session.get('custom_columns', [])
+        
+        if field_path in custom_columns:
+            custom_columns.remove(field_path)
+            session['custom_columns'] = custom_columns
+            session.modified = True
+            
+            return jsonify({
+                'success': True,
+                'field_path': field_path,
+                'total_columns': len(custom_columns),
+                'message': f'Removed column: {field_path}'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': f'Column not found: {field_path}'
+            }), 404
+    
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/search/reset-columns', methods=['POST'])
+@login_required
+def api_reset_search_columns():
+    """Reset search columns to default (remove all custom columns)"""
+    try:
+        session['custom_columns'] = []
+        session.modified = True
+        
+        return jsonify({
+            'success': True,
+            'message': 'Columns reset to default'
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
 @app.route('/update-event-ids', methods=['GET'])
 @login_required
 def update_event_ids():
@@ -3253,6 +3415,20 @@ def search():
                 except Exception as e:
                     print(f"[Search] Error checking IOC matches: {e}")
                 
+                # Extract custom column field values (Wazuh Discover-style)
+                custom_fields = {}
+                custom_columns = session.get('custom_columns', [])
+                for field_path in custom_columns:
+                    field_value = extract_field_by_path(source, field_path)
+                    # Convert to string and truncate if too long
+                    if field_value is not None:
+                        field_str = str(field_value)
+                        if len(field_str) > 100:
+                            field_str = field_str[:97] + '...'
+                        custom_fields[field_path] = field_str
+                    else:
+                        custom_fields[field_path] = '-'
+                
                 # Add result to list with both extracted fields and additional data
                 results.append({
                     'index': hit['_index'],
@@ -3269,7 +3445,8 @@ def search():
                     'full_data': source,
                     'sigma_violations': extracted['sigma_violations'],
                     'has_violations': extracted['has_violations'],
-                    'ioc_matches': ioc_matches
+                    'ioc_matches': ioc_matches,
+                    'custom_fields': custom_fields  # New: dynamic columns
                 })
         
         except Exception as e:
@@ -3290,7 +3467,10 @@ def search():
         (SavedSearch.case_id == case.id) | (SavedSearch.case_id == None)
     ).order_by(SavedSearch.last_used.desc().nullslast(), SavedSearch.created_at.desc()).all()
     
-    return render_search_page(case, query_str, results, total_hits, page, per_page, error_message, len(indexed_files), threat_filter, time_range, custom_start, custom_end, recent_searches, saved_searches, sort_field, sort_order)
+    # Get custom columns from session for dynamic column display
+    custom_columns = session.get('custom_columns', [])
+    
+    return render_search_page(case, query_str, results, total_hits, page, per_page, error_message, len(indexed_files), threat_filter, time_range, custom_start, custom_end, recent_searches, saved_searches, sort_field, sort_order, custom_columns)
 
 @app.route('/search/save', methods=['POST'])
 @login_required
@@ -5908,6 +6088,9 @@ def render_wazuh_style_fields(data, path=""):
                                     <button class="field-action-btn filter-out" onclick="filterOut('{js_safe_path}', '{js_safe_value}')" title="Exclude this value">
                                         <span class="action-icon">−</span>
                                     </button>
+                                    <button class="field-action-btn add-column" onclick="addColumn('{js_safe_path}')" title="Add as table column" style="background: linear-gradient(145deg, #3b82f6, #2563eb); color: white;">
+                                        <span class="action-icon">📊</span>
+                                    </button>
                                 </div>
                             </div>
                         </td>
@@ -5942,6 +6125,9 @@ def render_wazuh_style_fields(data, path=""):
                                 <button class="field-action-btn copy-value" onclick="copyToClipboard('{js_safe_value}')" title="Copy value">
                                     <span class="action-icon">📋</span>
                                 </button>
+                                <button class="field-action-btn add-column" onclick="addColumn('{js_safe_path}')" title="Add as table column" style="background: linear-gradient(145deg, #3b82f6, #2563eb); color: white;">
+                                    <span class="action-icon">📊</span>
+                                </button>
                                 <button class="field-action-btn add-ioc" onclick="showIocModal('{js_safe_value}', '{js_safe_path}')" title="Add as IOC" style="background: linear-gradient(145deg, #22c55e, #16a34a); color: white;">
                                     <span class="action-icon">🎯</span>
                                 </button>
@@ -5954,8 +6140,50 @@ def render_wazuh_style_fields(data, path=""):
     html += '</table>'
     return html
 
-def render_search_page(case, query_str, results, total_hits, page, per_page, error_message, indexed_file_count, threat_filter='none', time_range='all', custom_start=None, custom_end=None, recent_searches=[], saved_searches=[], sort_field='relevance', sort_order='desc'):
-    """Render search interface with results"""
+def generate_custom_column_headers(custom_columns):
+    """Generate HTML for custom column headers with removal buttons"""
+    if not custom_columns:
+        return ''
+    
+    headers = []
+    for field_path in custom_columns:
+        # Get friendly name (last part of path)
+        field_name = field_path.split('.')[-1] if '.' in field_path else field_path
+        headers.append(f'''
+                            <th style="position: relative; background: linear-gradient(145deg, #1e3a5f, #2d5a8f);">
+                                <span style="font-size: 0.85em;">{field_name}</span>
+                                <button onclick="removeColumn('{field_path}')" 
+                                        style="margin-left: 8px; background: #ef4444; color: white; border: none; 
+                                               border-radius: 3px; padding: 2px 6px; cursor: pointer; font-size: 0.9em;"
+                                        title="Remove column">✖</button>
+                                <div style="font-size: 0.7em; color: #94a3b8; font-weight: normal; margin-top: 2px;">{field_path}</div>
+                            </th>''')
+    
+    return '\n'.join(headers)
+
+
+def generate_custom_column_cells(result):
+    """Generate HTML for custom column cells for a result row"""
+    custom_fields = result.get('custom_fields', {})
+    
+    if not custom_fields:
+        return ''
+    
+    cells = []
+    for field_path, field_value in custom_fields.items():
+        # HTML escape the value
+        import html
+        escaped_value = html.escape(str(field_value), quote=True)
+        cells.append(f'''
+                <td onclick="toggleDetails('{result.get('id', '')}')" 
+                    style="font-size: 0.9em; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                    title="{escaped_value}">{escaped_value}</td>''')
+    
+    return '\n'.join(cells)
+
+
+def render_search_page(case, query_str, results, total_hits, page, per_page, error_message, indexed_file_count, threat_filter='none', time_range='all', custom_start=None, custom_end=None, recent_searches=[], saved_searches=[], sort_field='relevance', sort_order='desc', custom_columns=[]):
+    """Render search interface with results (Wazuh Discover-style with dynamic columns)"""
     from flask import get_flashed_messages
     flash_messages_html = ""
     messages = get_flashed_messages(with_categories=True)
@@ -6010,6 +6238,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                 <td onclick="toggleDetails('{result_id}')">{escaped_event_type}</td>
                 <td onclick="toggleDetails('{result_id}')"><span class="field-tag" onclick="addToQuery(event, 'source_filename', '{escaped_source_file}')">{escaped_source_file}</span></td>
                 <td onclick="toggleDetails('{result_id}')"><span class="field-tag" onclick="addToQuery(event, 'Computer', '{escaped_computer}')">{escaped_computer}</span></td>
+                {generate_custom_column_cells(result)}
                 <td onclick="toggleDetails('{result_id}')" style="padding: 8px;">{ioc_badges}</td>
                 <td style="text-align: center;">
                     <button class="tag-btn" data-event-id="{escaped_doc_id}" data-timestamp="{result['timestamp']}" onclick="event.stopPropagation(); toggleTag(this);" title="Tag for timeline">
@@ -6018,7 +6247,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                 </td>
             </tr>
             <tr id="{result_id}" class="details-row" style="display: none;">
-                <td colspan="7">
+                <td colspan="{7 + len(custom_columns)}">
                     <div class="event-details">
                         <div class="event-details-header">
                             <h4>Event Fields</h4>
@@ -6033,12 +6262,15 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
             </tr>
             '''
     elif query_str and not error_message:
-        result_rows = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #aaa;">No results found for your query.</td></tr>'
+        total_cols = 7 + len(custom_columns)
+        result_rows = f'<tr><td colspan="{total_cols}" style="text-align: center; padding: 40px; color: #aaa;">No results found for your query.</td></tr>'
     elif not query_str:
-        result_rows = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #aaa;">Enter a search query above to search indexed events.</td></tr>'
+        total_cols = 7 + len(custom_columns)
+        result_rows = f'<tr><td colspan="{total_cols}" style="text-align: center; padding: 40px; color: #aaa;">Enter a search query above to search indexed events.</td></tr>'
     
     if error_message:
-        result_rows = f'<tr><td colspan="7" style="text-align: center; padding: 40px; color: #f44336;"><strong>Error:</strong> {error_message}</td></tr>'
+        total_cols = 7 + len(custom_columns)
+        result_rows = f'<tr><td colspan="{total_cols}" style="text-align: center; padding: 40px; color: #f44336;"><strong>Error:</strong> {error_message}</td></tr>'
     
     # Pagination
     total_pages = (total_hits + per_page - 1) // per_page if total_hits > 0 else 1
@@ -6140,6 +6372,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                             <button type="submit" class="btn-search">🔍 Search</button>
                             <button type="button" class="btn-export" onclick="exportResults()">📥 Export CSV</button>
                             <button type="button" class="help-toggle" onclick="toggleHelp()">❓ Query Help</button>
+                            {f'<button type="button" onclick="resetColumns()" style="padding: 10px 20px; background: linear-gradient(145deg, #ef4444, #dc2626); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; box-shadow: 0 2px 8px rgba(239,68,68,0.3);" title="Remove all custom columns">🔄 Reset Columns ({len(custom_columns)})</button>' if custom_columns else ''}
                         </div>
                     </form>
                     
@@ -6200,6 +6433,7 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                             <th>Event Information</th>
                             <th>Source File</th>
                             <th>Computer</th>
+                            {generate_custom_column_headers(custom_columns)}
                             <th>IOCs</th>
                             <th>Tag</th>
                         </tr>
@@ -6320,6 +6554,70 @@ def render_search_page(case, query_str, results, total_hits, page, per_page, err
                 }}
                 
                 document.body.removeChild(textarea);
+            }}
+            
+            // Dynamic Columns (Wazuh Discover-style)
+            function addColumn(fieldPath) {{
+                fetch('/api/search/add-column', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ field_path: fieldPath }})
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) {{
+                        window.location.reload();  // Reload to show new column
+                    }} else {{
+                        alert('Error: ' + data.message);
+                    }}
+                }})
+                .catch(error => {{
+                    console.error('Error adding column:', error);
+                    alert('Failed to add column');
+                }});
+            }}
+            
+            function removeColumn(fieldPath) {{
+                fetch('/api/search/remove-column', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ field_path: fieldPath }})
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) {{
+                        window.location.reload();  // Reload to update table
+                    }} else {{
+                        alert('Error: ' + data.message);
+                    }}
+                }})
+                .catch(error => {{
+                    console.error('Error removing column:', error);
+                    alert('Failed to remove column');
+                }});
+            }}
+            
+            function resetColumns() {{
+                if (!confirm('Reset all columns to default view?')) {{
+                    return;
+                }}
+                
+                fetch('/api/search/reset-columns', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }}
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) {{
+                        window.location.reload();  // Reload with default columns
+                    }} else {{
+                        alert('Error: ' + data.message);
+                    }}
+                }})
+                .catch(error => {{
+                    console.error('Error resetting columns:', error);
+                    alert('Failed to reset columns');
+                }});
             }}
             
             function toggleFieldGroup(header) {{
