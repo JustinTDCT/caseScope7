@@ -1955,10 +1955,145 @@ except Exception as e:
     fi
 }
 
+# Download and import SIGMA rules
+download_and_import_sigma_rules() {
+    log "Downloading SIGMA rules from SigmaHQ GitHub..."
+    
+    # Create temp directory
+    TEMP_DIR=$(mktemp -d)
+    REPO_PATH="$TEMP_DIR/sigma"
+    
+    # Clone SigmaHQ repository (shallow clone for speed)
+    /usr/bin/git clone --depth 1 https://github.com/SigmaHQ/sigma.git "$REPO_PATH" >/dev/null 2>&1
+    
+    if [ $? -ne 0 ]; then
+        log_warning "Failed to clone SIGMA repository from GitHub"
+        rm -rf "$TEMP_DIR"
+        return 1
+    fi
+    
+    log_success "SIGMA repository cloned successfully"
+    
+    # Import rules into database using Python script
+    log "Importing SIGMA rules into database..."
+    
+    cd /opt/casescope/app
+    sudo -u casescope /opt/casescope/venv/bin/python3 <<PYTHON_SCRIPT
+import sys
+import os
+import yaml
+import hashlib
+import json
+sys.path.insert(0, '/opt/casescope/app')
+
+from main import app, db, SigmaRule
+
+rules_dir = '$REPO_PATH/rules'
+imported_count = 0
+skipped_count = 0
+error_count = 0
+
+print("Scanning SIGMA rules directory...")
+
+with app.app_context():
+    for root, dirs, files in os.walk(rules_dir):
+        for file in files:
+            if file.endswith('.yml') or file.endswith('.yaml'):
+                file_path = os.path.join(root, file)
+                
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        yaml_content = f.read()
+                        rule_data = yaml.safe_load(yaml_content)
+                    
+                    # Skip non-detection rules
+                    if not rule_data.get('detection'):
+                        continue
+                    
+                    # Calculate hash
+                    rule_hash = hashlib.sha256(yaml_content.encode()).hexdigest()
+                    
+                    # Check if already exists
+                    existing = db.session.query(SigmaRule).filter_by(rule_hash=rule_hash).first()
+                    if existing:
+                        skipped_count += 1
+                        continue
+                    
+                    # Extract logsource
+                    logsource = rule_data.get('logsource', {})
+                    category = logsource.get('category', logsource.get('product', 'unknown'))
+                    
+                    # Auto-enable threat-hunting rules
+                    is_threat_hunting = 'threat-hunting' in file_path and 'windows' in file_path.lower()
+                    
+                    # Create rule
+                    rule = SigmaRule(
+                        name=rule_data.get('id', file.replace('.yml', '').replace('.yaml', '')),
+                        title=rule_data.get('title', 'Untitled Rule'),
+                        description=rule_data.get('description', ''),
+                        author=rule_data.get('author', 'SigmaHQ'),
+                        level=rule_data.get('level', 'medium'),
+                        status=rule_data.get('status', 'stable'),
+                        category=category,
+                        tags=json.dumps(rule_data.get('tags', [])),
+                        rule_yaml=yaml_content,
+                        rule_hash=rule_hash,
+                        is_builtin=False,
+                        is_enabled=is_threat_hunting,
+                        uploaded_by=1  # Administrator user ID
+                    )
+                    
+                    db.session.add(rule)
+                    imported_count += 1
+                    
+                    # Commit every 100 rules
+                    if imported_count % 100 == 0:
+                        db.session.commit()
+                        print(f"Imported {imported_count} rules so far...")
+                
+                except Exception as e:
+                    error_count += 1
+                    continue
+    
+    # Final commit
+    db.session.commit()
+    
+    print(f"✓ SIGMA rules import complete:")
+    print(f"  - {imported_count} new rules imported")
+    print(f"  - {skipped_count} duplicates skipped")
+    print(f"  - {error_count} errors")
+    
+    sys.exit(0)
+PYTHON_SCRIPT
+    
+    if [ $? -eq 0 ]; then
+        log_success "SIGMA rules imported successfully"
+    else
+        log_warning "SIGMA rules import had errors"
+    fi
+    
+    # Cleanup temp directory
+    rm -rf "$TEMP_DIR"
+    
+    # Run enable_threat_hunting_rules.py to enable Windows threat-hunting rules
+    log "Enabling Windows threat-hunting rules..."
+    
+    cd /opt/casescope
+    sudo -u casescope /opt/casescope/venv/bin/python3 enable_threat_hunting_rules.py
+    
+    if [ $? -eq 0 ]; then
+        log_success "Windows threat-hunting rules enabled successfully"
+    else
+        log_warning "enable_threat_hunting_rules.py had errors (non-fatal)"
+    fi
+    
+    echo
+}
+
 # Main installation function
 main() {
     # Determine total steps based on install type
-    local TOTAL_STEPS=12
+    local TOTAL_STEPS=13  # Increased from 12 to include SIGMA rules download
     local CURRENT_STEP=0
     
     log "Starting caseScope installation..."
@@ -2077,6 +2212,10 @@ main() {
     ((CURRENT_STEP++))
     print_section $CURRENT_STEP $TOTAL_STEPS "Initializing Database"
     initialize_database
+    
+    ((CURRENT_STEP++))
+    print_section $CURRENT_STEP $TOTAL_STEPS "Downloading & Importing SIGMA Rules"
+    download_and_import_sigma_rules
     
     # Force database creation check before starting services
     log "Performing final database verification..."
