@@ -1,6 +1,6 @@
-# caseScope 8.1 - Digital Forensics EVTX Analysis Platform
+# caseScope 8.3 - Digital Forensics EVTX Analysis Platform
 
-**Version:** 8.1.1  
+**Version:** 8.3.0  
 **Copyright:** (c) 2025 Justin Dube <casescope@thedubes.net>
 
 ---
@@ -32,7 +32,8 @@ caseScope is a comprehensive digital forensics platform for analyzing Windows Ev
 - **DFIR-IRIS Integration**: One-click sync of cases, IOCs, and timeline events to DFIR-IRIS platform
 - **Timeline Event Tagging**: Star/bookmark important events for timeline analysis with collaborative multi-user tagging
 - **Chainsaw SIGMA Engine**: Automated threat detection using 3000+ SIGMA rules via Chainsaw v2.12.2
-- **Powerful Search**: Boolean logic, field-specific queries, SIGMA/IOC violation filtering, timestamp sorting
+- **Powerful Search**: Boolean logic, field-specific queries, SIGMA/IOC violation filtering, timestamp sorting, dynamic custom columns
+- **Dynamic Custom Columns**: Wazuh Discover-style interface - add/remove any field as table column during investigation
 - **Event Information Descriptions**: Human-readable descriptions for 100+ Windows Event IDs and EDR events
 - **Audit Trail**: Complete logging of authentication, file operations, searches, admin actions
 - **System Settings**: User-friendly configuration interface for DFIR-IRIS integration
@@ -169,6 +170,20 @@ sudo journalctl -u casescope-worker -f
 - Filters for events matching indicators of compromise
 - View matched IOCs and matched field details
 
+### Dynamic Custom Columns (v8.3.0 - Wazuh Discover-Style)
+- **Flexible Table View**: Add any field as a table column during investigation
+- **📊 Add to Table Button**: Click blue icon on any field in expanded event details
+- **Session-Based**: Custom columns persist during your session, reset on logout
+- **✖ Remove Columns**: Click red X button on any custom column header
+- **🔄 Reset Columns Button**: Remove all custom columns and return to default view
+- **Missing Field Handling**: Shows '-' when field not present in event
+- **All Field Types Supported**: Simple fields, nested paths, complex structures (e.g., `process.name`, `EventData.User`, `EventData.Data_12.#text`)
+- **Instant Pattern Recognition**: See field values across all events without expanding each one
+- **Example Use Cases**:
+  - Add `EventData.TargetUserName`, `EventData.LogonType` for logon analysis
+  - Add `process.name`, `process.command_line` for process execution patterns
+  - Add `EventData.DestinationIp`, `EventData.DestinationPort` for network analysis
+
 ## SIGMA Rules
 
 ### Rule Management
@@ -260,6 +275,9 @@ sudo journalctl -u casescope-worker -f
 - `/api/event/tag` - Tag event for timeline (POST)
 - `/api/event/untag` - Remove event tag (POST)
 - `/api/event/tags` - Get tagged events (GET)
+- `/api/search/add-column` - Add custom column to search table (POST)
+- `/api/search/remove-column` - Remove custom column from search table (POST)
+- `/api/search/reset-columns` - Reset to default columns (POST)
 - `/api/ioc/add` - Add IOC (POST)
 - `/api/ioc/delete/<id>` - Delete IOC (DELETE)
 - `/api/ioc/hunt` - Manual IOC hunting (POST)
@@ -335,6 +353,10 @@ sudo -u casescope /opt/casescope/venv/bin/python3 migrate_audit_log.py
 
 ## Version History
 
+- **8.3.0** (2025-10-07): FEATURE - Dynamic Custom Columns (Wazuh Discover-style) - Add/remove any field as table column during investigation
+- **8.2.1** (2025-10-07): Bugfix - NDJSON Event Information now shows command line instead of "Unknown Process"
+- **8.2.0** (2025-10-07): FEATURE - Auto-download SIGMA rules on ALL install types (clean/upgrade/reindex)
+- **8.1.2** (2025-10-07): Bugfix - Quick Add IOC feature (data attributes + event delegation for JavaScript safety)
 - **8.1.1** (2025-10-07): Bugfix - UI stats now show total IOC matches (658) instead of distinct events (646) for consistency
 - **8.1.0** (2025-10-07): MAJOR ARCHITECTURE - Unified IOC hunting (Hunt Now + Re-hunt All use same code path, bulk operations)
 - **8.0.3** (2025-10-07): CRITICAL FIX - IOC hunting now searches ALL fields (not field-specific), finds 2,853 matches vs 75

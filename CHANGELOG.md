@@ -14,6 +14,108 @@
 
 ---
 
+## Version 8.3.0 (2025-10-07)
+
+### Major Features
+- **Dynamic Custom Columns (Wazuh Discover-Style)**: Add/remove any field as table column during investigation
+  - **USER REQUIREMENT**: "Make search display more pliable - user could expand event and click icon to add field as column"
+  - **USER VISION**: Wazuh Discover UI pattern where users start with default columns but can dynamically customize table view
+  - **WORKFLOW**:
+    1. Search for events (e.g., `EventID:4624`)
+    2. Click event row to expand and see all fields
+    3. Click blue 📊 button next to any field (e.g., `process.name`)
+    4. Column added to table - see that field across ALL events
+    5. Click red ✖ on column header to remove
+    6. Or click "Reset Columns" to clear all custom columns
+  - **IMPLEMENTATION**:
+    - **Backend Helper** (lines 471-539): `extract_field_by_path(source_dict, field_path)`
+      - Handles: dot notation (`process.name`), underscores, nested dicts, arrays
+      - Supports: `EventData.User`, `EventData.Data_12.#text`, complex paths
+      - Recursive deep search for maximum compatibility
+    - **API Endpoints** (3 new routes):
+      - `POST /api/search/add-column` - Add field to session
+      - `POST /api/search/remove-column` - Remove field from session
+      - `POST /api/search/reset-columns` - Clear all custom columns
+    - **Search Extraction** (lines 3418-3430):
+      - For each custom column, extract field value using `extract_field_by_path()`
+      - Truncate to 100 chars if too long, show '-' for missing fields
+      - Store in `result['custom_fields']` for rendering
+    - **Rendering Helpers**:
+      - `generate_custom_column_headers()` - Creates `<th>` with ✖ removal button
+      - `generate_custom_column_cells()` - Creates `<td>` with field values
+      - Blue gradient background for custom columns (visual distinction)
+    - **UI Controls**:
+      - 📊 "Add to Table" button on EVERY field in event details
+      - ✖ "Remove" button on each custom column header (red)
+      - 🔄 "Reset Columns (N)" button in search controls (only appears when columns added)
+    - **JavaScript Functions** (lines 6558-6620):
+      - `addColumn(fieldPath)` - Calls API, reloads page to show new column
+      - `removeColumn(fieldPath)` - Calls API, reloads page to update table
+      - `resetColumns()` - Calls API with confirmation, resets to default view
+  - **TECHNICAL**:
+    - **Session-based**: Uses Flask session for storage (server-side, secure)
+    - **No database changes**: Zero migrations required, zero schema impact
+    - **Recursive extraction**: Handles any nesting depth, any field format
+    - **Dynamic colspan**: Table automatically adjusts for custom columns
+    - **JavaScript escaping**: Comprehensive escaping prevents injection
+    - **Hover tooltips**: Full value shown on hover for truncated fields
+  - **USE CASES**:
+    - **Logon Analysis**: Add `EventData.TargetUserName`, `EventData.LogonType`, `EventData.FailureReason`
+    - **Process Execution**: Add `process.name`, `process.command_line`, `process.parent.name`
+    - **Network Activity**: Add `EventData.DestinationIp`, `EventData.DestinationPort`, `EventData.Application`
+  - **BENEFITS**:
+    1. ✅ Flexible investigation (add fields relevant to current analysis)
+    2. ✅ Pattern recognition (see field values across all events at once)
+    3. ✅ Session-based (no database clutter, resets on logout)
+    4. ✅ Missing field handling (shows '-' when field not present)
+    5. ✅ All field types (simple, nested, arrays, complex paths)
+    6. ✅ Wazuh/Kibana familiar (SOC analysts feel at home)
+  - **IMPACT**: Analysts can customize search view during investigation without page refresh churn
+
+---
+
+## Version 8.2.1 (2025-10-07)
+
+### Bug Fixes
+- **NDJSON Event Information Now Shows Command Line**: Fixed "Unknown Process" display for EDR events
+  - **USER REPORT**: Screenshot shows `process.command_line` contains `C:\Windows\system32\conhost.exe 0xffffffff -ForceV1` but Event Information column displays "Process: Unknown Process"
+  - **ROOT CAUSE**: `extract_event_fields()` looked for `command_line` in nested dict format (`source_dict.get('process', {}).get('command_line')`) but `flatten_event()` in tasks.py stores with DOT notation (`process.command_line`)
+  - **FIX**: Updated `extract_event_fields()` to try ALL field name variations:
+    - For `command_line`: tries `process.command_line` (flattened dot), `process_command_line` (underscore), `command_line` (direct), nested dict
+    - For `process.name`: tries `process.name` (flattened dot), `process_name` (underscore), nested dict
+    - Comprehensive fallback chain ensures field found regardless of format
+  - **IMPACT**: Event Information column for NDJSON/EDR events now displays full command line instead of "Unknown Process"
+
+---
+
+## Version 8.2.0 (2025-10-07)
+
+### Major Features
+- **Auto-Download SIGMA Rules on ALL Install Types**: SIGMA rules now automatically downloaded during installation
+  - **USER REQUIREMENT**: "No matter what install type (1, 2, or 3), download SIGMA rules and run `enable_threat_hunting_rules.py`"
+  - **PREVIOUS BEHAVIOR**: SIGMA rules had to be manually downloaded after installation
+  - **NEW BEHAVIOR**: All install types automatically download and import SIGMA rules as Step 11 of 13
+  - **IMPLEMENTATION**:
+    - Created `download_and_import_sigma_rules()` function in install.sh (lines 1958-2091)
+    - Downloads SigmaHQ repository via `git clone --depth 1` (shallow clone)
+    - Imports all .yml/.yaml files, calculates SHA256 for duplicate detection
+    - Auto-enables Windows threat-hunting rules
+    - Runs `enable_threat_hunting_rules.py` for additional rule activation
+  - **IMPACT**: Fresh installs immediately have 3000+ SIGMA rules ready, no manual post-install steps
+
+---
+
+## Version 8.1.2 (2025-10-07)
+
+### Bug Fixes
+- **Quick Add IOC Feature (Data Attributes + Event Delegation)**: Fixed JavaScript injection vulnerabilities
+  - **USER REPORT**: "Quick Add IOC not showing value but showing filename", "clicking icon on first reference does nothing"
+  - **ROOT CAUSE**: Inline `onclick` handlers with direct parameter passing broke when values contained special chars (backslashes, quotes)
+  - **FIX**: Replaced inline `onclick` with safe data attributes (`data-ioc-value`, `data-ioc-path`) + event delegation
+  - **IMPACT**: Quick Add IOC now works reliably for ALL field values including file paths, GUIDs, commands with special characters
+
+---
+
 ## Version 8.1.1 (2025-10-07)
 
 ### Bug Fixes
