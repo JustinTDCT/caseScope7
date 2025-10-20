@@ -2469,6 +2469,10 @@ def system_settings():
         'iris_api_key': get_setting('iris_api_key', ''),
         'iris_customer_id': get_setting('iris_customer_id', 1),
         'iris_auto_sync': get_setting('iris_auto_sync', False),
+        'opencti_enabled': get_setting('opencti_enabled', False),
+        'opencti_url': get_setting('opencti_url', ''),
+        'opencti_api_key': get_setting('opencti_api_key', ''),
+        'opencti_auto_enrich': get_setting('opencti_auto_enrich', False),
     }
     
     return render_system_settings(settings)
@@ -2493,20 +2497,42 @@ def save_settings():
         iris_auto_sync_values = request.form.getlist('iris_auto_sync')
         iris_auto_sync = 'true' if 'true' in iris_auto_sync_values else 'false'
         
+        # OpenCTI settings
+        opencti_enabled_values = request.form.getlist('opencti_enabled')
+        opencti_enabled = 'true' if 'true' in opencti_enabled_values else 'false'
+        
+        opencti_url = request.form.get('opencti_url', '').strip()
+        opencti_api_key = request.form.get('opencti_api_key', '').strip()
+        
+        opencti_auto_enrich_values = request.form.getlist('opencti_auto_enrich')
+        opencti_auto_enrich = 'true' if 'true' in opencti_auto_enrich_values else 'false'
+        
         # Validate URL if IRIS is enabled
         if iris_enabled == 'true' and iris_url:
             if not iris_url.startswith('http://') and not iris_url.startswith('https://'):
                 flash('DFIR-IRIS URL must start with http:// or https://', 'error')
                 return redirect(url_for('system_settings'))
         
-        # Save settings
+        # Validate URL if OpenCTI is enabled
+        if opencti_enabled == 'true' and opencti_url:
+            if not opencti_url.startswith('http://') and not opencti_url.startswith('https://'):
+                flash('OpenCTI URL must start with http:// or https://', 'error')
+                return redirect(url_for('system_settings'))
+        
+        # Save IRIS settings
         set_setting('iris_enabled', iris_enabled, 'boolean', 'Enable DFIR-IRIS integration')
         set_setting('iris_url', iris_url, 'string', 'DFIR-IRIS server URL')
         set_setting('iris_api_key', iris_api_key, 'string', 'DFIR-IRIS API key')
         set_setting('iris_customer_id', iris_customer_id, 'integer', 'DFIR-IRIS customer ID')
         set_setting('iris_auto_sync', iris_auto_sync, 'boolean', 'Auto-sync to DFIR-IRIS')
         
-        log_audit('Settings Updated', 'system', f'Updated DFIR-IRIS integration settings')
+        # Save OpenCTI settings
+        set_setting('opencti_enabled', opencti_enabled, 'boolean', 'Enable OpenCTI integration')
+        set_setting('opencti_url', opencti_url, 'string', 'OpenCTI server URL')
+        set_setting('opencti_api_key', opencti_api_key, 'string', 'OpenCTI API key')
+        set_setting('opencti_auto_enrich', opencti_auto_enrich, 'boolean', 'Auto-enrich IOCs with OpenCTI')
+        
+        log_audit('Settings Updated', 'system', f'Updated DFIR-IRIS and OpenCTI integration settings')
         
         flash('Settings saved successfully!', 'success')
         
@@ -2570,6 +2596,63 @@ def test_iris_connection():
         return jsonify({'success': False, 'message': '❌ Cannot connect - check URL and network'})
     except Exception as e:
         return jsonify({'success': False, 'message': f'❌ Error: {str(e)}'})
+
+@app.route('/settings/test-opencti', methods=['POST'])
+@login_required
+def test_opencti_connection():
+    """Test OpenCTI connection (admin only)"""
+    if current_user.role != 'administrator':
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    try:
+        opencti_url = request.form.get('opencti_url', '').strip()
+        opencti_api_key = request.form.get('opencti_api_key', '').strip()
+        
+        if not opencti_url or not opencti_api_key:
+            return jsonify({'success': False, 'message': 'Please provide both URL and API Key'})
+        
+        # Try to initialize OpenCTI client
+        from opencti_client import OpenCTIClient
+        
+        client = OpenCTIClient(opencti_url, opencti_api_key, ssl_verify=False)
+        
+        # Test connection
+        if client.ping():
+            log_audit('OpenCTI Connection Test', 'system', 'Connection test successful', success=True)
+            
+            # Get some basic stats if available
+            try:
+                stats = client.get_statistics()
+                details = f"Connected to OpenCTI instance at {opencti_url}"
+            except:
+                details = "Connection successful"
+            
+            return jsonify({
+                'success': True,
+                'message': '✅ Connected successfully to OpenCTI!',
+                'details': details
+            })
+        else:
+            log_audit('OpenCTI Connection Test', 'system', 'Connection test failed', success=False)
+            return jsonify({
+                'success': False,
+                'message': '❌ Connection failed - check URL and API key',
+                'details': 'Server did not respond to health check'
+            })
+            
+    except ImportError:
+        return jsonify({
+            'success': False,
+            'message': '❌ OpenCTI client not installed',
+            'details': 'Run: pip install pycti'
+        })
+    except Exception as e:
+        log_audit('OpenCTI Connection Test', 'system', f'Connection test error: {str(e)}', success=False)
+        return jsonify({
+            'success': False,
+            'message': f'❌ Error: {str(e)}',
+            'details': 'Check logs for more details'
+        })
 
 @app.route('/audit-log', methods=['GET'])
 @login_required
@@ -2984,6 +3067,125 @@ def ioc_hunt():
         flash('Background worker not available. IOC hunting requires Celery.', 'error')
     
     return redirect(url_for('ioc_list'))
+
+@app.route('/ioc/<int:ioc_id>/enrich-opencti', methods=['POST'])
+@login_required
+def enrich_ioc_opencti(ioc_id):
+    """Enrich a single IOC with OpenCTI threat intelligence"""
+    try:
+        # Check if OpenCTI is enabled
+        opencti_enabled = get_setting('opencti_enabled', False)
+        if not opencti_enabled:
+            return jsonify({
+                'success': False,
+                'message': 'OpenCTI integration is not enabled. Configure it in System Settings.'
+            })
+        
+        # Get OpenCTI settings
+        opencti_url = get_setting('opencti_url')
+        opencti_api_key = get_setting('opencti_api_key')
+        
+        if not opencti_url or not opencti_api_key:
+            return jsonify({
+                'success': False,
+                'message': 'OpenCTI not configured. Please configure in System Settings.'
+            })
+        
+        # Get the IOC
+        ioc = db.session.get(IOC, ioc_id)
+        if not ioc:
+            return jsonify({'success': False, 'message': 'IOC not found'})
+        
+        # Check case permission
+        case_id = session.get('active_case_id')
+        if ioc.case_id != case_id:
+            return jsonify({'success': False, 'message': 'Access denied'})
+        
+        # Initialize OpenCTI client
+        from opencti_client import OpenCTIClient
+        client = OpenCTIClient(opencti_url, opencti_api_key, ssl_verify=False)
+        
+        # Check indicator in OpenCTI
+        enrichment = client.check_indicator(ioc.ioc_value, ioc.ioc_type)
+        
+        if enrichment.get('found'):
+            # Build enrichment display
+            score = enrichment.get('score', 0)
+            labels = enrichment.get('labels', [])
+            threat_actors = enrichment.get('threat_actors', [])
+            campaigns = enrichment.get('campaigns', [])
+            malware_families = enrichment.get('malware_families', [])
+            indicator_types = enrichment.get('indicator_types', [])
+            tlp = enrichment.get('tlp', 'TLP:CLEAR')
+            
+            # Determine status badge
+            if score >= 70:
+                status = '🔴 Malicious'
+                status_color = '#ef4444'
+            elif score >= 40:
+                status = '🟡 Suspicious'
+                status_color = '#f59e0b'
+            else:
+                status = '🟢 Low Risk'
+                status_color = '#10b981'
+            
+            # Build HTML response
+            details_html = f'''
+                <div style="background: #1e293b; padding: 15px; border-radius: 6px; margin-top: 10px;">
+                    <div style="display: flex; align-items: center; margin-bottom: 15px;">
+                        <span style="font-size: 1.5em; margin-right: 10px; background: {status_color}; padding: 8px 15px; border-radius: 6px; color: white; font-weight: bold;">{status}</span>
+                        <div>
+                            <div style="color: #f1f5f9; font-weight: bold;">Risk Score: {score}/100</div>
+                            <div style="color: #94a3b8; font-size: 0.9em;">{tlp}</div>
+                        </div>
+                    </div>
+                    
+                    {f'<div style="margin-bottom: 10px;"><strong style="color: #cbd5e1;">Labels:</strong> {", ".join(labels)}</div>' if labels else ''}
+                    {f'<div style="margin-bottom: 10px;"><strong style="color: #cbd5e1;">Threat Actors:</strong> {", ".join(threat_actors)}</div>' if threat_actors else ''}
+                    {f'<div style="margin-bottom: 10px;"><strong style="color: #cbd5e1;">Campaigns:</strong> {", ".join(campaigns)}</div>' if campaigns else ''}
+                    {f'<div style="margin-bottom: 10px;"><strong style="color: #cbd5e1;">Malware Families:</strong> {", ".join(malware_families)}</div>' if malware_families else ''}
+                    {f'<div style="margin-bottom: 10px;"><strong style="color: #cbd5e1;">Indicator Types:</strong> {", ".join(indicator_types)}</div>' if indicator_types else ''}
+                    
+                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #334155; color: #94a3b8; font-size: 0.85em;">
+                        ✓ Enriched from OpenCTI at {enrichment.get('checked_at', 'now')}
+                    </div>
+                </div>
+            '''
+            
+            log_audit('ioc_enrich_opencti', 'ioc_management',
+                     f'Enriched IOC {ioc.ioc_value} from OpenCTI (Score: {score})', success=True)
+            
+            return jsonify({
+                'success': True,
+                'found': True,
+                'message': f'Found in OpenCTI - {status}',
+                'details_html': details_html,
+                'score': score,
+                'enrichment': enrichment
+            })
+        else:
+            log_audit('ioc_enrich_opencti', 'ioc_management',
+                     f'IOC {ioc.ioc_value} not found in OpenCTI', success=True)
+            
+            return jsonify({
+                'success': True,
+                'found': False,
+                'message': '✓ Not found in OpenCTI (may be clean)',
+                'details_html': '<div style="color: #10b981; padding: 10px;">✓ No threat intelligence found for this indicator in OpenCTI.</div>'
+            })
+    
+    except ImportError:
+        return jsonify({
+            'success': False,
+            'message': 'OpenCTI client not installed. Run: pip install pycti'
+        })
+    except Exception as e:
+        log_audit('ioc_enrich_opencti', 'ioc_management',
+                 f'Error enriching IOC: {str(e)}', success=False)
+        return jsonify({
+            'success': False,
+            'message': f'Error: {str(e)}'
+        })
 
 @app.route('/iris/sync', methods=['POST'])
 @login_required
@@ -5249,11 +5451,15 @@ def render_system_settings(settings):
     # Checkbox states (get_setting returns boolean True/False, not string 'true'/'false')
     iris_enabled_checked = 'checked' if settings['iris_enabled'] else ''
     iris_auto_sync_checked = 'checked' if settings['iris_auto_sync'] else ''
+    opencti_enabled_checked = 'checked' if settings['opencti_enabled'] else ''
+    opencti_auto_enrich_checked = 'checked' if settings['opencti_auto_enrich'] else ''
     
     # Escape values (convert to string first in case of integers/booleans)
     iris_url_safe = html.escape(str(settings['iris_url']), quote=True)
     iris_api_key_safe = html.escape(str(settings['iris_api_key']), quote=True)
     iris_customer_id_safe = html.escape(str(settings['iris_customer_id']), quote=True)
+    opencti_url_safe = html.escape(str(settings['opencti_url']), quote=True)
+    opencti_api_key_safe = html.escape(str(settings['opencti_api_key']), quote=True)
     
     return f'''
     <!DOCTYPE html>
@@ -5556,6 +5762,88 @@ def render_system_settings(settings):
                             </div>
                         </div>
                         
+                        <!-- OpenCTI Integration Section -->
+                        <div class="settings-section">
+                            <h2 style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 1.5em;">🔍</span> 
+                                OpenCTI Threat Intelligence
+                                <span id="openctiStatusBadge" class="status-badge {'status-enabled' if settings['opencti_enabled'] else 'status-disabled'}">
+                                    {'Enabled' if settings['opencti_enabled'] else 'Disabled'}
+
+</span>
+                            </h2>
+                            <p class="description">
+                                Connect to OpenCTI for automated IOC enrichment and threat intelligence. Query indicators against a comprehensive knowledge base of threats, campaigns, and malware families.
+                            </p>
+                            
+                            <div class="info-box">
+                                <strong>📚 What is OpenCTI?</strong>
+                                <p style="color: #94a3b8; margin: 0.5rem 0;">
+                                    OpenCTI is an open-source threat intelligence platform that aggregates indicators from multiple sources.
+                                    When enabled, caseScope will check your IOCs against OpenCTI to identify known threats.
+                                </p>
+                                <strong style="margin-top: 1rem;">✅ What you get:</strong>
+                                <ul>
+                                    <li>Risk scores for your IOCs (0-100 scale)</li>
+                                    <li>Associated threat actors and campaigns</li>
+                                    <li>Malware family identification</li>
+                                    <li>Labels and indicators types (TTP, C2, etc.)</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="form-group">
+                                <input type="hidden" name="opencti_enabled" value="false">
+                                <div class="checkbox-group" onclick="toggleCheckbox('opencti_enabled', event)">
+                                    <input type="checkbox" id="opencti_enabled" name="opencti_enabled" value="true" {opencti_enabled_checked} onchange="updateOpenCTIFormState()">
+                                    <label for="opencti_enabled">
+                                        Enable OpenCTI Integration
+                                        <span class="help-text">Turn this on to enrich IOCs with threat intelligence</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div id="openctiSettings" style="{'display: block;' if settings['opencti_enabled'] else 'display: none;'}">
+                                <div class="form-group">
+                                    <label for="opencti_url">
+                                        OpenCTI Server URL
+                                    </label>
+                                    <input type="text" id="opencti_url" name="opencti_url" value="{opencti_url_safe}" placeholder="https://opencti.yourcompany.com">
+                                    <span class="help-text">
+                                        The web address of your OpenCTI server
+                                    </span>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="opencti_api_key">
+                                        API Key (Secret Token)
+                                    </label>
+                                    <input type="password" id="opencti_api_key" name="opencti_api_key" value="{opencti_api_key_safe}" placeholder="Enter your API key">
+                                    <span class="help-text">
+                                        Your OpenCTI API token. Get this from your OpenCTI profile settings.
+                                    </span>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <input type="hidden" name="opencti_auto_enrich" value="false">
+                                    <div class="checkbox-group" onclick="toggleCheckbox('opencti_auto_enrich', event)">
+                                        <input type="checkbox" id="opencti_auto_enrich" name="opencti_auto_enrich" value="true" {opencti_auto_enrich_checked}>
+                                        <label for="opencti_auto_enrich">
+                                            Auto-Enrich New IOCs
+                                            <span class="help-text">Automatically check new IOCs in OpenCTI when added (coming in Phase 2)</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div class="button-group">
+                                    <button type="button" class="btn-test" onclick="testOpenCTIConnection()">
+                                        🔍 Test Connection
+                                    </button>
+                                </div>
+                                
+                                <div id="testOpenCTIResult" class="test-result"></div>
+                            </div>
+                        </div>
+                        
                         <div class="button-group">
                             <button type="submit" class="btn-save">
                                 💾 Save Settings
@@ -5621,6 +5909,67 @@ def render_system_settings(settings):
                 formData.append('iris_api_key', apiKey);
                 
                 fetch('/settings/test-iris', {{
+                    method: 'POST',
+                    body: formData
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    resultDiv.className = 'test-result ' + (data.success ? 'success' : 'error');
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = '<strong>' + data.message + '</strong>';
+                    if (data.details) {{
+                        resultDiv.innerHTML += '<div style="margin-top: 0.5rem; font-size: 0.85rem;">' + data.details + '</div>';
+                    }}
+                }})
+                .catch(error => {{
+                    resultDiv.className = 'test-result error';
+                    resultDiv.style.display = 'block';
+                    resultDiv.textContent = '❌ Error: ' + error.message;
+                }})
+                .finally(() => {{
+                    testBtn.disabled = false;
+                    testBtn.textContent = '🔍 Test Connection';
+                }});
+            }}
+            
+            function updateOpenCTIFormState() {{
+                const enabled = document.getElementById('opencti_enabled').checked;
+                const settings = document.getElementById('openctiSettings');
+                const statusBadge = document.getElementById('openctiStatusBadge');
+                
+                if (enabled) {{
+                    settings.style.display = 'block';
+                    statusBadge.className = 'status-badge status-enabled';
+                    statusBadge.textContent = 'Enabled';
+                }} else {{
+                    settings.style.display = 'none';
+                    statusBadge.className = 'status-badge status-disabled';
+                    statusBadge.textContent = 'Disabled';
+                }}
+            }}
+            
+            function testOpenCTIConnection() {{
+                const resultDiv = document.getElementById('testOpenCTIResult');
+                const testBtn = event.target;
+                const url = document.getElementById('opencti_url').value;
+                const apiKey = document.getElementById('opencti_api_key').value;
+                
+                if (!url || !apiKey) {{
+                    resultDiv.className = 'test-result error';
+                    resultDiv.style.display = 'block';
+                    resultDiv.textContent = '⚠️ Please enter both URL and API Key first';
+                    return;
+                }}
+                
+                testBtn.disabled = true;
+                testBtn.textContent = '⏳ Testing...';
+                resultDiv.style.display = 'none';
+                
+                const formData = new FormData();
+                formData.append('opencti_url', url);
+                formData.append('opencti_api_key', apiKey);
+                
+                fetch('/settings/test-opencti', {{
                     method: 'POST',
                     body: formData
                 }})
@@ -7763,6 +8112,7 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
             <td style="font-size: 0.85rem; color: #94a3b8;">{last_hunted}</td>
             <td>
                 <button class="btn-action" onclick="editIOC({ioc.id}, '{ioc_value_safe}', '{description_safe}', '{ioc.source or ''}', '{ioc.severity}', '{ioc.notes or ''}', {('true' if ioc.is_active else 'false')})" title="Edit">✏️</button>
+                <button class="btn-action" onclick="enrichIOCWithOpenCTI({ioc.id})" title="Check in OpenCTI" style="color: #3b82f6;">🔍</button>
                 <form method="POST" action="/ioc/delete/{ioc.id}" style="display: inline;" onsubmit="return confirm('Delete this IOC and all its matches?');">
                     <button type="submit" class="btn-action" style="color: #f44336;" title="Delete">🗑️</button>
                 </form>
@@ -8007,6 +8357,65 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
                 const severity = document.getElementById('severityFilter').value;
                 const status = document.getElementById('statusFilter').value;
                 window.location.href = '/ioc/list?type=' + type + '&severity=' + severity + '&status=' + status;
+            }}
+            
+            // OpenCTI enrichment
+            function enrichIOCWithOpenCTI(iocId) {{
+                // Show loading state
+                const btn = event.target;
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '⏳';
+                btn.disabled = true;
+                
+                // Make AJAX request
+                fetch('/ioc/' + iocId + '/enrich-opencti', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json'
+                    }}
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                    
+                    if (data.success) {{
+                        // Show enrichment modal
+                        let message = data.message;
+                        let detailsHtml = data.details_html || '';
+                        
+                        // Create modal
+                        const modal = document.createElement('div');
+                        modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+                        modal.innerHTML = `
+                            <div style="background: #0f172a; border-radius: 12px; padding: 30px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                    <h2 style="margin: 0; color: #f1f5f9;">🔍 OpenCTI Enrichment</h2>
+                                    <button onclick="this.closest('div').parentElement.remove()" style="background: none; border: none; font-size: 2em; color: #94a3b8; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+                                </div>
+                                <div style="color: #cbd5e1; font-size: 1.1em; margin-bottom: 15px;">
+                                    $` + `{message}
+                                </div>
+                                $` + `{detailsHtml}
+                            </div>
+                        `;
+                        document.body.appendChild(modal);
+                        
+                        // Close modal when clicking outside
+                        modal.onclick = function(e) {{
+                            if (e.target === modal) {{
+                                modal.remove();
+                            }}
+                        }};
+                    }} else {{
+                        alert(data.message || 'Error enriching IOC');
+                    }}
+                }})
+                .catch(error => {{
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                    alert('Error connecting to OpenCTI: ' + error);
+                }});
             }}
             
             // Close modals when clicking outside
