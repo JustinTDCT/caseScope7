@@ -31,12 +31,12 @@ pyparsing==3.0.9
 
 # System Utilities
 psutil==5.9.6
-requests==2.31.0
-PyYAML==6.0.1
-python-dateutil==2.8.2
+requests>=2.31.0
+PyYAML>=6.0.1
+python-dateutil>=2.8.2
 
 # Threat Intelligence Integrations
-pycti==6.3.11
+pycti>=6.0.0,<7.0.0
 
 # Web Server
 gunicorn==21.2.0
