@@ -4418,6 +4418,54 @@ def dashboard():
     recent_cases = db.session.query(Case).order_by(Case.created_at.desc()).limit(5).all()
     recent_files = db.session.query(CaseFile).filter_by(is_deleted=False).order_by(CaseFile.uploaded_at.desc()).limit(5).all()
     
+    # DFIR-IRIS Connection Status
+    iris_enabled = get_setting('iris_enabled', False)
+    iris_status = "Not Enabled"
+    iris_color = "#6b7280"  # gray
+    if iris_enabled:
+        iris_url = get_setting('iris_url')
+        iris_api_key = get_setting('iris_api_key')
+        if iris_url and iris_api_key:
+            try:
+                from iris_sync import test_iris_connection
+                is_connected, message = test_iris_connection(iris_url, iris_api_key)
+                if is_connected:
+                    iris_status = "✓ Connected"
+                    iris_color = "#4caf50"  # green
+                else:
+                    iris_status = "✗ Failed"
+                    iris_color = "#f44336"  # red
+            except Exception as e:
+                iris_status = "✗ Error"
+                iris_color = "#f44336"  # red
+        else:
+            iris_status = "⚠ Not Configured"
+            iris_color = "#ff9800"  # orange
+    
+    # OpenCTI Connection Status
+    opencti_enabled = get_setting('opencti_enabled', False)
+    opencti_status = "Not Enabled"
+    opencti_color = "#6b7280"  # gray
+    if opencti_enabled:
+        opencti_url = get_setting('opencti_url')
+        opencti_api_key = get_setting('opencti_api_key')
+        if opencti_url and opencti_api_key:
+            try:
+                from opencti_client import OpenCTIClient
+                client = OpenCTIClient(opencti_url, opencti_api_key)
+                if client.ping():
+                    opencti_status = "✓ Connected"
+                    opencti_color = "#4caf50"  # green
+                else:
+                    opencti_status = "✗ Failed"
+                    opencti_color = "#f44336"  # red
+            except Exception as e:
+                opencti_status = "✗ Error"
+                opencti_color = "#f44336"  # red
+        else:
+            opencti_status = "⚠ Not Configured"
+            opencti_color = "#ff9800"  # orange
+    
     return f'''
     <!DOCTYPE html>
     <html>
@@ -4458,6 +4506,8 @@ def dashboard():
                         <p><strong>Indexed Files:</strong> {total_indexed:,} / {total_files:,}</p>
                         <p><strong>SIGMA Violations:</strong> {total_violations:,}</p>
                         <p><strong>IOC Matches:</strong> {total_ioc_matches:,}</p>
+                        <p><strong>DFIR-IRIS Connection:</strong> <span style="color: {iris_color}; font-weight: 600;">{iris_status}</span></p>
+                        <p><strong>OpenCTI Connection:</strong> <span style="color: {opencti_color}; font-weight: 600;">{opencti_status}</span></p>
                     </div>
                     <div class="tile">
                         <h3>📋 SIGMA Rules</h3>
