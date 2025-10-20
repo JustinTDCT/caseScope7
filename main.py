@@ -8115,7 +8115,7 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
             <td style="font-size: 0.85rem; color: #94a3b8;">{last_hunted}</td>
             <td>
                 <button class="btn-action" onclick="editIOC({ioc.id}, '{ioc_value_safe}', '{description_safe}', '{ioc.source or ''}', '{ioc.severity}', '{ioc.notes or ''}', {('true' if ioc.is_active else 'false')})" title="Edit">✏️</button>
-                {f'<button class="btn-action" onclick="enrichIOCWithOpenCTI({ioc.id})" title="Check in OpenCTI" style="color: #3b82f6;">🔍</button>' if opencti_enabled else ''}
+                {f'<button class="btn-action" onclick="enrichIOCWithOpenCTI({ioc.id}, this)" title="Check in OpenCTI" style="color: #3b82f6;">🔍</button>' if opencti_enabled else ''}
                 <form method="POST" action="/ioc/delete/{ioc.id}" style="display: inline;" onsubmit="return confirm('Delete this IOC and all its matches?');">
                     <button type="submit" class="btn-action" style="color: #f44336;" title="Delete">🗑️</button>
                 </form>
@@ -8363,12 +8363,11 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
             }}
             
             // OpenCTI enrichment
-            function enrichIOCWithOpenCTI(iocId) {{
+            function enrichIOCWithOpenCTI(iocId, btnElement) {{
                 // Show loading state
-                const btn = event.target;
-                const originalText = btn.innerHTML;
-                btn.innerHTML = '⏳';
-                btn.disabled = true;
+                const originalText = btnElement.innerHTML;
+                btnElement.innerHTML = '⏳';
+                btnElement.disabled = true;
                 
                 // Make AJAX request
                 fetch('/ioc/' + iocId + '/enrich-opencti', {{
@@ -8379,8 +8378,8 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
                 }})
                 .then(response => response.json())
                 .then(data => {{
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
+                    btnElement.innerHTML = originalText;
+                    btnElement.disabled = false;
                     
                     if (data.success) {{
                         // Show enrichment modal
@@ -8413,8 +8412,8 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
                     }}
                 }})
                 .catch(error => {{
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
+                    btnElement.innerHTML = originalText;
+                    btnElement.disabled = false;
                     alert('Error connecting to OpenCTI: ' + error);
                 }});
             }}
