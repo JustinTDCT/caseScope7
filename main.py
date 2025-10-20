@@ -4427,15 +4427,25 @@ def dashboard():
         iris_api_key = get_setting('iris_api_key')
         if iris_url and iris_api_key:
             try:
-                from iris_sync import test_iris_connection
-                is_connected, message = test_iris_connection(iris_url, iris_api_key)
-                if is_connected:
+                import requests
+                import urllib3
+                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                
+                test_url = f"{iris_url.rstrip('/')}/manage/cases/list"
+                headers = {
+                    'Authorization': f'Bearer {iris_api_key}',
+                    'Content-Type': 'application/json'
+                }
+                response = requests.get(test_url, headers=headers, timeout=5, verify=False)
+                
+                if response.status_code == 200:
                     iris_status = "✓ Connected"
                     iris_color = "#4caf50"  # green
                 else:
                     iris_status = "✗ Failed"
                     iris_color = "#f44336"  # red
             except Exception as e:
+                logger.error(f"Dashboard IRIS connection test failed: {str(e)}")
                 iris_status = "✗ Error"
                 iris_color = "#f44336"  # red
         else:
