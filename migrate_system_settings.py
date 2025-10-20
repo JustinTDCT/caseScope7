@@ -54,14 +54,20 @@ def migrate_system_settings():
         print("✓ Index created on setting_key")
         
         # Add default settings
-        print("Adding default DFIR-IRIS settings...")
+        print("Adding default integration settings...")
         
         defaults = [
+            # DFIR-IRIS integration
             ('iris_enabled', 'false', 'boolean', 'Enable DFIR-IRIS integration'),
             ('iris_url', '', 'string', 'DFIR-IRIS server URL'),
             ('iris_api_key', '', 'string', 'DFIR-IRIS API key'),
             ('iris_customer_id', '1', 'integer', 'DFIR-IRIS customer ID'),
             ('iris_auto_sync', 'false', 'boolean', 'Auto-sync to DFIR-IRIS'),
+            # OpenCTI integration
+            ('opencti_enabled', 'false', 'boolean', 'Enable OpenCTI integration'),
+            ('opencti_url', '', 'string', 'OpenCTI server URL'),
+            ('opencti_api_key', '', 'string', 'OpenCTI API key'),
+            ('opencti_auto_enrich', 'false', 'boolean', 'Auto-enrich IOCs with OpenCTI'),
         ]
         
         for key, value, stype, desc in defaults:
@@ -77,7 +83,8 @@ def migrate_system_settings():
         print("\n📋 Next steps:")
         print("   1. Go to System Settings page (Management → System Settings)")
         print("   2. Configure DFIR-IRIS integration if needed")
-        print("   3. Test connection to verify settings")
+        print("   3. Configure OpenCTI integration if needed")
+        print("   4. Test connections to verify settings")
         
         conn.close()
         return True
