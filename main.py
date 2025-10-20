@@ -8392,7 +8392,7 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
                         modal.innerHTML = '<div style="background: #0f172a; border-radius: 12px; padding: 30px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">' +
                             '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">' +
                                 '<h2 style="margin: 0; color: #f1f5f9;">🔍 OpenCTI Enrichment</h2>' +
-                                '<button onclick="this.closest(\'div\').parentElement.remove()" style="background: none; border: none; font-size: 2em; color: #94a3b8; cursor: pointer; padding: 0; line-height: 1;">&times;</button>' +
+                                '<button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; font-size: 2em; color: #94a3b8; cursor: pointer; padding: 0; line-height: 1;">&times;</button>' +
                             '</div>' +
                             '<div style="color: #cbd5e1; font-size: 1.1em; margin-bottom: 15px;">' +
                                 message +
