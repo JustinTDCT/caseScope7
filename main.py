@@ -2896,9 +2896,12 @@ def ioc_list():
     ioc_types = db.session.query(IOC.ioc_type).filter_by(case_id=case_id).distinct().all()
     ioc_types = [t[0] for t in ioc_types]
     
+    # Check if OpenCTI is enabled
+    opencti_enabled = get_setting('opencti_enabled', False)
+    
     return render_ioc_management_page(
         case, iocs, total_iocs, active_iocs, total_matches, iocs_with_matches,
-        type_filter, severity_filter, status_filter, ioc_types
+        type_filter, severity_filter, status_filter, ioc_types, opencti_enabled
     )
 
 @app.route('/ioc/edit/<int:ioc_id>', methods=['POST'])
@@ -8055,7 +8058,7 @@ def render_violations_page(case, violations, total_violations, page, per_page, s
     '''
 
 def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matches, iocs_with_matches,
-                                type_filter, severity_filter, status_filter, ioc_types):
+                                type_filter, severity_filter, status_filter, ioc_types, opencti_enabled=False):
     """Render IOC Management Page"""
     from flask import get_flashed_messages
     
@@ -8112,7 +8115,7 @@ def render_ioc_management_page(case, iocs, total_iocs, active_iocs, total_matche
             <td style="font-size: 0.85rem; color: #94a3b8;">{last_hunted}</td>
             <td>
                 <button class="btn-action" onclick="editIOC({ioc.id}, '{ioc_value_safe}', '{description_safe}', '{ioc.source or ''}', '{ioc.severity}', '{ioc.notes or ''}', {('true' if ioc.is_active else 'false')})" title="Edit">✏️</button>
-                <button class="btn-action" onclick="enrichIOCWithOpenCTI({ioc.id})" title="Check in OpenCTI" style="color: #3b82f6;">🔍</button>
+                {f'<button class="btn-action" onclick="enrichIOCWithOpenCTI({ioc.id})" title="Check in OpenCTI" style="color: #3b82f6;">🔍</button>' if opencti_enabled else ''}
                 <form method="POST" action="/ioc/delete/{ioc.id}" style="display: inline;" onsubmit="return confirm('Delete this IOC and all its matches?');">
                     <button type="submit" class="btn-action" style="color: #f44336;" title="Delete">🗑️</button>
                 </form>
