@@ -416,6 +416,167 @@ def log_audit(action, category, details=None, success=True, username=None):
         print(f"[Audit Log] Error logging {action}: {e}")
         db.session.rollback()
 
+# ZIP Extraction Helper Function
+def extract_and_process_zip(zip_path, case_id, zip_filename, user_id):
+    """
+    Extract EVTX files from ZIP and create CaseFile records
+    
+    NEW IN v7.43.0: Support for bulk ZIP uploads
+    - Recursively extracts all EVTX files from ZIP archives
+    - Prepends ZIP filename to each extracted EVTX file
+    - Example: ATN44023.zip containing Security.evtx → ATN44023_Security.evtx
+    - Each EVTX is processed normally (Index → SIGMA → IOC)
+    - Duplicate detection via SHA256 hash
+    - Automatic cleanup of temporary files
+    
+    Args:
+        zip_path: Path to uploaded ZIP file
+        case_id: Target case ID
+        zip_filename: Original ZIP filename (e.g., "ATN44023.zip")
+        user_id: Uploader user ID
+    
+    Returns:
+        list: Created CaseFile objects (one per extracted EVTX)
+    """
+    import zipfile
+    import tempfile
+    import shutil
+    import hashlib
+    import time
+    
+    # Get ZIP prefix (e.g., "ATN44023" from "ATN44023.zip")
+    zip_prefix = os.path.splitext(zip_filename)[0]
+    
+    extracted_files = []
+    temp_dir = tempfile.mkdtemp()
+    max_extracted_size = 50 * 1024 * 1024 * 1024  # 50GB max extracted size (zip bomb protection)
+    total_extracted_size = 0
+    
+    try:
+        # Validate ZIP file
+        if not zipfile.is_zipfile(zip_path):
+            print(f"[ZIP Extract] Error: {zip_filename} is not a valid ZIP file")
+            return []
+        
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            # Check for zip bombs (excessive compression ratio)
+            zip_info_list = zip_ref.infolist()
+            total_compressed = sum(zinfo.compress_size for zinfo in zip_info_list)
+            total_uncompressed = sum(zinfo.file_size for zinfo in zip_info_list)
+            
+            if total_compressed > 0:
+                compression_ratio = total_uncompressed / total_compressed
+                if compression_ratio > 100:  # Suspicious compression ratio
+                    print(f"[ZIP Extract] Warning: High compression ratio ({compression_ratio:.1f}x) detected in {zip_filename}")
+            
+            if total_uncompressed > max_extracted_size:
+                print(f"[ZIP Extract] Error: {zip_filename} would extract to {total_uncompressed/1024/1024/1024:.2f}GB (limit: 50GB)")
+                return []
+            
+            # Extract all files
+            print(f"[ZIP Extract] Extracting {zip_filename} ({len(zip_info_list)} files, {total_uncompressed/1024/1024:.2f}MB uncompressed)")
+            zip_ref.extractall(temp_dir)
+        
+        # Find all EVTX files recursively
+        evtx_count = 0
+        for root, dirs, files in os.walk(temp_dir):
+            for filename in files:
+                if filename.lower().endswith('.evtx'):
+                    evtx_count += 1
+                    source_path = os.path.join(root, filename)
+                    
+                    # Create prefixed filename
+                    prefixed_name = f"{zip_prefix}_{filename}"
+                    
+                    # Read file and calculate hash
+                    try:
+                        with open(source_path, 'rb') as f:
+                            file_data = f.read()
+                            file_size = len(file_data)
+                            sha256_hash = hashlib.sha256(file_data).hexdigest()
+                    except Exception as e:
+                        print(f"[ZIP Extract] Error reading {filename}: {e}")
+                        continue
+                    
+                    # Validate file size (3GB limit per file)
+                    if file_size > 3221225472:
+                        print(f"[ZIP Extract] Skipping {filename}: exceeds 3GB limit ({file_size/1024/1024/1024:.2f}GB)")
+                        continue
+                    
+                    # Check for duplicates
+                    duplicate = db.session.query(CaseFile).filter_by(
+                        case_id=case_id,
+                        file_hash=sha256_hash,
+                        is_deleted=False
+                    ).first()
+                    
+                    if duplicate:
+                        print(f"[ZIP Extract] Skipping duplicate: {prefixed_name} (matches {duplicate.original_filename})")
+                        continue
+                    
+                    # Save with prefixed name
+                    case_upload_dir = f"/opt/casescope/uploads/{case_id}"
+                    os.makedirs(case_upload_dir, exist_ok=True)
+                    timestamp = int(time.time())
+                    safe_filename = f"{timestamp}_{prefixed_name}"
+                    dest_path = os.path.join(case_upload_dir, safe_filename)
+                    
+                    shutil.copy2(source_path, dest_path)
+                    print(f"[ZIP Extract] Extracted: {prefixed_name} ({file_size/1024/1024:.2f}MB)")
+                    
+                    # Create CaseFile record
+                    case_file = CaseFile(
+                        case_id=case_id,
+                        filename=safe_filename,
+                        original_filename=prefixed_name,  # Use prefixed name in UI
+                        file_path=dest_path,
+                        file_size=file_size,
+                        file_hash=sha256_hash,
+                        mime_type='application/octet-stream',
+                        uploaded_by=user_id,
+                        indexing_status='Queued'
+                    )
+                    
+                    db.session.add(case_file)
+                    extracted_files.append(case_file)
+        
+        if evtx_count == 0:
+            print(f"[ZIP Extract] Warning: No EVTX files found in {zip_filename}")
+        else:
+            print(f"[ZIP Extract] Found {evtx_count} EVTX files, created {len(extracted_files)} records (duplicates skipped)")
+        
+        # Commit all extractions
+        if extracted_files:
+            db.session.commit()
+            
+            # Queue processing for each file
+            for case_file in extracted_files:
+                if celery_app:
+                    celery_app.send_task(
+                        'tasks.process_file_complete',
+                        args=[case_file.id],
+                        queue='celery',
+                        priority=0
+                    )
+                    print(f"[ZIP Extract] Queued processing for: {case_file.original_filename}")
+        
+        return extracted_files
+        
+    except zipfile.BadZipFile as e:
+        print(f"[ZIP Extract] Bad ZIP file {zip_filename}: {e}")
+        return []
+    except Exception as e:
+        print(f"[ZIP Extract] Error processing {zip_filename}: {e}")
+        db.session.rollback()
+        return []
+    finally:
+        # Cleanup temp directory
+        try:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            print(f"[ZIP Extract] Cleaned up temp directory")
+        except Exception as e:
+            print(f"[ZIP Extract] Warning: Could not remove temp directory: {e}")
+
 # System Settings Helper Functions
 def get_setting(key, default=None):
     """Get a system setting value (SQLAlchemy 2.0)"""
@@ -1254,63 +1415,111 @@ def upload_files():
                 continue
             
             try:
-                # Read file data
-                file_data = file.read()
-                file_size = len(file_data)
-                
-                # Validate file size (3GB = 3,221,225,472 bytes)
-                if file_size > 3221225472:
-                    flash(f'File {file.filename} exceeds 3GB limit.', 'error')
-                    error_count += 1
-                    continue
-                
-                # Calculate SHA256 hash
-                sha256_hash = hashlib.sha256(file_data).hexdigest()
-                
-                # Check for duplicate hash in this case
-                duplicate = db.session.query(CaseFile).filter_by(
-                    case_id=case.id, 
-                    file_hash=sha256_hash,
-                    is_deleted=False
-                ).first()
-                
-                if duplicate:
-                    flash(f'⚠️ File "{file.filename}" already exists in this case (duplicate detected by SHA256 hash). Original file: "{duplicate.original_filename}"', 'warning')
-                    error_count += 1
-                    continue
-                
-                # Determine MIME type
-                mime_type = mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
-                
-                # Generate safe filename
-                import time
-                timestamp = int(time.time())
-                safe_filename = f"{timestamp}_{file.filename}"
-                
-                # Ensure case upload directory exists
-                case_upload_dir = f"/opt/casescope/uploads/{case.id}"
-                os.makedirs(case_upload_dir, exist_ok=True)
-                
-                # Save file
-                file_path = os.path.join(case_upload_dir, safe_filename)
-                with open(file_path, 'wb') as f:
-                    f.write(file_data)
-                
-                # Create database record with Queued status
-                case_file = CaseFile(
-                    case_id=case.id,
-                    filename=safe_filename,
-                    original_filename=file.filename,
-                    file_path=file_path,
-                    file_size=file_size,
-                    file_hash=sha256_hash,
-                    mime_type=mime_type,
-                    uploaded_by=current_user.id,
-                    indexing_status='Queued'  # Changed from 'Uploaded' to show queue status
-                )
-                
-                db.session.add(case_file)
-                success_count += 1
+                # Check if file is a ZIP archive (NEW IN v7.43.0)
+                if file.filename.lower().endswith('.zip'):
+                    # Read ZIP file data
+                    file_data = file.read()
+                    file_size = len(file_data)
+                    
+                    # Validate ZIP size (500MB limit for ZIP uploads)
+                    if file_size > 524288000:  # 500MB
+                        flash(f'ZIP file {file.filename} exceeds 500MB limit.', 'error')
+                        error_count += 1
+                        continue
+                    
+                    # Save ZIP temporarily
+                    import time
+                    case_upload_dir = f"/opt/casescope/uploads/{case.id}"
+                    os.makedirs(case_upload_dir, exist_ok=True)
+                    timestamp = int(time.time())
+                    temp_zip_path = os.path.join(case_upload_dir, f"{timestamp}_temp_{file.filename}")
+                    
+                    with open(temp_zip_path, 'wb') as f:
+                        f.write(file_data)
+                    
+                    # Extract EVTX files from ZIP
+                    print(f"[Upload] Processing ZIP file: {file.filename}")
+                    extracted_files = extract_and_process_zip(
+                        temp_zip_path,
+                        case.id,
+                        file.filename,
+                        current_user.id
+                    )
+                    
+                    # Remove temporary ZIP file
+                    try:
+                        os.remove(temp_zip_path)
+                        print(f"[Upload] Removed temporary ZIP: {temp_zip_path}")
+                    except Exception as e:
+                        print(f"[Upload] Warning: Could not remove temp ZIP: {e}")
+                    
+                    if extracted_files:
+                        extracted_count = len(extracted_files)
+                        success_count += extracted_count
+                        flash(f'✅ Extracted {extracted_count} EVTX file(s) from {file.filename}', 'success')
+                        print(f"[Upload] Successfully extracted {extracted_count} EVTX files from {file.filename}")
+                    else:
+                        flash(f'⚠️ No EVTX files found in {file.filename}', 'warning')
+                        error_count += 1
+                    
+                else:
+                    # Normal file upload (EVTX, NDJSON, etc.)
+                    file_data = file.read()
+                    file_size = len(file_data)
+                    
+                    # Validate file size (3GB = 3,221,225,472 bytes)
+                    if file_size > 3221225472:
+                        flash(f'File {file.filename} exceeds 3GB limit.', 'error')
+                        error_count += 1
+                        continue
+                    
+                    # Calculate SHA256 hash
+                    sha256_hash = hashlib.sha256(file_data).hexdigest()
+                    
+                    # Check for duplicate hash in this case
+                    duplicate = db.session.query(CaseFile).filter_by(
+                        case_id=case.id, 
+                        file_hash=sha256_hash,
+                        is_deleted=False
+                    ).first()
+                    
+                    if duplicate:
+                        flash(f'⚠️ File "{file.filename}" already exists in this case (duplicate detected by SHA256 hash). Original file: "{duplicate.original_filename}"', 'warning')
+                        error_count += 1
+                        continue
+                    
+                    # Determine MIME type
+                    mime_type = mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
+                    
+                    # Generate safe filename
+                    import time
+                    timestamp = int(time.time())
+                    safe_filename = f"{timestamp}_{file.filename}"
+                    
+                    # Ensure case upload directory exists
+                    case_upload_dir = f"/opt/casescope/uploads/{case.id}"
+                    os.makedirs(case_upload_dir, exist_ok=True)
+                    
+                    # Save file
+                    file_path = os.path.join(case_upload_dir, safe_filename)
+                    with open(file_path, 'wb') as f:
+                        f.write(file_data)
+                    
+                    # Create database record with Queued status
+                    case_file = CaseFile(
+                        case_id=case.id,
+                        filename=safe_filename,
+                        original_filename=file.filename,
+                        file_path=file_path,
+                        file_size=file_size,
+                        file_hash=sha256_hash,
+                        mime_type=mime_type,
+                        uploaded_by=current_user.id,
+                        indexing_status='Queued'  # Changed from 'Uploaded' to show queue status
+                    )
+                    
+                    db.session.add(case_file)
+                    success_count += 1
                 
             except Exception as e:
                 flash(f'Error uploading {file.filename}: {str(e)}', 'error')
@@ -4717,9 +4926,10 @@ def render_upload_form(case):
                         <h3>📋 Upload Limits</h3>
                         <ul>
                             <li>Maximum 5 files per upload</li>
-                            <li>Maximum 3GB per file</li>
+                            <li>Maximum 3GB per file (500MB for ZIP archives)</li>
                             <li>Duplicate detection via SHA256 hash</li>
                             <li>Supported formats: .evtx (Windows Event Logs), .ndjson (EDR telemetry), .json, .csv, .log, .txt, .xml</li>
+                            <li><strong>NEW:</strong> .zip archives (automatically extracts EVTX files with filename prefixing)</li>
                         </ul>
                     </div>
                     
@@ -4728,8 +4938,8 @@ def render_upload_form(case):
                             <div class="upload-dropzone-content">
                                 <div class="upload-icon">📁</div>
                                 <div class="upload-primary-text">Click to select files or drag and drop</div>
-                                <div class="upload-secondary-text">Up to 5 files, 3GB each</div>
-                                <input type="file" id="fileInput" name="files" multiple accept=".evtx,.ndjson,.json,.csv,.log,.txt,.xml" style="display: none;">
+                                <div class="upload-secondary-text">Up to 5 files, 3GB each (500MB for ZIP)</div>
+                                <input type="file" id="fileInput" name="files" multiple accept=".evtx,.ndjson,.json,.csv,.log,.txt,.xml,.zip" style="display: none;">
                             </div>
                         </div>
                         
