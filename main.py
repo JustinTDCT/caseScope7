@@ -444,6 +444,12 @@ def extract_and_process_zip(zip_path, case_id, zip_filename, user_id):
     import hashlib
     import time
     
+    # Count existing files in case before extraction
+    files_before_count = db.session.query(CaseFile).filter_by(
+        case_id=case_id,
+        is_deleted=False
+    ).count()
+    
     # Get ZIP prefix (e.g., "ATN44023" from "ATN44023.zip")
     zip_prefix = os.path.splitext(zip_filename)[0]
     
@@ -559,6 +565,37 @@ def extract_and_process_zip(zip_path, case_id, zip_filename, user_id):
                         priority=0
                     )
                     print(f"[ZIP Extract] Queued processing for: {case_file.original_filename}")
+        
+        # Audit log: Record ZIP extraction details
+        try:
+            case = db.session.get(Case, case_id)
+            if case:
+                files_queued = len(extracted_files)
+                duplicates_skipped = evtx_count - files_queued
+                details = (
+                    f"ZIP: {zip_filename} | "
+                    f"EVTX files found: {evtx_count} | "
+                    f"Files queued: {files_queued} | "
+                    f"Duplicates skipped: {duplicates_skipped} | "
+                    f"Files before import: {files_before_count} | "
+                    f"Files after import: {files_before_count + files_queued}"
+                )
+                
+                audit = AuditLog(
+                    user_id=user_id,
+                    username=db.session.get(User, user_id).username if user_id else 'Unknown',
+                    action='zip_extract',
+                    category='file_operation',
+                    details=details,
+                    ip_address=request.remote_addr if request else '127.0.0.1',
+                    success=True
+                )
+                db.session.add(audit)
+                db.session.commit()
+                print(f"[ZIP Extract] Audit log created: {details}")
+        except Exception as e:
+            print(f"[ZIP Extract] Warning: Could not create audit log: {e}")
+            db.session.rollback()
         
         return extracted_files
         
