@@ -2035,20 +2035,7 @@ def delete_file(file_id):
         
         # STEP 1: Delete OpenSearch index (all events)
         try:
-            from opensearchpy import OpenSearch, RequestsHttpConnection
-            from tasks import make_index_name
-            
-            es = OpenSearch(
-                hosts=[{'host': 'localhost', 'port': 9200}],
-                http_compress=True,
-                use_ssl=False,
-                verify_certs=False,
-                ssl_assert_hostname=False,
-                ssl_show_warn=False,
-                connection_class=RequestsHttpConnection,
-                timeout=30
-            )
-            
+            es = get_opensearch_client()
             index_name = make_index_name(case_file.case_id, filename)
             
             if es.indices.exists(index=index_name):
@@ -2216,20 +2203,7 @@ def delete_all_files():
                 # Use same cleanup logic as single file delete
                 # STEP 1: Delete OpenSearch index
                 try:
-                    from opensearchpy import OpenSearch, RequestsHttpConnection
-                    from tasks import make_index_name
-                    
-                    es = OpenSearch(
-                        hosts=[{'host': 'localhost', 'port': 9200}],
-                        http_compress=True,
-                        use_ssl=False,
-                        verify_certs=False,
-                        ssl_assert_hostname=False,
-                        ssl_show_warn=False,
-                        connection_class=RequestsHttpConnection,
-                        timeout=30
-                    )
-                    
+                    es = get_opensearch_client()
                     index_name = make_index_name(case_id, filename)
                     
                     if es.indices.exists(index=index_name):
