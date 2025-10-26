@@ -2488,9 +2488,10 @@ def hunt_iocs_for_case(self, case_id):
                     'cleared_matches': cleared_matches
                 }
             
-            # Build list of indices
-            indices = [make_index_name(case_id, f.original_filename) for f in indexed_files]
-            logger.info(f"Searching across {len(indices)} indices")
+            # Use wildcard index pattern instead of listing all indices
+            # Prevents HTTP line too long error with many files
+            index_pattern = f"case{case_id}_*"
+            logger.info(f"Searching across case indices using pattern: {index_pattern}")
             
             # STEP 2: HUNT ALL IOCs (using v8.0.3 all-fields approach)
             logger.info("="*80)
@@ -2534,9 +2535,9 @@ def hunt_iocs_for_case(self, case_id):
                 }
                 
                 try:
-                    # Search across ALL indices at once
+                    # Search across ALL indices using wildcard pattern
                     response = opensearch_client.search(
-                        index=','.join(indices),
+                        index=index_pattern,
                         body=query,
                         ignore_unavailable=True
                     )
@@ -2675,9 +2676,10 @@ def hunt_iocs(self, case_id):
                 logger.warning(f"No indexed files found for case {case_id}")
                 return {'status': 'success', 'message': 'No indexed files', 'total_iocs': len(iocs), 'matches': 0}
             
-            # Build list of indices
-            indices = [make_index_name(case_id, f.original_filename) for f in indexed_files]
-            logger.info(f"Searching across {len(indices)} indices")
+            # Use wildcard index pattern instead of listing all indices
+            # Prevents HTTP line too long error with many files
+            index_pattern = f"case{case_id}_*"
+            logger.info(f"Searching across case indices using pattern: {index_pattern}")
             
             # Get IOC field mappings using helper
             ioc_field_mapping = get_ioc_field_mapping()
@@ -2711,9 +2713,9 @@ def hunt_iocs(self, case_id):
                 query = build_ioc_search_query(ioc, ioc_field_mapping)
                 
                 try:
-                    # Search OpenSearch (ignore_unavailable allows searching even if some indices don't exist)
+                    # Search OpenSearch using wildcard pattern (ignore_unavailable allows searching even if some indices don't exist)
                     response = opensearch_client.search(
-                        index=','.join(indices),
+                        index=index_pattern,
                         body=query,
                         ignore_unavailable=True
                     )

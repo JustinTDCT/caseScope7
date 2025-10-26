@@ -9,6 +9,16 @@ Simple bug tracking - one paragraph per bug, updated with fix date/version when 
 
 ## Open Bugs
 
+### BUG-010: IOC Hunting Failing with HTTP Line Too Long Error
+**Reported:** 2025-10-26 (v9.0.9)  
+**Status:** Open
+
+IOC "Hunt Now" and "Rehunt All IOCs" operations fail with "RequestError(400, 'too_long_http_line_exception', 'An HTTP line is larger than 4096 bytes.')". Worker logs show: "POST /case2_atn44023_microsoft_windows_filehistory_core_4whc,case2_atn4..." with the full index list being truncated. IOC hunting functions hunt_iocs_for_case() and hunt_iocs() build comma-separated list of all index names (line 2492 and 2679: indices = [make_index_name(case_id, f.original_filename) for f in indexed_files]) then search with index=','.join(indices)' (lines 2539, 2716). With 30-100+ files, this creates same HTTP line too long error as search had. Result: 0 IOC matches found because query fails before executing.
+
+**Fixed:** 2025-10-26 (v9.0.10) - Changed IOC hunting to use wildcard index patterns instead of listing all indices
+
+---
+
 ### BUG-009: IOC Matching Is Case-Sensitive
 **Reported:** 2025-10-26 (v9.0.8)  
 **Status:** Open
