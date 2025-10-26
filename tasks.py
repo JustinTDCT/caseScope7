@@ -727,6 +727,17 @@ def index_evtx_file(self, file_id):
             
             logger.info(f"evtx_dump completed, JSONL saved to: {jsonl_file}")
             
+            # Count total events in JSONL file for accurate progress tracking
+            logger.info("Counting events in JSONL file...")
+            total_events = 0
+            with open(jsonl_file, 'r', encoding='utf-8') as f:
+                for _ in f:
+                    total_events += 1
+            
+            logger.info(f"Total events to index: {total_events:,}")
+            case_file.estimated_event_count = total_events
+            db.session.commit()
+            
             # Parse JSONL and index events
             logger.info(f"Starting JSONL parsing and indexing...")
             events = []
@@ -2845,6 +2856,17 @@ def _index_evtx_helper(celery_task, file_id, case_file, file_path, index_name):
             '-f', jsonl_file,
             file_path
         ], check=True, capture_output=True, text=True, timeout=600)
+        
+        # Count total events for accurate progress tracking
+        logger.info("[Index EVTX] Counting events in JSONL file...")
+        total_events = 0
+        with open(jsonl_file, 'r', encoding='utf-8') as f:
+            for _ in f:
+                total_events += 1
+        
+        logger.info(f"[Index EVTX] Total events to index: {total_events:,}")
+        case_file.estimated_event_count = total_events
+        commit_with_retry(db.session, logger_instance=logger)
         
         # Parse and index
         events = []
