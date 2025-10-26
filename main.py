@@ -3835,7 +3835,8 @@ def export_search():
         flash('No indexed files to export.', 'error')
         return redirect(url_for('search'))
     
-    indices = [make_index_name(case.id, f.original_filename) for f in indexed_files]
+    # Use index pattern instead of listing all indices
+    index_pattern = f"case{case.id}_*"
     
     # Build query
     query = build_opensearch_query(query_str)
@@ -3873,7 +3874,7 @@ def export_search():
     
     try:
         response = es.search(
-            index=','.join(indices),
+            index=index_pattern,
             body=search_body,
             ignore_unavailable=True
         )
@@ -3972,8 +3973,10 @@ def search():
         flash('No indexed files in this case. Upload and index files first.', 'warning')
         return redirect(url_for('list_files'))
     
-    # Build list of indices to search
-    indices = [make_index_name(case.id, f.original_filename) for f in indexed_files]
+    # Build index pattern to search
+    # Use wildcard pattern instead of listing all indices to avoid HTTP line too long error
+    # Pattern: case{case_id}_* matches all indices for this case
+    index_pattern = f"case{case.id}_*"
     
     # Get OpenSearch client
     es = get_opensearch_client()
@@ -4065,7 +4068,7 @@ def search():
             }
             
             response = es.search(
-                index=','.join(indices),
+                index=index_pattern,
                 body=search_body,
                 ignore_unavailable=True
             )

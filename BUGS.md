@@ -9,6 +9,16 @@ Simple bug tracking - one paragraph per bug, updated with fix date/version when 
 
 ## Open Bugs
 
+### BUG-008: Search Failing with HTTP Line Too Long Error
+**Reported:** 2025-10-26 (v9.0.7)  
+**Status:** Open
+
+Search returns error "RequestError(400, 'too_long_http_line_exception', 'An HTTP line is larger than 4096 bytes.')". This occurs when a case has many indexed files (30+ files) and the OpenSearch query URL includes all index names as a comma-separated list. The HTTP GET request line exceeds OpenSearch's 4096 byte limit. Example: With 100 EVTX files, the index list would be case2_file1,case2_file2,case2_file3... which creates a URL over 4KB. OpenSearch rejects this with a 400 error before processing the query.
+
+**Fixed:** _(pending)_
+
+---
+
 ### BUG-006: UI Not Auto-Refreshing During File Processing
 **Reported:** 2025-10-26 (v9.0.5)  
 **Status:** Open
