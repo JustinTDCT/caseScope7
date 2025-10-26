@@ -1942,7 +1942,8 @@ def hunt_iocs_for_file(self, file_id, index_name):
                             "query": f"*{escaped_value}*",
                             "fields": [f"{field}*"],  # Wildcard to match nested paths
                             "default_operator": "AND",
-                            "lenient": True  # Ignore field type errors
+                            "lenient": True,  # Ignore field type errors
+                            "case_insensitive": True  # Match regardless of case (Xerox = xerox = XEROX)
                         }
                     })
                 
@@ -2141,7 +2142,8 @@ def build_ioc_search_query(ioc, field_mapping):
         "query_string": {
             "query": f"*{search_value}*",
             "fields": ["*"],
-            "analyze_wildcard": True
+            "analyze_wildcard": True,
+            "case_insensitive": True  # Match regardless of case
         }
     })
     
@@ -2524,7 +2526,8 @@ def hunt_iocs_for_case(self, case_id):
                         "query_string": {
                             "query": f"*{search_value}*",
                             "default_operator": "AND",
-                            "lenient": True
+                            "lenient": True,
+                            "case_insensitive": True  # Match regardless of case
                         }
                     },
                     "size": 10000
@@ -3133,7 +3136,8 @@ def _hunt_iocs_helper(celery_task, file_id, case_file, index_name):
                 "query_string": {
                     "query": f"*{search_value}*",
                     "default_operator": "AND",
-                    "lenient": True
+                    "lenient": True,
+                    "case_insensitive": True  # Match regardless of case
                 }
             },
             "size": 10000  # Increased from 1000 to handle more matches

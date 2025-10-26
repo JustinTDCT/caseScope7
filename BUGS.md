@@ -9,13 +9,23 @@ Simple bug tracking - one paragraph per bug, updated with fix date/version when 
 
 ## Open Bugs
 
+### BUG-009: IOC Matching Is Case-Sensitive
+**Reported:** 2025-10-26 (v9.0.8)  
+**Status:** Open
+
+IOC matching fails to detect IOCs when the case doesn't match exactly. Example: IOC database has "Xerox" (capital X) as username IOC. Event with "EventData.TargetUserName: Xerox" (capital X) gets matched and flagged with USERNAME tag. But searching for "xerox" (lowercase) only finds one flagged event, not all events containing that username. The IOC hunting in tasks.py uses OpenSearch query_string which is case-sensitive by default. This means if an IOC is entered as "Xerox" it won't match "xerox", "XEROX", or "XeRoX" in the event data, leading to missed detections.
+
+**Fixed:** 2025-10-26 (v9.0.9) - Added case_insensitive: True to all query_string queries in IOC hunting
+
+---
+
 ### BUG-008: Search Failing with HTTP Line Too Long Error
 **Reported:** 2025-10-26 (v9.0.7)  
 **Status:** Open
 
 Search returns error "RequestError(400, 'too_long_http_line_exception', 'An HTTP line is larger than 4096 bytes.')". This occurs when a case has many indexed files (30+ files) and the OpenSearch query URL includes all index names as a comma-separated list. The HTTP GET request line exceeds OpenSearch's 4096 byte limit. Example: With 100 EVTX files, the index list would be case2_file1,case2_file2,case2_file3... which creates a URL over 4KB. OpenSearch rejects this with a 400 error before processing the query.
 
-**Fixed:** _(pending)_
+**Fixed:** 2025-10-26 (v9.0.8) - Changed to wildcard index pattern instead of listing all indices
 
 ---
 
