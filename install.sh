@@ -1516,6 +1516,10 @@ server {
     server_name _;
     
     client_max_body_size 3G;
+    client_body_buffer_size 256k;
+    client_body_timeout 300s;
+    proxy_buffering off;
+    proxy_request_buffering off;
     
     location / {
         proxy_pass http://127.0.0.1:5000;

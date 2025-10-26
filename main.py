@@ -1454,25 +1454,31 @@ def upload_files():
             try:
                 # Check if file is a ZIP archive (NEW IN v7.43.0)
                 if file.filename.lower().endswith('.zip'):
-                    # Read ZIP file data
-                    file_data = file.read()
-                    file_size = len(file_data)
-                    
-                    # Validate ZIP size (500MB limit for ZIP uploads)
-                    if file_size > 524288000:  # 500MB
-                        flash(f'ZIP file {file.filename} exceeds 500MB limit.', 'error')
-                        error_count += 1
-                        continue
-                    
-                    # Save ZIP temporarily
+                    # Stream ZIP file to disk (FAST - no memory buffering)
                     import time
                     case_upload_dir = f"/opt/casescope/uploads/{case.id}"
                     os.makedirs(case_upload_dir, exist_ok=True)
                     timestamp = int(time.time())
                     temp_zip_path = os.path.join(case_upload_dir, f"{timestamp}_temp_{file.filename}")
                     
+                    # Stream to disk in 64KB chunks
+                    file_size = 0
                     with open(temp_zip_path, 'wb') as f:
-                        f.write(file_data)
+                        while chunk := file.stream.read(65536):  # 64KB chunks
+                            f.write(chunk)
+                            file_size += len(chunk)
+                            
+                            # Check size limit during upload (500MB)
+                            if file_size > 524288000:
+                                f.close()
+                                os.remove(temp_zip_path)
+                                flash(f'ZIP file {file.filename} exceeds 500MB limit.', 'error')
+                                error_count += 1
+                                break
+                    
+                    # Skip if size limit exceeded
+                    if file_size > 524288000:
+                        continue
                     
                     # Extract EVTX files from ZIP
                     print(f"[Upload] Processing ZIP file: {file.filename}")
@@ -1501,17 +1507,35 @@ def upload_files():
                     
                 else:
                     # Normal file upload (EVTX, NDJSON, etc.)
-                    file_data = file.read()
-                    file_size = len(file_data)
+                    # Stream to disk while calculating hash (FAST - no memory buffering)
+                    import time
+                    case_upload_dir = f"/opt/casescope/uploads/{case.id}"
+                    os.makedirs(case_upload_dir, exist_ok=True)
+                    timestamp = int(time.time())
+                    temp_path = os.path.join(case_upload_dir, f"{timestamp}_temp_{file.filename}")
                     
-                    # Validate file size (3GB = 3,221,225,472 bytes)
+                    # Stream to disk in 64KB chunks while calculating hash
+                    sha256_hash = hashlib.sha256()
+                    file_size = 0
+                    with open(temp_path, 'wb') as f:
+                        while chunk := file.stream.read(65536):  # 64KB chunks
+                            f.write(chunk)
+                            sha256_hash.update(chunk)
+                            file_size += len(chunk)
+                            
+                            # Check size limit during upload (3GB)
+                            if file_size > 3221225472:
+                                f.close()
+                                os.remove(temp_path)
+                                flash(f'File {file.filename} exceeds 3GB limit.', 'error')
+                                error_count += 1
+                                break
+                    
+                    # Skip if size limit exceeded
                     if file_size > 3221225472:
-                        flash(f'File {file.filename} exceeds 3GB limit.', 'error')
-                        error_count += 1
                         continue
                     
-                    # Calculate SHA256 hash
-                    sha256_hash = hashlib.sha256(file_data).hexdigest()
+                    sha256_hash = sha256_hash.hexdigest()
                     
                     # Check for duplicate hash in this case
                     duplicate = db.session.query(CaseFile).filter_by(
@@ -1521,6 +1545,7 @@ def upload_files():
                     ).first()
                     
                     if duplicate:
+                        os.remove(temp_path)  # Clean up temp file
                         flash(f'⚠️ File "{file.filename}" already exists in this case (duplicate detected by SHA256 hash). Original file: "{duplicate.original_filename}"', 'warning')
                         error_count += 1
                         continue
@@ -1528,19 +1553,10 @@ def upload_files():
                     # Determine MIME type
                     mime_type = mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
                     
-                    # Generate safe filename
-                    import time
-                    timestamp = int(time.time())
+                    # Rename temp file to final name
                     safe_filename = f"{timestamp}_{file.filename}"
-                    
-                    # Ensure case upload directory exists
-                    case_upload_dir = f"/opt/casescope/uploads/{case.id}"
-                    os.makedirs(case_upload_dir, exist_ok=True)
-                    
-                    # Save file
                     file_path = os.path.join(case_upload_dir, safe_filename)
-                    with open(file_path, 'wb') as f:
-                        f.write(file_data)
+                    os.rename(temp_path, file_path)
                     
                     # Create database record with Queued status
                     case_file = CaseFile(
