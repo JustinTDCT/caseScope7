@@ -1648,6 +1648,226 @@ def upload_files():
     # GET request - show upload form
     return render_upload_form(case)
 
+# ============================================================================
+# CHUNKED UPLOAD API (v8.6.0) - Fast uploads without browser buffering
+# ============================================================================
+
+@app.route('/api/upload-chunk', methods=['POST'])
+@login_required
+def upload_chunk():
+    """
+    Receive a single chunk of a large file upload
+    
+    NEW IN v8.6.0: Chunked upload system for fast, resumable uploads
+    - Browser splits file into 5MB chunks
+    - Each chunk uploaded immediately (no buffering)
+    - Real-time progress feedback
+    - Resume capability if upload fails
+    
+    Request:
+        file: Binary chunk data
+        chunkIndex: Current chunk number (0-based)
+        totalChunks: Total number of chunks
+        fileName: Original filename
+        fileSize: Total file size
+        uploadId: Unique upload session ID
+    
+    Response:
+        {status: 'success', chunkIndex: N, chunksReceived: N}
+    """
+    try:
+        # Get form data
+        chunk_file = request.files.get('file')
+        chunk_index = int(request.form.get('chunkIndex', 0))
+        total_chunks = int(request.form.get('totalChunks', 1))
+        file_name = request.form.get('fileName', 'unknown')
+        file_size = int(request.form.get('fileSize', 0))
+        upload_id = request.form.get('uploadId', '')
+        
+        if not chunk_file or not upload_id:
+            return jsonify({'status': 'error', 'message': 'Missing chunk or upload ID'}), 400
+        
+        # Require active case
+        active_case_id = session.get('active_case_id')
+        if not active_case_id:
+            return jsonify({'status': 'error', 'message': 'No active case'}), 403
+        
+        # Create temp directory for this upload
+        temp_dir = f"/opt/casescope/tmp/uploads/{upload_id}"
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # Save chunk
+        chunk_path = os.path.join(temp_dir, f"chunk_{chunk_index:05d}")
+        chunk_file.save(chunk_path)
+        
+        # Count received chunks
+        chunks_received = len([f for f in os.listdir(temp_dir) if f.startswith('chunk_')])
+        
+        print(f"[Chunked Upload] Received chunk {chunk_index + 1}/{total_chunks} for {file_name} (upload_id: {upload_id})")
+        
+        return jsonify({
+            'status': 'success',
+            'chunkIndex': chunk_index,
+            'chunksReceived': chunks_received,
+            'totalChunks': total_chunks
+        })
+        
+    except Exception as e:
+        print(f"[Chunked Upload] Error receiving chunk: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/upload-finalize', methods=['POST'])
+@login_required
+def upload_finalize():
+    """
+    Finalize chunked upload by assembling chunks into complete file
+    
+    NEW IN v8.6.0: Assembles uploaded chunks and queues for processing
+    - Combines all chunks into final file
+    - Calculates SHA256 hash
+    - Checks for duplicates
+    - Queues for processing
+    - Cleans up temp chunks
+    
+    Request:
+        uploadId: Unique upload session ID
+        fileName: Original filename
+        fileSize: Total file size
+        totalChunks: Expected number of chunks
+    
+    Response:
+        {status: 'success', file_id: N, message: '...'}
+    """
+    try:
+        data = request.get_json()
+        upload_id = data.get('uploadId', '')
+        file_name = data.get('fileName', '')
+        file_size = int(data.get('fileSize', 0))
+        total_chunks = int(data.get('totalChunks', 1))
+        
+        if not upload_id or not file_name:
+            return jsonify({'status': 'error', 'message': 'Missing upload ID or filename'}), 400
+        
+        # Require active case
+        active_case_id = session.get('active_case_id')
+        if not active_case_id:
+            return jsonify({'status': 'error', 'message': 'No active case'}), 403
+        
+        case = db.session.get(Case, active_case_id)
+        if not case:
+            return jsonify({'status': 'error', 'message': 'Case not found'}), 404
+        
+        temp_dir = f"/opt/casescope/tmp/uploads/{upload_id}"
+        
+        # Verify all chunks received
+        if not os.path.exists(temp_dir):
+            return jsonify({'status': 'error', 'message': 'Upload session not found'}), 404
+        
+        chunk_files = sorted([f for f in os.listdir(temp_dir) if f.startswith('chunk_')])
+        if len(chunk_files) != total_chunks:
+            return jsonify({
+                'status': 'error',
+                'message': f'Missing chunks: received {len(chunk_files)}/{total_chunks}'
+            }), 400
+        
+        print(f"[Chunked Upload] Assembling {total_chunks} chunks for {file_name}")
+        
+        # Create final file path
+        import time
+        import hashlib
+        import mimetypes
+        
+        case_upload_dir = f"/opt/casescope/uploads/{case.id}"
+        os.makedirs(case_upload_dir, exist_ok=True)
+        timestamp = int(time.time())
+        safe_filename = f"{timestamp}_{file_name}"
+        final_path = os.path.join(case_upload_dir, safe_filename)
+        
+        # Assemble chunks and calculate hash
+        sha256_hash = hashlib.sha256()
+        assembled_size = 0
+        
+        with open(final_path, 'wb') as outfile:
+            for chunk_file in chunk_files:
+                chunk_path = os.path.join(temp_dir, chunk_file)
+                with open(chunk_path, 'rb') as infile:
+                    chunk_data = infile.read()
+                    outfile.write(chunk_data)
+                    sha256_hash.update(chunk_data)
+                    assembled_size += len(chunk_data)
+        
+        sha256_hash = sha256_hash.hexdigest()
+        
+        print(f"[Chunked Upload] Assembled {assembled_size} bytes, hash: {sha256_hash[:16]}...")
+        
+        # Check for duplicates
+        duplicate = db.session.query(CaseFile).filter_by(
+            case_id=case.id,
+            file_hash=sha256_hash,
+            is_deleted=False
+        ).first()
+        
+        if duplicate:
+            os.remove(final_path)
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return jsonify({
+                'status': 'error',
+                'message': f'Duplicate file detected. Original: {duplicate.original_filename}'
+            }), 409
+        
+        # Determine MIME type
+        mime_type = mimetypes.guess_type(file_name)[0] or 'application/octet-stream'
+        
+        # Create database record
+        case_file = CaseFile(
+            case_id=case.id,
+            filename=safe_filename,
+            original_filename=file_name,
+            file_path=final_path,
+            file_size=assembled_size,
+            file_hash=sha256_hash,
+            mime_type=mime_type,
+            uploaded_by=current_user.id,
+            indexing_status='Queued'
+        )
+        
+        db.session.add(case_file)
+        db.session.commit()
+        
+        # Queue for processing
+        if celery_app:
+            celery_app.send_task(
+                'tasks.process_file_complete',
+                args=[case_file.id],
+                queue='celery',
+                priority=0
+            )
+            print(f"[Chunked Upload] Queued processing for file ID {case_file.id}: {file_name}")
+        
+        # Clean up temp chunks
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        
+        # Audit log
+        log_audit('file_upload', 'file_operation', f'Uploaded {file_name} via chunked upload to case {case.name}')
+        
+        print(f"[Chunked Upload] Successfully finalized {file_name}")
+        
+        return jsonify({
+            'status': 'success',
+            'file_id': case_file.id,
+            'message': f'Successfully uploaded {file_name}'
+        })
+        
+    except Exception as e:
+        print(f"[Chunked Upload] Error finalizing upload: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/case/stats/<int:case_id>')
 @login_required
 def get_case_stats(case_id):
@@ -5159,8 +5379,11 @@ def render_upload_form(case):
                 uploadActions.style.display = 'none';
             }}
             
-            // AJAX upload with progress bar
-            document.getElementById('uploadForm').addEventListener('submit', (e) => {{
+            // ================================================================
+            // CHUNKED UPLOAD SYSTEM (v8.6.0) - Fast uploads without buffering
+            // ================================================================
+            
+            document.getElementById('uploadForm').addEventListener('submit', async (e) => {{
                 e.preventDefault();
                 
                 if (fileInput.files.length === 0) {{
@@ -5176,55 +5399,144 @@ def render_upload_form(case):
                     }}
                 }}
                 
-                // Create progress display
+                // Disable submit button
                 const submitBtn = e.target.querySelector('button[type="submit"]');
                 submitBtn.disabled = true;
-                
-                const progressHTML = '<div id="uploadProgress" style="margin-top: 20px; padding: 20px; background: #2a2a2a; border-radius: 8px;"><div style="margin-bottom: 10px; font-weight: bold;">Uploading files...</div><div style="background: #1a1a1a; border-radius: 4px; height: 30px; position: relative; overflow: hidden;"><div id="progressBar" style="height: 100%; background: linear-gradient(90deg, #1565c0, #42a5f5); width: 0%; transition: width 0.3s;"></div><div id="progressText" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-weight: bold;">0%</div></div></div>';
-                submitBtn.insertAdjacentHTML('afterend', progressHTML);
                 submitBtn.style.display = 'none';
                 
-                // Prepare form data
-                const formData = new FormData(e.target);
+                // Create progress display
+                const progressHTML = `
+                    <div id="uploadProgress" style="margin-top: 20px; padding: 20px; background: #2a2a2a; border-radius: 8px;">
+                        <div id="currentFileStatus" style="margin-bottom: 10px; font-weight: bold;">Preparing upload...</div>
+                        <div style="background: #1a1a1a; border-radius: 4px; height: 30px; position: relative; overflow: hidden;">
+                            <div id="progressBar" style="height: 100%; background: linear-gradient(90deg, #1565c0, #42a5f5); width: 0%; transition: width 0.3s;"></div>
+                            <div id="progressText" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-weight: bold;">0%</div>
+                        </div>
+                        <div id="detailedStatus" style="margin-top: 10px; font-size: 0.9em; color: rgba(255,255,255,0.7);"></div>
+                    </div>
+                `;
+                submitBtn.insertAdjacentHTML('afterend', progressHTML);
                 
-                // Create AJAX request
-                const xhr = new XMLHttpRequest();
+                // Upload files using chunked upload
+                const files = Array.from(fileInput.files);
+                let successCount = 0;
+                let errorCount = 0;
+                const errors = [];
                 
-                // Upload progress handler
-                xhr.upload.addEventListener('progress', (event) => {{
-                    if (event.lengthComputable) {{
-                        const percentComplete = Math.round((event.loaded / event.total) * 100);
-                        document.getElementById('progressBar').style.width = percentComplete + '%';
-                        document.getElementById('progressText').textContent = percentComplete + '%';
+                for (let i = 0; i < files.length; i++) {{
+                    const file = files[i];
+                    document.getElementById('currentFileStatus').textContent = `Uploading file ${{i + 1}} of ${{files.length}}: ${{file.name}}`;
+                    
+                    try {{
+                        await uploadFileChunked(file, (progress) => {{
+                            // Update progress for this file
+                            const overallProgress = ((i + progress) / files.length) * 100;
+                            document.getElementById('progressBar').style.width = overallProgress + '%';
+                            document.getElementById('progressText').textContent = Math.round(overallProgress) + '%';
+                            document.getElementById('detailedStatus').textContent = `${{(progress * 100).toFixed(1)}}% - ${{file.name}}`;
+                        }});
+                        successCount++;
+                    }} catch (error) {{
+                        console.error(`Failed to upload ${{file.name}}:`, error);
+                        errorCount++;
+                        errors.push(`${{file.name}}: ${{error.message}}`);
                     }}
-                }});
+                }}
                 
-                // Upload complete handler
-                xhr.addEventListener('load', () => {{
-                    if (xhr.status === 200) {{
+                // Show results
+                if (errorCount === 0) {{
+                    document.getElementById('currentFileStatus').textContent = `✅ Successfully uploaded ${{successCount}} file(s)`;
+                    setTimeout(() => {{
                         window.location.reload();
-                    }} else {{
-                        alert('Upload failed: ' + xhr.statusText);
-                        submitBtn.style.display = 'block';
-                        submitBtn.disabled = false;
-                        document.getElementById('uploadProgress').remove();
-                    }}
-                }});
-                
-                // Error handler
-                xhr.addEventListener('error', () => {{
-                    alert('Upload error occurred');
+                    }}, 1500);
+                }} else {{
+                    document.getElementById('currentFileStatus').textContent = `⚠️ Uploaded ${{successCount}} file(s), ${{errorCount}} failed`;
+                    document.getElementById('detailedStatus').innerHTML = '<div style="color: #f44336; margin-top: 10px;">Errors:<br>' + errors.join('<br>') + '</div>';
                     submitBtn.style.display = 'block';
                     submitBtn.disabled = false;
-                    document.getElementById('uploadProgress').remove();
-                }});
-                
-                // Send request
-                xhr.open('POST', window.location.href, true);
-                xhr.send(formData);
+                }}
                 
                 return false;
             }});
+            
+            /**
+             * Upload a file using chunked upload system
+             * @param {{File}} file - The file to upload
+             * @param {{Function}} progressCallback - Called with progress (0-1)
+             * @returns {{Promise}} Resolves when upload is complete
+             */
+            async function uploadFileChunked(file, progressCallback) {{
+                const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
+                const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+                const uploadId = generateUploadId();
+                
+                console.log(`[Chunked Upload] Starting upload: ${{file.name}} (${{file.size}} bytes, ${{totalChunks}} chunks)`);
+                
+                // Upload each chunk
+                for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {{
+                    const start = chunkIndex * CHUNK_SIZE;
+                    const end = Math.min(start + CHUNK_SIZE, file.size);
+                    const chunk = file.slice(start, end);
+                    
+                    // Create form data for this chunk
+                    const formData = new FormData();
+                    formData.append('file', chunk);
+                    formData.append('chunkIndex', chunkIndex);
+                    formData.append('totalChunks', totalChunks);
+                    formData.append('fileName', file.name);
+                    formData.append('fileSize', file.size);
+                    formData.append('uploadId', uploadId);
+                    
+                    // Upload chunk
+                    const response = await fetch('/api/upload-chunk', {{
+                        method: 'POST',
+                        body: formData
+                    }});
+                    
+                    if (!response.ok) {{
+                        const error = await response.json();
+                        throw new Error(error.message || `Failed to upload chunk ${{chunkIndex + 1}}/${{totalChunks}}`);
+                    }}
+                    
+                    // Update progress
+                    const progress = (chunkIndex + 1) / totalChunks;
+                    progressCallback(progress);
+                }}
+                
+                // Finalize upload
+                console.log(`[Chunked Upload] All chunks uploaded, finalizing...`);
+                
+                const finalizeResponse = await fetch('/api/upload-finalize', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json'
+                    }},
+                    body: JSON.stringify({{
+                        uploadId: uploadId,
+                        fileName: file.name,
+                        fileSize: file.size,
+                        totalChunks: totalChunks
+                    }})
+                }});
+                
+                if (!finalizeResponse.ok) {{
+                    const error = await finalizeResponse.json();
+                    throw new Error(error.message || 'Failed to finalize upload');
+                }}
+                
+                const result = await finalizeResponse.json();
+                console.log(`[Chunked Upload] Upload complete:`, result);
+                
+                return result;
+            }}
+            
+            /**
+             * Generate a unique upload ID
+             * @returns {{string}} Unique ID for this upload session
+             */
+            function generateUploadId() {{
+                return `upload_${{Date.now()}}_${{Math.random().toString(36).substr(2, 9)}}`;
+            }}
         </script>
     </body>
     </html>
