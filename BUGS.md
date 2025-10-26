@@ -27,7 +27,7 @@ IOC matching fails to detect IOCs when the case doesn't match exactly. Example: 
 
 **Fix Attempts:** 2025-10-26 (v9.0.9) - Added case_insensitive: True but got parsing error. Tried upgrading opensearch-py client in v9.0.12 but OpenSearch 2.11.1 server still doesn't support the parameter. Fixed in v9.0.13 by searching for BOTH lowercase and uppercase versions of IOC values instead of using unsupported parameter.
 
-**Fixed:** 2025-10-26 (v9.0.13) - Implemented case-insensitive matching by searching for both lowercase and uppercase IOC values in parallel
+**Fixed:** 2025-10-26 (v9.0.14) - Replaced complex field-specific queries with simple grep-like search using simple_query_string across ALL fields
 
 ---
 

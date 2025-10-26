@@ -1920,50 +1920,23 @@ def hunt_iocs_for_file(self, file_id, index_name):
                     logger.info(f"IOC Hunting Progress: {idx} / {len(iocs)} IOCs processed, {total_matches} matches found")
                     last_progress_update = current_time
                 
-                # Get fields to search based on IOC type
-                search_fields = ioc_field_mapping.get(ioc.ioc_type, ['*'])
+                # GREP-LIKE SEARCH: Simple case-insensitive text matching
+                # Use original IOC value - simple_query_string handles case-insensitivity
+                search_value = ioc.ioc_value
                 
-                # Build OpenSearch query
-                search_value = ioc.ioc_value_normalized or ioc.ioc_value.lower()
-                
-                # Escape special characters for OpenSearch query_string syntax
-                # These characters have special meaning in Lucene/OpenSearch query syntax
-                special_chars = ['\\', '"', '+', '-', '=', '&&', '||', '>', '<', '!', '(', ')', '{', '}', '[', ']', '^', '~', '*', '?', ':', '/']
-                escaped_value = search_value
-                for char in special_chars:
-                    escaped_value = escaped_value.replace(char, '\\\\' + char)
-                
-                # Build multi-field query with nested field support
-                # Search for both original case and lowercase for case-insensitive matching
-                should_clauses = []
-                for field in search_fields:
-                    # Search original value
-                    should_clauses.append({
-                        "query_string": {
-                            "query": f"*{escaped_value}*",
-                            "fields": [f"{field}*"],
-                            "default_operator": "AND",
-                            "lenient": True
-                        }
-                    })
-                    # Also search uppercase version for better matching
-                    escaped_value_upper = search_value.upper()
-                    for char in special_chars:
-                        escaped_value_upper = escaped_value_upper.replace(char, '\\\\' + char)
-                    should_clauses.append({
-                        "query_string": {
-                            "query": f"*{escaped_value_upper}*",
-                            "fields": [f"{field}*"],
-                            "default_operator": "AND",
-                            "lenient": True
-                        }
-                    })
-                
+                # Use simple_query_string for grep-like behavior:
+                # - Case-insensitive by default
+                # - Searches ALL fields
+                # - No complex escaping needed
+                # - Works like: cat event.json | grep -i "10.11.50.100"
                 query = {
                     "query": {
-                        "bool": {
-                            "should": should_clauses,
-                            "minimum_should_match": 1
+                        "simple_query_string": {
+                            "query": search_value,
+                            "fields": ["*"],  # Search ALL fields (like grep)
+                            "default_operator": "and",
+                            "lenient": True,
+                            "analyze_wildcard": False  # Exact phrase matching
                         }
                     },
                     "size": 1000  # Process in batches
@@ -2538,18 +2511,20 @@ def hunt_iocs_for_case(self, case_id):
                 except (AttributeError, ValueError):
                     pass
                 
-                # V8.0.3 ALL-FIELDS SEARCH (not field-specific)
-                # Search for both lowercase and uppercase for case-insensitive matching
-                search_value = ioc.ioc_value_normalized or ioc.ioc_value.lower()
-                search_value_upper = (ioc.ioc_value_normalized or ioc.ioc_value).upper()
+                # GREP-LIKE SEARCH: Simple case-insensitive text matching across all fields
+                # Search for the original IOC value (not lowercased) - OpenSearch will handle case-insensitivity
+                search_value = ioc.ioc_value  # Use original value, not lowercased
+                
+                # Use simple_query_string which is case-insensitive by default
+                # and searches across ALL fields without complex escaping
                 query = {
                     "query": {
-                        "bool": {
-                            "should": [
-                                {"query_string": {"query": f"*{search_value}*", "default_operator": "AND", "lenient": True}},
-                                {"query_string": {"query": f"*{search_value_upper}*", "default_operator": "AND", "lenient": True}}
-                            ],
-                            "minimum_should_match": 1
+                        "simple_query_string": {
+                            "query": search_value,
+                            "fields": ["*"],  # Search ALL fields
+                            "default_operator": "and",
+                            "lenient": True,
+                            "analyze_wildcard": False  # Exact phrase matching
                         }
                     },
                     "size": 10000
@@ -3150,22 +3125,22 @@ def _hunt_iocs_helper(celery_task, file_id, case_file, index_name):
     total_matches = 0
     
     for ioc in iocs:
-        search_value = ioc.ioc_value_normalized or ioc.ioc_value.lower()
+        # GREP-LIKE SEARCH: Simple case-insensitive text matching
+        # Use original IOC value (not lowercased)
+        search_value = ioc.ioc_value
         
-        # Search ALL fields - IOC can appear anywhere in event
-        # Search for both lowercase and uppercase for case-insensitive matching
-        search_value_upper = (ioc.ioc_value_normalized or ioc.ioc_value).upper()
+        # Use simple_query_string which is case-insensitive and searches all fields
         query = {
             "query": {
-                "bool": {
-                    "should": [
-                        {"query_string": {"query": f"*{search_value}*", "default_operator": "AND", "lenient": True}},
-                        {"query_string": {"query": f"*{search_value_upper}*", "default_operator": "AND", "lenient": True}}
-                    ],
-                    "minimum_should_match": 1
+                "simple_query_string": {
+                    "query": search_value,
+                    "fields": ["*"],
+                    "default_operator": "and",
+                    "lenient": True,
+                    "analyze_wildcard": False
                 }
             },
-            "size": 10000  # Increased from 1000 to handle more matches
+            "size": 10000
         }
         
         try:
