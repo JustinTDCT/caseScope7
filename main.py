@@ -2425,7 +2425,7 @@ def api_process_local_uploads():
         # Queue the background task
         task = celery_app.send_task('tasks.process_local_uploads', args=[active_case_id])
         
-        log_audit('file', 'local_upload_start', f'Started processing {file_count} files from local folder', case_id=active_case_id)
+        log_audit('local_upload_start', 'file', f'Started processing {file_count} files from local folder')
         
         return jsonify({
             'success': True,
