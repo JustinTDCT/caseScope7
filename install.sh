@@ -1469,7 +1469,7 @@ ExecStart=/opt/casescope/venv/bin/celery -A celery_app worker \
     -E \
     --pool=prefork \
     --concurrency=2 \
-    --max-tasks-per-child=50 \
+    --max-tasks-per-child=500 \
     --logfile=/opt/casescope/logs/celery_worker.log \
     --pidfile=/opt/casescope/tmp/celery_worker.pid
 ExecStop=/bin/sh -c '/bin/echo "[Worker] Stopping Celery worker..." && /opt/casescope/venv/bin/celery -A celery_app control shutdown || true'

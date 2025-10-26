@@ -3744,6 +3744,11 @@ def process_local_uploads(self, case_id):
                             evtx_queued += 1
                             logger.info(f"Queued: {evtx_name}")
                         
+                        # Clean up database session and memory after processing ZIP
+                        db.session.expunge_all()  # Remove all objects from session
+                        import gc
+                        gc.collect()  # Force garbage collection
+                        
                         # Delete original ZIP after successful extraction
                         os.remove(file_path)
                         logger.info(f"Deleted original ZIP: {filename}")
@@ -3805,6 +3810,11 @@ def process_local_uploads(self, case_id):
                         evtx_queued += 1
                         logger.info(f"Queued: {filename}")
                         
+                        # Clean up database session and memory
+                        db.session.expunge_all()
+                        import gc
+                        gc.collect()
+                        
                     except Exception as e:
                         logger.error(f"Failed to process EVTX {filename}: {e}")
                         files_failed += 1
@@ -3861,6 +3871,11 @@ def process_local_uploads(self, case_id):
                         celery_app.send_task('tasks.process_file_complete', args=[case_file.id])
                         json_queued += 1
                         logger.info(f"Queued: {filename}")
+                        
+                        # Clean up database session and memory
+                        db.session.expunge_all()
+                        import gc
+                        gc.collect()
                         
                     except Exception as e:
                         logger.error(f"Failed to process JSON {filename}: {e}")
