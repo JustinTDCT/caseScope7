@@ -3710,7 +3710,12 @@ def process_local_uploads(self, case_id):
                                 files_failed += 1
                                 continue
                             
-                            evtx_hash = hashlib.sha256(open(evtx_path, 'rb').read()).hexdigest()
+                            # Hash file in chunks to avoid memory issues with large files
+                            evtx_hash = hashlib.sha256()
+                            with open(evtx_path, 'rb') as f:
+                                while chunk := f.read(8192):
+                                    evtx_hash.update(chunk)
+                            evtx_hash = evtx_hash.hexdigest()
                             
                             # Check for duplicate
                             existing = db.session.query(CaseFile).filter_by(case_id=case.id, file_hash=evtx_hash).first()
@@ -3766,7 +3771,12 @@ def process_local_uploads(self, case_id):
                             files_failed += 1
                             continue
                         
-                        file_hash = hashlib.sha256(open(dest_path, 'rb').read()).hexdigest()
+                        # Hash file in chunks to avoid memory issues with large files
+                        file_hash = hashlib.sha256()
+                        with open(dest_path, 'rb') as f:
+                            while chunk := f.read(8192):
+                                file_hash.update(chunk)
+                        file_hash = file_hash.hexdigest()
                         
                         # Check for duplicate
                         existing = db.session.query(CaseFile).filter_by(case_id=case.id, file_hash=file_hash).first()
@@ -3818,7 +3828,12 @@ def process_local_uploads(self, case_id):
                             files_failed += 1
                             continue
                         
-                        file_hash = hashlib.sha256(open(dest_path, 'rb').read()).hexdigest()
+                        # Hash file in chunks to avoid memory issues with large files
+                        file_hash = hashlib.sha256()
+                        with open(dest_path, 'rb') as f:
+                            while chunk := f.read(8192):
+                                file_hash.update(chunk)
+                        file_hash = file_hash.hexdigest()
                         
                         # Check for duplicate
                         existing = db.session.query(CaseFile).filter_by(case_id=case.id, file_hash=file_hash).first()
