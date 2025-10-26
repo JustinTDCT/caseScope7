@@ -5965,21 +5965,27 @@ def render_file_list(case, files):
                                                           '<div style="font-size: 0.9em; color: rgba(255,255,255,0.8); margin-top: 4px;">' + 
                                                           currentEvents + ' / ' + totalEvents + ' events</div>';
                                 }}
-                            }} else if (data.status === 'SIGMA Hunting') {{
-                                // Show SIGMA progress
+                            }} else if (data.status === 'Running SIGMA') {{
+                                // Show SIGMA progress (status from tasks_queue.py line 88)
                                 if (statusElem) {{
                                     if (data.event_count) {{
-                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #fbbf24;">SIGMA Hunting...</div>' +
+                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #fbbf24;">Running SIGMA...</div>' +
                                                               '<div style="font-size: 0.9em; color: rgba(255,255,255,0.8); margin-top: 4px;">Scanning ' +
                                                               data.event_count.toLocaleString() + ' events</div>';
                                     }} else {{
-                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #fbbf24;">SIGMA Hunting...</div>';
+                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #fbbf24;">Running SIGMA...</div>';
                                     }}
                                 }}
-                            }} else if (data.status === 'IOC Hunting') {{
-                                // Show IOC hunting progress
+                            }} else if (data.status === 'Hunting IOCs') {{
+                                // Show IOC hunting progress (status from tasks_queue.py line 100)
                                 if (statusElem) {{
-                                    statusElem.innerHTML = '<div style="font-weight: 600; color: #60a5fa;">IOC Hunting...</div>';
+                                    if (data.event_count) {{
+                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #60a5fa;">Hunting IOCs...</div>' +
+                                                              '<div style="font-size: 0.9em; color: rgba(255,255,255,0.8); margin-top: 4px;">' +
+                                                              data.event_count.toLocaleString() + ' events indexed</div>';
+                                    }} else {{
+                                        statusElem.innerHTML = '<div style="font-weight: 600; color: #60a5fa;">Hunting IOCs...</div>';
+                                    }}
                                 }}
                             }} else if (data.status === 'Completed' || data.status === 'Failed') {{
                                 // Update status in-place instead of reloading with color coding

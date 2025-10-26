@@ -1926,13 +1926,20 @@ def hunt_iocs_for_file(self, file_id, index_name):
                 # Build OpenSearch query
                 search_value = ioc.ioc_value_normalized or ioc.ioc_value.lower()
                 
+                # Escape special characters for OpenSearch query_string syntax
+                # These characters have special meaning in Lucene/OpenSearch query syntax
+                special_chars = ['\\', '"', '+', '-', '=', '&&', '||', '>', '<', '!', '(', ')', '{', '}', '[', ']', '^', '~', '*', '?', ':', '/']
+                escaped_value = search_value
+                for char in special_chars:
+                    escaped_value = escaped_value.replace(char, '\\\\' + char)
+                
                 # Build multi-field query with nested field support
                 should_clauses = []
                 for field in search_fields:
                     # Use query_string with lenient flag to ignore incompatible field types
                     should_clauses.append({
                         "query_string": {
-                            "query": f"*{search_value}*",
+                            "query": f"*{escaped_value}*",
                             "fields": [f"{field}*"],  # Wildcard to match nested paths
                             "default_operator": "AND",
                             "lenient": True  # Ignore field type errors
