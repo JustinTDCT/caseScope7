@@ -3690,6 +3690,14 @@ def process_local_uploads(self, case_id):
                         # Queue each extracted EVTX file
                         for evtx_name, evtx_path in extracted_files:
                             evtx_size = os.path.getsize(evtx_path)
+                            
+                            # Skip zero-byte files (corrupted/empty)
+                            if evtx_size == 0:
+                                logger.warning(f"Skipping zero-byte file: {evtx_name}")
+                                os.remove(evtx_path)
+                                files_failed += 1
+                                continue
+                            
                             evtx_hash = hashlib.sha256(open(evtx_path, 'rb').read()).hexdigest()
                             
                             # Check for duplicate
@@ -3738,6 +3746,14 @@ def process_local_uploads(self, case_id):
                         shutil.move(file_path, dest_path)
                         
                         file_size = os.path.getsize(dest_path)
+                        
+                        # Skip zero-byte files (corrupted/empty)
+                        if file_size == 0:
+                            logger.warning(f"Skipping zero-byte EVTX file: {filename}")
+                            os.remove(dest_path)
+                            files_failed += 1
+                            continue
+                        
                         file_hash = hashlib.sha256(open(dest_path, 'rb').read()).hexdigest()
                         
                         # Check for duplicate
@@ -3782,6 +3798,14 @@ def process_local_uploads(self, case_id):
                         shutil.move(file_path, dest_path)
                         
                         file_size = os.path.getsize(dest_path)
+                        
+                        # Skip zero-byte files (corrupted/empty)
+                        if file_size == 0:
+                            logger.warning(f"Skipping zero-byte JSON file: {filename}")
+                            os.remove(dest_path)
+                            files_failed += 1
+                            continue
+                        
                         file_hash = hashlib.sha256(open(dest_path, 'rb').read()).hexdigest()
                         
                         # Check for duplicate
