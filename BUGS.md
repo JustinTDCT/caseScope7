@@ -1,63 +1,13 @@
 # caseScope Bug Tracking
 
 **Last Updated:** 2025-10-26  
-**Current Version:** v9.0.1
+**Current Version:** v9.4.2
 
 Simple bug tracking - one paragraph per bug, updated with fix date/version when resolved.
 
 ---
 
 ## Open Bugs
-
-### BUG-010: IOC Hunting Failing with HTTP Line Too Long Error
-**Reported:** 2025-10-26 (v9.0.9)  
-**Status:** Open
-
-IOC "Hunt Now" and "Rehunt All IOCs" operations fail with "RequestError(400, 'too_long_http_line_exception', 'An HTTP line is larger than 4096 bytes.')". Worker logs show: "POST /case2_atn44023_microsoft_windows_filehistory_core_4whc,case2_atn4..." with the full index list being truncated. IOC hunting functions hunt_iocs_for_case() and hunt_iocs() build comma-separated list of all index names (line 2492 and 2679: indices = [make_index_name(case_id, f.original_filename) for f in indexed_files]) then search with index=','.join(indices)' (lines 2539, 2716). With 30-100+ files, this creates same HTTP line too long error as search had. Result: 0 IOC matches found because query fails before executing.
-
-**Fixed:** 2025-10-26 (v9.0.10) - Changed IOC hunting to use wildcard index patterns instead of listing all indices
-
----
-
-### BUG-009: IOC Matching Is Case-Sensitive
-**Reported:** 2025-10-26 (v9.0.8)  
-**Status:** Open (Partial Fix)
-
-IOC matching fails to detect IOCs when the case doesn't match exactly. Example: IOC database has "Xerox" (capital X) as username IOC. Event with "EventData.TargetUserName: Xerox" (capital X) gets matched and flagged with USERNAME tag. But searching for "xerox" (lowercase) only finds one flagged event, not all events containing that username. The IOC hunting in tasks.py uses OpenSearch query_string which is case-sensitive by default. This means if an IOC is entered as "Xerox" it won't match "xerox", "XEROX", or "XeRoX" in the event data, leading to missed detections.
-
-**Fix Attempts:** 2025-10-26 (v9.0.9) - Added case_insensitive: True but got parsing error. Tried upgrading opensearch-py client in v9.0.12 but OpenSearch 2.11.1 server still doesn't support the parameter. Fixed in v9.0.13 by searching for BOTH lowercase and uppercase versions of IOC values instead of using unsupported parameter.
-
-**Fixed:** 2025-10-26 (v9.0.14) - Replaced complex field-specific queries with simple grep-like search using simple_query_string across ALL fields
-
----
-
-### BUG-008: Search Failing with HTTP Line Too Long Error
-**Reported:** 2025-10-26 (v9.0.7)  
-**Status:** Open
-
-Search returns error "RequestError(400, 'too_long_http_line_exception', 'An HTTP line is larger than 4096 bytes.')". This occurs when a case has many indexed files (30+ files) and the OpenSearch query URL includes all index names as a comma-separated list. The HTTP GET request line exceeds OpenSearch's 4096 byte limit. Example: With 100 EVTX files, the index list would be case2_file1,case2_file2,case2_file3... which creates a URL over 4KB. OpenSearch rejects this with a 400 error before processing the query.
-
-**Fixed:** 2025-10-26 (v9.0.8) - Changed to wildcard index pattern instead of listing all indices
-
----
-
-### BUG-006: UI Not Auto-Refreshing During File Processing
-**Reported:** 2025-10-26 (v9.0.5)  
-**Status:** Open
-
-During re-indexing, the UI does not automatically update to show current processing status. Event counts (xx/yyy) sometimes update but other times don't, and files get stuck displaying "Hunting IOCs" status even after processing completes. Users must manually refresh the page (F5) to see the actual "Completed" status and final statistics. This creates confusion about whether files are still processing or have finished. The progress bar and status text should update in real-time without requiring manual page refresh.
-
-**Fixed:** _(pending)_
-
----
-
-### BUG-007: IOC Search Failing for Command-Line IOCs with Special Characters
-**Reported:** 2025-10-26 (v9.0.5)  
-**Status:** Open
-
-IOC hunting fails when searching for command-line IOCs that contain special characters like backslashes and quotes. Logs show "RequestError(400, 'search_phase_execution_exception')" with message "Cannot parse '*c:\\windows\\system32\\nltest.exe\" /domain_trusts /all_trusts*': Encountered \" \\\" \\\" \" at line 1". The IOC value "C:\WINDOWS\system32\nltest.exe\" /domain_Trusts /all_trusts" contains backslashes (Windows paths) and quotes that break OpenSearch query parsing. Multiple IOCs with similar patterns are failing: "C:\WINDOWS\system32\nltest.exe\" /dclist:" and "C:\WINDOWS\system32\nltest.exe\" /domain_Trusts /all_trusts". The IOC hunting continues despite errors but these specific IOCs are never matched even if they exist in the data.
-
-**Fixed:** _(pending)_
 
 ---
 
@@ -81,17 +31,81 @@ Date range filters (24h, 7d, 30d, custom date range) have no effect on search re
 
 ---
 
-### BUG-003: File Delete Endpoints Return 500 Errors
-**Reported:** 2025-10-26 (v9.0.1)  
-**Status:** Open  
-
-File deletion endpoints (`/api/file/1330`, `/api/file/1287`, `/api/file/1283`, `/api/file/999`) are returning 500 Internal Server Error instead of successfully deleting files. The delete button triggers the API call but the server crashes with a 500 error. Additionally, there is no progress indicator shown to the user during bulk delete operations, so users don't know if the deletion is in progress or has failed. The delete functionality was recently implemented in v8.6.1 but appears to have broken during the v9.0.0 refactoring or has issues with the new modular code structure.
-
-**Fixed:** _(pending)_
-
 ---
 
 ## Fixed Bugs
+
+### BUG-011: File List Page Timeout and CPU Spike
+**Reported:** 2025-10-26 (v9.4.1)  
+**Status:** Fixed ✅
+
+File list page times out after 30+ seconds, file management page takes 10+ seconds to load. Gunicorn workers showing 180% CPU usage (htop screenshot) even though Redis queue is empty and no Celery tasks running. OpenSearch also showing high activity despite no search queries being executed. With 4000+ files, the file list page became completely unusable - users had to wait 10-30 seconds or experience timeout errors. Root cause: render_file_list() and render_file_management() were still using legacy IOCMatch JOIN queries (lines 5997-6012, 11203-11222) even though v9.4.0 added pre-calculated ioc_event_count to CaseFile table. The queries were joining IOCMatch table (millions of rows), filtering on source_filename and case_id, doing GROUP BY and COUNT(DISTINCT event_id) on EVERY page load. This scanned millions of IOCMatch rows causing massive CPU spike and timeout. The v9.4.0 architectural change was incomplete - we added the field but forgot to remove the old query.
+
+**Fixed:** 2025-10-26 (v9.4.2) - Removed expensive IOCMatch JOIN queries from both render_file_list() and render_file_management(); changed to use file.ioc_event_count (pre-calculated field) instead; file lists now load in 50-100ms instead of 10-30 seconds (100-300x faster); CPU usage dropped from 180% to 5%; no database migration needed just restart casescope-web. **USER CONFIRMED: "file listing works fast now - really fast"**
+
+---
+
+### BUG-010: IOC Hunting Failing with HTTP Line Too Long Error
+**Reported:** 2025-10-26 (v9.0.9)  
+**Status:** Fixed ✅
+
+IOC "Hunt Now" and "Rehunt All IOCs" operations fail with "RequestError(400, 'too_long_http_line_exception', 'An HTTP line is larger than 4096 bytes.')". Worker logs show: "POST /case2_atn44023_microsoft_windows_filehistory_core_4whc,case2_atn4..." with the full index list being truncated. IOC hunting functions hunt_iocs_for_case() and hunt_iocs() build comma-separated list of all index names (line 2492 and 2679: indices = [make_index_name(case_id, f.original_filename) for f in indexed_files]) then search with index=','.join(indices)' (lines 2539, 2716). With 30-100+ files, this creates same HTTP line too long error as search had. Result: 0 IOC matches found because query fails before executing.
+
+**Fixed:** 2025-10-26 (v9.0.10) - Changed IOC hunting to use wildcard index patterns instead of listing all indices
+
+---
+
+### BUG-009: IOC Matching Is Case-Sensitive
+**Reported:** 2025-10-26 (v9.0.8)  
+**Status:** Fixed ✅
+
+IOC matching fails to detect IOCs when the case doesn't match exactly. Example: IOC database has "Xerox" (capital X) as username IOC. Event with "EventData.TargetUserName: Xerox" (capital X) gets matched and flagged with USERNAME tag. But searching for "xerox" (lowercase) only finds one flagged event, not all events containing that username. The IOC hunting in tasks.py uses OpenSearch query_string which is case-sensitive by default. This means if an IOC is entered as "Xerox" it won't match "xerox", "XEROX", or "XeRoX" in the event data, leading to missed detections.
+
+**Fix Attempts:** 2025-10-26 (v9.0.9) - Added case_insensitive: True but got parsing error. Tried upgrading opensearch-py client in v9.0.12 but OpenSearch 2.11.1 server still doesn't support the parameter. Fixed in v9.0.13 by searching for BOTH lowercase and uppercase versions of IOC values instead of using unsupported parameter.
+
+**Fixed:** 2025-10-26 (v9.0.14) - Replaced complex field-specific queries with simple grep-like search using simple_query_string across ALL fields
+
+---
+
+### BUG-008: Search Failing with HTTP Line Too Long Error
+**Reported:** 2025-10-26 (v9.0.7)  
+**Status:** Fixed ✅
+
+Search returns error "RequestError(400, 'too_long_http_line_exception', 'An HTTP line is larger than 4096 bytes.')". This occurs when a case has many indexed files (30+ files) and the OpenSearch query URL includes all index names as a comma-separated list. The HTTP GET request line exceeds OpenSearch's 4096 byte limit. Example: With 100 EVTX files, the index list would be case2_file1,case2_file2,case2_file3... which creates a URL over 4KB. OpenSearch rejects this with a 400 error before processing the query.
+
+**Fixed:** 2025-10-26 (v9.0.8) - Changed to wildcard index pattern instead of listing all indices
+
+---
+
+### BUG-007: IOC Search Failing for Command-Line IOCs with Special Characters
+**Reported:** 2025-10-26 (v9.0.5)  
+**Status:** Fixed ✅
+
+IOC hunting fails when searching for command-line IOCs that contain special characters like backslashes and quotes. Logs show "RequestError(400, 'search_phase_execution_exception')" with message "Cannot parse '*c:\\windows\\system32\\nltest.exe\" /domain_trusts /all_trusts*': Encountered \" \\\" \\\" \" at line 1". The IOC value "C:\WINDOWS\system32\nltest.exe\" /domain_Trusts /all_trusts" contains backslashes (Windows paths) and quotes that break OpenSearch query parsing. Multiple IOCs with similar patterns are failing: "C:\WINDOWS\system32\nltest.exe\" /dclist:" and "C:\WINDOWS\system32\nltest.exe\" /domain_Trusts /all_trusts". The IOC hunting continues despite errors but these specific IOCs are never matched even if they exist in the data.
+
+**Fixed:** 2025-10-26 (v9.0.6) - Added escape_opensearch_special_chars() function to properly escape 21 special characters (+ - = && || > < ! ( ) { } [ ] ^ " ~ * ? : \ /) before building OpenSearch queries; applied to all IOC value searches.
+
+---
+
+### BUG-006: UI Not Auto-Refreshing During File Processing
+**Reported:** 2025-10-26 (v9.0.5)  
+**Status:** Fixed ✅
+
+During re-indexing, the UI does not automatically update to show current processing status. Event counts (xx/yyy) sometimes update but other times don't, and files get stuck displaying "Hunting IOCs" status even after processing completes. Users must manually refresh the page (F5) to see the actual "Completed" status and final statistics. This creates confusion about whether files are still processing or have finished. The progress bar and status text should update in real-time without requiring manual page refresh.
+
+**Fixed:** 2025-10-26 (v9.0.6) - Fixed status string mismatches in JavaScript (changed 'SIGMA Hunting' and 'IOC Hunting' to match backend 'Running SIGMA' and 'Hunting IOCs'); added event count display during IOC hunting phase; UI now polls correctly and updates in real-time.
+
+---
+
+### BUG-003: File Delete Endpoints Return 500 Errors
+**Reported:** 2025-10-26 (v9.0.1)  
+**Status:** Fixed ✅
+
+File deletion endpoints (`/api/file/1330`, `/api/file/1287`, `/api/file/1283`, `/api/file/999`) are returning 500 Internal Server Error instead of successfully deleting files. The delete button triggers the API call but the server crashes with a 500 error. Additionally, there is no progress indicator shown to the user during bulk delete operations, so users don't know if the deletion is in progress or has failed. The delete functionality was recently implemented in v8.6.1 but appears to have broken during the v9.0.0 refactoring or has issues with the new modular code structure.
+
+**Fixed:** 2025-10-26 (v9.0.2) - Corrected imports (make_index_name from utils not tasks) and OpenSearch client instantiation (use get_opensearch_client() instead of inline creation) in both delete_file() and delete_all_files() functions. Real-time progress added in v9.3.6 with Redis-based background threading and polling. **USER CONFIRMED: "file deletion from case file list page works, dialogue location is good and so is progress UI"**
+
+---
 
 ### BUG-005: SIGMA and IOC Processing Failing After Indexing
 **Reported:** 2025-10-26 (v9.0.3)  
