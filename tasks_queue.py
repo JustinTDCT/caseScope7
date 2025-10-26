@@ -71,7 +71,16 @@ def process_file_complete(self, file_id):
                 db.session.commit()
                 return index_result
             
-            logger.info(f"✓ Indexing complete: {index_result.get('indexed_events', 0)} events")
+            logger.info(f"✓ Indexing complete: {index_result.get('event_count', 0)} events")
+            
+            # Get index name from result
+            index_name = index_result.get('index_name')
+            if not index_name:
+                logger.error("No index_name in index_result!")
+                case_file.indexing_status = 'Failed'
+                case_file.celery_task_id = None
+                db.session.commit()
+                return {'status': 'error', 'message': 'Missing index_name from indexing'}
             
             # Step 2: Run SIGMA rules (EVTX only)
             if filename.endswith('.evtx'):
@@ -80,10 +89,11 @@ def process_file_complete(self, file_id):
                 db.session.commit()
                 
                 from tasks import process_sigma_rules
-                sigma_result = process_sigma_rules(file_id)
+                sigma_result = process_sigma_rules(file_id, index_name)
                 logger.info(f"✓ SIGMA complete: {sigma_result.get('violations', 0)} violations")
             else:
                 logger.info("Skipping SIGMA processing (NDJSON file)")
+                sigma_result = {'violations': 0}
             
             # Step 3: Hunt IOCs
             logger.info("Starting IOC hunting...")
@@ -102,7 +112,7 @@ def process_file_complete(self, file_id):
             logger.info("="*80)
             logger.info(f"COMPLETE FILE PROCESSING FINISHED")
             logger.info(f"File ID: {file_id}")
-            logger.info(f"Events: {index_result.get('indexed_events', 0)}")
+            logger.info(f"Events: {index_result.get('event_count', 0)}")
             logger.info(f"Violations: {sigma_result.get('violations', 0) if filename.endswith('.evtx') else 'N/A'}")
             logger.info(f"IOC Matches: {ioc_result.get('total_matches', 0)}")
             logger.info("="*80)
@@ -110,7 +120,7 @@ def process_file_complete(self, file_id):
             return {
                 'status': 'success',
                 'file_id': file_id,
-                'indexed_events': index_result.get('indexed_events', 0),
+                'indexed_events': index_result.get('event_count', 0),
                 'violations': sigma_result.get('violations', 0) if filename.endswith('.evtx') else 0,
                 'ioc_matches': ioc_result.get('total_matches', 0)
             }

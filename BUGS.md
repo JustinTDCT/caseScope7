@@ -9,11 +9,11 @@ Simple bug tracking - one paragraph per bug, updated with fix date/version when 
 
 ## Open Bugs
 
-### BUG-004: ZIP Files Not Extracting via Chunked Upload
-**Reported:** 2025-10-26 (v9.0.2)  
+### BUG-005: SIGMA and IOC Processing Failing After Indexing
+**Reported:** 2025-10-26 (v9.0.3)  
 **Status:** Open
 
-ZIP files uploaded via the chunked upload system are being queued to Celery as-is without extraction, causing them to fail with "Unsupported file type" errors. The worker sees "desktop-jsqt9gm.zip" and "draftsite10.zip" files and rejects them because Celery tasks only process EVTX or NDJSON files. The chunked upload finalize endpoint creates a CaseFile record for the ZIP and queues it directly to Celery without checking if it needs extraction first. This breaks the ZIP upload feature that worked in v8.5.0+. All uploaded ZIP files show as "Failed" status and extracted EVTX files never appear in the files list.
+After files index successfully, SIGMA rule processing crashes with "TypeError: process_sigma_rules() missing 1 required positional argument: 'index_name'". Files index correctly and show event counts, but then fail before SIGMA processing can start. The error occurs in tasks_queue.py line 83 where process_sigma_rules is called with only file_id, but the function signature requires both file_id and index_name parameters. This causes the entire processing pipeline to fail after indexing, so no SIGMA violations are detected and IOC hunting never runs. Files end up in "Completed" status but with 0 violations and 0 IOC matches even when IOCs are known to exist in the data.
 
 **Fixed:** _(pending)_
 
@@ -51,7 +51,17 @@ File deletion endpoints (`/api/file/1330`, `/api/file/1287`, `/api/file/1283`, `
 
 ## Fixed Bugs
 
-### BUG-004: Installer Missing Files After v9.0.0 Refactor
+### BUG-004: ZIP Files Not Extracting via Chunked Upload
+**Reported:** 2025-10-26 (v9.0.2)  
+**Status:** Fixed
+
+ZIP files uploaded via the chunked upload system were being queued to Celery as-is without extraction, causing them to fail with "Unsupported file type" errors. The worker saw "desktop-jsqt9gm.zip" and "draftsite10.zip" files and rejected them because Celery tasks only process EVTX or NDJSON files. The chunked upload finalize endpoint created a CaseFile record for the ZIP and queued it directly to Celery without checking if it needed extraction first. This broke the ZIP upload feature that worked in v8.5.0+. All uploaded ZIP files showed as "Failed" status and extracted EVTX files never appeared in the files list.
+
+**Fixed:** 2025-10-26 (v9.0.3) - Added ZIP file detection to upload_finalize() endpoint; if .zip detected, calls extract_and_process_zip() to extract all EVTX files; each extracted EVTX file gets its own CaseFile record and queued individually; ZIP file deleted after successful extraction; returns extraction count to user.
+
+---
+
+### BUG-INS: Installer Missing Files After v9.0.0 Refactor
 **Reported:** 2025-10-26 (v9.0.0)  
 **Status:** Fixed
 
