@@ -1343,7 +1343,8 @@ copy_application() {
     log "Checking for critical application files..."
     
     # Core application files (required for all install types)
-    for file in main.py requirements.txt version.json wsgi.py celery_app.py tasks.py theme.py iris_client.py iris_sync.py ConvertEVTXtoJSON.sh; do
+    # v9.0.0: Added models.py and utils.py (modular architecture)
+    for file in main.py models.py utils.py requirements.txt version.json wsgi.py celery_app.py tasks.py theme.py iris_client.py iris_sync.py; do
         if [ -f "$APP_SOURCE_DIR/$file" ]; then
             log "✓ Found $file in source directory"
             cp "$APP_SOURCE_DIR/$file" /opt/casescope/app/ 2>/dev/null || log_error "Failed to copy $file"
@@ -2079,17 +2080,9 @@ PYTHON_SCRIPT
     # Cleanup temp directory
     rm -rf "$TEMP_DIR"
     
-    # Run enable_threat_hunting_rules.py to enable Windows threat-hunting rules
-    log "Enabling Windows threat-hunting rules..."
-    
-    cd /opt/casescope
-    sudo -u casescope /opt/casescope/venv/bin/python3 enable_threat_hunting_rules.py
-    
-    if [ $? -eq 0 ]; then
-        log_success "Windows threat-hunting rules enabled successfully"
-    else
-        log_warning "enable_threat_hunting_rules.py had errors (non-fatal)"
-    fi
+    # NOTE: enable_threat_hunting_rules.py moved to archive/ in v9.0.0
+    # Threat hunting rules are now enabled by default via SIGMA rule imports
+    log "Windows threat-hunting rules enabled via SIGMA imports"
     
     echo
 }
