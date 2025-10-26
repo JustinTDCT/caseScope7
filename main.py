@@ -11231,15 +11231,39 @@ def render_file_management(files, cases):
                 const ids = getSelectedIds();
                 if (ids.length === 0) return;
                 
-                if (confirm(`DELETE ${{ids.length}} file(s)? This cannot be undone.`)) {{
-                    ids.forEach(id => {{
-                        fetch('/file/delete/' + id, {{ method: 'POST' }})
-                        .then(response => response.json())
-                        .then(data => {{
-                            if (data.success) location.reload();
-                            else alert('Error deleting file: ' + data.message);
+                if (confirm(`DELETE ${{ids.length}} file(s)? This will remove all associated data (OpenSearch indices, SIGMA violations, IOC matches, tags, physical files). This cannot be undone.`)) {{
+                    if (confirm(`Are you ABSOLUTELY SURE? Deleting ${{ids.length}} files is permanent!`)) {{
+                        let completed = 0;
+                        let failed = 0;
+                        
+                        ids.forEach(id => {{
+                            fetch('/api/file/' + id, {{ 
+                                method: 'DELETE',
+                                headers: {{ 'Content-Type': 'application/json' }}
+                            }})
+                            .then(response => response.json())
+                            .then(data => {{
+                                completed++;
+                                if (!data.success) failed++;
+                                
+                                // Reload when all done
+                                if (completed === ids.length) {{
+                                    if (failed > 0) {{
+                                        alert(`Deleted ${{completed - failed}} file(s). ${{failed}} failed.`);
+                                    }}
+                                    location.reload();
+                                }}
+                            }})
+                            .catch(error => {{
+                                completed++;
+                                failed++;
+                                if (completed === ids.length) {{
+                                    alert(`Completed with errors. ${{failed}} file(s) failed to delete.`);
+                                    location.reload();
+                                }}
+                            }});
                         }});
-                    }});
+                    }}
                 }}
             }}
             
@@ -11262,13 +11286,25 @@ def render_file_management(files, cases):
             }}
             
             function deleteFile(id, filename) {{
-                if (confirm('Delete "' + filename + '"? This cannot be undone.')) {{
-                    fetch('/file/delete/' + id, {{ method: 'POST' }})
-                    .then(response => response.json())
-                    .then(data => {{
-                        if (data.success) location.reload();
-                        else alert('Error: ' + data.message);
-                    }});
+                if (confirm('Delete "' + filename + '"? This will remove:\\n• OpenSearch index (all events)\\n• SIGMA violations\\n• IOC matches\\n• Timeline tags\\n• Physical file\\n\\nThis cannot be undone.')) {{
+                    if (confirm('Are you ABSOLUTELY SURE? This is permanent!')) {{
+                        fetch('/api/file/' + id, {{ 
+                            method: 'DELETE',
+                            headers: {{ 'Content-Type': 'application/json' }}
+                        }})
+                        .then(response => response.json())
+                        .then(data => {{
+                            if (data.success) {{
+                                alert('✓ Successfully deleted: ' + filename + '\\n\\nCleanup:\\n• OpenSearch: ' + data.cleanup_stats.opensearch_index + '\\n• SIGMA: ' + data.cleanup_stats.sigma_violations + '\\n• IOCs: ' + data.cleanup_stats.ioc_matches + '\\n• Tags: ' + data.cleanup_stats.event_tags + '\\n• Physical file: ' + data.cleanup_stats.physical_file);
+                                location.reload();
+                            }} else {{
+                                alert('❌ Failed to delete: ' + (data.error || 'Unknown error'));
+                            }}
+                        }})
+                        .catch(error => {{
+                            alert('❌ Error deleting file: ' + error.message);
+                        }});
+                    }}
                 }}
             }}
         </script>
