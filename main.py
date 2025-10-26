@@ -2312,19 +2312,19 @@ def delete_file(file_id):
 @login_required
 def delete_all_files():
     """
-    Delete ALL files in a case with progress tracking
+    Delete ALL files in a case with real-time progress tracking
     
-    NEW IN v8.6.1: Bulk delete all files with real-time progress
+    NEW IN v9.3.6: Background deletion with real-time progress updates
+    - Returns immediately with a task_id
+    - Frontend polls /api/delete-progress/<task_id> for updates
     - Shows progress: "Deleting file X of Y: filename"
     - Complete cleanup per file (OpenSearch, SIGMA, IOCs, tags, physical file)
-    - Returns detailed statistics
-    - User must be administrator
     
     Request:
         { case_id: number }
     
     Returns:
-        JSON with success status and deletion statistics
+        JSON with task_id for progress polling
     """
     try:
         # Only administrators can delete all files
@@ -2348,29 +2348,84 @@ def delete_all_files():
         if not files:
             return jsonify({'success': True, 'message': 'No files to delete', 'files_deleted': 0})
         
-        total_files = len(files)
-        print(f"[Delete All] Starting bulk deletion of {total_files} files for case: {case.name}")
+        # Generate unique task ID
+        import uuid
+        import redis
+        task_id = str(uuid.uuid4())
         
-        deleted_count = 0
-        failed_count = 0
-        failed_files = []
+        # Initialize progress in Redis
+        r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+        r.setex(f'delete_progress:{task_id}', 3600, json.dumps({
+            'status': 'starting',
+            'current': 0,
+            'total': len(files),
+            'current_file': 'Initializing...',
+            'deleted': 0,
+            'failed': 0
+        }))
         
-        total_cleanup = {
-            'opensearch_indices': 0,
-            'sigma_violations': 0,
-            'ioc_matches': 0,
-            'event_tags': 0,
-            'physical_files': 0
-        }
+        # Start deletion in background thread
+        import threading
+        thread = threading.Thread(target=_delete_files_background, args=(task_id, case_id, case.name, files))
+        thread.daemon = True
+        thread.start()
         
-        # Delete each file
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'total_files': len(files)
+        })
+        
+    except Exception as e:
+        print(f"[Delete All] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _delete_files_background(task_id, case_id, case_name, files):
+    """Background worker for file deletion with progress updates"""
+    import redis
+    import json
+    import os
+    
+    r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+    total_files = len(files)
+    deleted_count = 0
+    failed_count = 0
+    failed_files = []
+    
+    total_cleanup = {
+        'opensearch_indices': 0,
+        'sigma_violations': 0,
+        'ioc_matches': 0,
+        'event_tags': 0,
+        'physical_files': 0
+    }
+    
+    print(f"[Delete All] Background deletion started: {total_files} files for case: {case_name}")
+    
+    try:
+        # Delete each file with progress updates
         for idx, file in enumerate(files, 1):
             try:
                 filename = file.original_filename
                 file_id = file.id
+                
+                # Update progress
+                progress = {
+                    'status': 'deleting',
+                    'current': idx,
+                    'total': total_files,
+                    'current_file': filename,
+                    'deleted': deleted_count,
+                    'failed': failed_count,
+                    'percent': int((idx / total_files) * 100)
+                }
+                r.setex(f'delete_progress:{task_id}', 3600, json.dumps(progress))
+                
                 print(f"[Delete All] Deleting file {idx}/{total_files}: {filename}")
                 
-                # Use same cleanup logic as single file delete
                 # STEP 1: Delete OpenSearch index
                 try:
                     es = get_opensearch_client()
@@ -2394,19 +2449,15 @@ def delete_all_files():
                 ).delete(synchronize_session=False)
                 total_cleanup['ioc_matches'] += ioc_matches_deleted
                 
-                # STEP 4: Delete event tags (best effort - orphaned tags acceptable)
-                # Skip individual event ID queries for bulk operation (too slow)
-                
-                # STEP 5: Delete physical file
+                # STEP 4: Delete physical file
                 try:
-                    import os
                     if os.path.exists(file.file_path):
                         os.remove(file.file_path)
                         total_cleanup['physical_files'] += 1
                 except Exception as file_error:
                     print(f"[Delete All] Error deleting physical file {filename}: {file_error}")
                 
-                # STEP 6: Delete CaseFile record
+                # STEP 5: Delete CaseFile record
                 db.session.delete(file)
                 
                 deleted_count += 1
@@ -2421,35 +2472,61 @@ def delete_all_files():
         # Commit all deletions
         db.session.commit()
         
-        print(f"[Delete All] ✓ Bulk deletion complete: {deleted_count} deleted, {failed_count} failed")
-        print(f"[Delete All] Cleanup stats: {total_cleanup}")
+        print(f"[Delete All] ✓ Background deletion complete: {deleted_count} deleted, {failed_count} failed")
         
         # Audit log
         log_audit(
             'bulk_delete_files',
             'file_operation',
-            f'Bulk deleted {deleted_count} files from case {case.name} | OpenSearch indices: {total_cleanup["opensearch_indices"]} | SIGMA violations: {total_cleanup["sigma_violations"]} | IOC matches: {total_cleanup["ioc_matches"]} | Physical files: {total_cleanup["physical_files"]} | Failed: {failed_count}',
+            f'Bulk deleted {deleted_count} files from case {case_name} | OpenSearch: {total_cleanup["opensearch_indices"]} | SIGMA: {total_cleanup["sigma_violations"]} | IOC: {total_cleanup["ioc_matches"]} | Physical: {total_cleanup["physical_files"]} | Failed: {failed_count}',
             success=True
         )
         
-        response = {
-            'success': True,
-            'message': f'Successfully deleted {deleted_count} of {total_files} files',
-            'files_deleted': deleted_count,
-            'files_failed': failed_count,
-            'cleanup_stats': total_cleanup
+        # Final progress update
+        final_progress = {
+            'status': 'complete',
+            'current': total_files,
+            'total': total_files,
+            'deleted': deleted_count,
+            'failed': failed_count,
+            'failed_files': failed_files,
+            'cleanup_stats': total_cleanup,
+            'percent': 100
         }
-        
-        if failed_files:
-            response['failed_files'] = failed_files
-        
-        return jsonify(response)
+        r.setex(f'delete_progress:{task_id}', 3600, json.dumps(final_progress))
         
     except Exception as e:
-        db.session.rollback()
-        print(f"[Delete All] Error: {e}")
+        print(f"[Delete All] Background worker error: {e}")
         import traceback
         traceback.print_exc()
+        
+        # Error progress update
+        error_progress = {
+            'status': 'error',
+            'error': str(e),
+            'deleted': deleted_count,
+            'failed': failed_count
+        }
+        r.setex(f'delete_progress:{task_id}', 3600, json.dumps(error_progress))
+        db.session.rollback()
+
+
+@app.route('/api/delete-progress/<task_id>')
+@login_required
+def get_delete_progress(task_id):
+    """Poll endpoint for deletion progress"""
+    try:
+        import redis
+        r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+        progress_json = r.get(f'delete_progress:{task_id}')
+        
+        if not progress_json:
+            return jsonify({'success': False, 'error': 'Task not found'}), 404
+        
+        progress = json.loads(progress_json)
+        return jsonify({'success': True, 'progress': progress})
+        
+    except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -6544,7 +6621,7 @@ def render_file_list(case, files, pagination=None, show_hidden=False, total_hidd
                 `;
                 document.body.appendChild(progressOverlay);
                 
-                // Start deletion
+                // Start deletion and get task ID
                 fetch('/api/delete-all-files', {{
                     method: 'POST',
                     headers: {{
@@ -6554,31 +6631,11 @@ def render_file_list(case, files, pagination=None, show_hidden=False, total_hidd
                 }})
                 .then(response => response.json())
                 .then(data => {{
-                    if (data.success) {{
-                        document.getElementById('deleteProgressBar').style.width = '100%';
-                        document.getElementById('deleteProgressText').textContent = '100%';
-                        document.getElementById('deleteProgressStatus').textContent = '✓ Deletion Complete!';
-                        
-                        let details = `Deleted: ${{data.files_deleted}} files\\n`;
-                        details += `OpenSearch indices: ${{data.cleanup_stats.opensearch_indices}}\\n`;
-                        details += `SIGMA violations: ${{data.cleanup_stats.sigma_violations}}\\n`;
-                        details += `IOC matches: ${{data.cleanup_stats.ioc_matches}}\\n`;
-                        details += `Physical files: ${{data.cleanup_stats.physical_files}}`;
-                        
-                        if (data.files_failed > 0) {{
-                            details += `\\n\\n⚠️ Failed: ${{data.files_failed}} files`;
-                            if (data.failed_files) {{
-                                details += '\\n' + data.failed_files.join('\\n');
-                            }}
-                        }}
-                        
-                        document.getElementById('deleteProgressDetails').innerHTML = details.replace(/\\n/g, '<br>');
-                        
-                        setTimeout(() => {{
-                            location.reload();
-                        }}, 3000);
+                    if (data.success && data.task_id) {{
+                        // Start polling for progress
+                        pollDeleteProgress(data.task_id);
                     }} else {{
-                        document.getElementById('deleteProgressStatus').textContent = '❌ Deletion Failed';
+                        document.getElementById('deleteProgressStatus').textContent = '❌ Failed to Start';
                         document.getElementById('deleteProgressStatus').style.color = '#f44336';
                         document.getElementById('deleteProgressDetails').textContent = data.error || 'Unknown error occurred';
                         
@@ -6596,6 +6653,66 @@ def render_file_list(case, files, pagination=None, show_hidden=False, total_hidd
                         document.body.removeChild(progressOverlay);
                     }}, 5000);
                 }});
+            }}
+            
+            function pollDeleteProgress(taskId) {{
+                const pollInterval = setInterval(() => {{
+                    fetch(`/api/delete-progress/${{taskId}}`)
+                        .then(response => response.json())
+                        .then(data => {{
+                            if (data.success && data.progress) {{
+                                const p = data.progress;
+                                
+                                if (p.status === 'deleting' || p.status === 'starting') {{
+                                    // Update progress bar
+                                    const percent = p.percent || 0;
+                                    document.getElementById('deleteProgressBar').style.width = percent + '%';
+                                    document.getElementById('deleteProgressText').textContent = percent + '%';
+                                    document.getElementById('deleteProgressStatus').textContent = `Deleting file ${{p.current}} of ${{p.total}}...`;
+                                    document.getElementById('deleteProgressDetails').textContent = `Current: ${{p.current_file}}\\nDeleted: ${{p.deleted}} | Failed: ${{p.failed}}`;
+                                }} else if (p.status === 'complete') {{
+                                    // Deletion complete
+                                    clearInterval(pollInterval);
+                                    document.getElementById('deleteProgressBar').style.width = '100%';
+                                    document.getElementById('deleteProgressText').textContent = '100%';
+                                    document.getElementById('deleteProgressStatus').textContent = '✓ Deletion Complete!';
+                                    
+                                    let details = `Deleted: ${{p.deleted}} files\\n`;
+                                    details += `OpenSearch indices: ${{p.cleanup_stats.opensearch_indices}}\\n`;
+                                    details += `SIGMA violations: ${{p.cleanup_stats.sigma_violations}}\\n`;
+                                    details += `IOC matches: ${{p.cleanup_stats.ioc_matches}}\\n`;
+                                    details += `Physical files: ${{p.cleanup_stats.physical_files}}`;
+                                    
+                                    if (p.failed > 0) {{
+                                        details += `\\n\\n⚠️ Failed: ${{p.failed}} files`;
+                                        if (p.failed_files && p.failed_files.length > 0) {{
+                                            details += '\\n' + p.failed_files.join('\\n');
+                                        }}
+                                    }}
+                                    
+                                    document.getElementById('deleteProgressDetails').innerHTML = details.replace(/\\n/g, '<br>');
+                                    
+                                    setTimeout(() => {{
+                                        location.reload();
+                                    }}, 3000);
+                                }} else if (p.status === 'error') {{
+                                    // Error occurred
+                                    clearInterval(pollInterval);
+                                    document.getElementById('deleteProgressStatus').textContent = '❌ Deletion Failed';
+                                    document.getElementById('deleteProgressStatus').style.color = '#f44336';
+                                    document.getElementById('deleteProgressDetails').textContent = p.error || 'Unknown error';
+                                    
+                                    setTimeout(() => {{
+                                        document.body.removeChild(document.getElementById('deleteProgressOverlay'));
+                                    }}, 5000);
+                                }}
+                            }}
+                        }})
+                        .catch(error => {{
+                            clearInterval(pollInterval);
+                            console.error('Poll error:', error);
+                        }});
+                }}, 500); // Poll every 500ms for smooth updates
             }}
             
             // Real-time Case Statistics Update (every 5 seconds)
