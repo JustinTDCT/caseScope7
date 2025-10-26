@@ -1202,11 +1202,11 @@ def upload_files():
                                 print(f"[Upload Debug] Progress: {file_size/1048576:.1f} MB ({chunk_count} chunks)")
                             
                             # Check size limit during upload (3GB)
-                            if file_size > 3221225472:
+                    if file_size > 3221225472:
                                 f.close()
                                 os.remove(temp_path)
-                                flash(f'File {file.filename} exceeds 3GB limit.', 'error')
-                                error_count += 1
+                        flash(f'File {file.filename} exceeds 3GB limit.', 'error')
+                        error_count += 1
                                 break
                     
                     # Skip if size limit exceeded
@@ -1681,7 +1681,17 @@ def list_files():
         error_out=False
     )
     
-    return render_file_list(case, pagination.items, pagination, show_hidden)
+    # Calculate statistics for this case
+    from sqlalchemy import func
+    stats_query = db.session.query(CaseFile).filter_by(
+        case_id=case.id,
+        is_deleted=False
+    )
+    
+    total_hidden = stats_query.filter_by(is_hidden=True).count()
+    total_zero_events = stats_query.filter_by(event_count=0).count()
+    
+    return render_file_list(case, pagination.items, pagination, show_hidden, total_hidden, total_zero_events)
 
 
 @app.route('/file-management')
@@ -1718,10 +1728,19 @@ def file_management():
     # Get all cases for case filter dropdown
     cases = db.session.query(Case).order_by(Case.name).all()
     
+    # Calculate global statistics (or case-specific if filtered)
+    from sqlalchemy import func
+    stats_query = db.session.query(CaseFile).filter_by(is_deleted=False)
+    if case_filter:
+        stats_query = stats_query.filter_by(case_id=case_filter)
+    
+    total_hidden = stats_query.filter_by(is_hidden=True).count()
+    total_zero_events = stats_query.filter_by(event_count=0).count()
+    
     # Audit log
     log_audit('file_management', 'view', f'Viewed file management page (page {page})', True)
     
-    return render_file_management(pagination.items, cases, pagination, show_hidden)
+    return render_file_management(pagination.items, cases, pagination, show_hidden, total_hidden, total_zero_events)
 
 
 @app.route('/file/reindex/<int:file_id>', methods=['POST'])
@@ -5865,7 +5884,7 @@ def render_upload_form(case):
     </html>
     '''
 
-def render_file_list(case, files, pagination=None, show_hidden=False):
+def render_file_list(case, files, pagination=None, show_hidden=False, total_hidden=0, total_zero_events=0):
     """Render file list for case"""
     # Get flash messages
     from flask import get_flashed_messages
@@ -6114,6 +6133,14 @@ def render_file_list(case, files, pagination=None, show_hidden=False):
                             <div class="stat-item">
                                 <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">Total IOC Matches</div>
                                 <div id="stat-events-iocs" class="stat-value" style="color: #f59e0b; font-size: 1.8em; font-weight: 700;">-</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">🙈 Hidden Files</div>
+                                <div class="stat-value" style="color: #a78bfa; font-size: 1.8em; font-weight: 700;">{total_hidden:,}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">⚠️ Files w/ 0 Events</div>
+                                <div class="stat-value" style="color: #fb923c; font-size: 1.8em; font-weight: 700;">{total_zero_events:,}</div>
                             </div>
                         </div>
                     </div>
@@ -11037,7 +11064,7 @@ def render_case_management(cases, users):
     </html>
     '''
 
-def render_file_management(files, cases, pagination=None, show_hidden=False):
+def render_file_management(files, cases, pagination=None, show_hidden=False, total_hidden=0, total_zero_events=0):
     """Render file management page - matches files list structure"""
     from flask import get_flashed_messages
     sidebar_menu = render_sidebar_menu('file_management')
@@ -11192,6 +11219,29 @@ def render_file_management(files, cases, pagination=None, show_hidden=False):
                         <span style="font-weight: 500;">Show Hidden Files (0 events, manually hidden)</span>
                     </label>
                     <span style="color: #94a3b8; font-size: 0.9em; margin-left: auto;">Hidden files are excluded from searches</span>
+                </div>
+                
+                <!-- File Statistics -->
+                <div style="margin-bottom: 20px; padding: 20px; background: linear-gradient(145deg, #1e293b, #334155); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                    <h3 style="margin: 0 0 15px 0; color: #f1f5f9; font-size: 1.1em;">📊 File Statistics</h3>
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+                        <div class="stat-item" style="text-align: center;">
+                            <div class="stat-label" style="color: #94a3b8; font-size: 0.85em; margin-bottom: 5px;">Total Files {show_hidden and "(All)" or "(Visible)"}</div>
+                            <div class="stat-value" style="color: #3b82f6; font-size: 1.8em; font-weight: 700;">{len(files):,}</div>
+                        </div>
+                        <div class="stat-item" style="text-align: center;">
+                            <div class="stat-label" style="color: #94a3b8; font-size: 0.85em; margin-bottom: 5px;">🙈 Hidden Files</div>
+                            <div class="stat-value" style="color: #a78bfa; font-size: 1.8em; font-weight: 700;">{total_hidden:,}</div>
+                        </div>
+                        <div class="stat-item" style="text-align: center;">
+                            <div class="stat-label" style="color: #94a3b8; font-size: 0.85em; margin-bottom: 5px;">⚠️ Files w/ 0 Events</div>
+                            <div class="stat-value" style="color: #fb923c; font-size: 1.8em; font-weight: 700;">{total_zero_events:,}</div>
+                        </div>
+                        <div class="stat-item" style="text-align: center;">
+                            <div class="stat-label" style="color: #94a3b8; font-size: 0.85em; margin-bottom: 5px;">Total Size</div>
+                            <div class="stat-value" style="color: #10b981; font-size: 1.8em; font-weight: 700;">{sum(f.file_size for f in files) / (1024*1024*1024):.2f} GB</div>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="filter-box">
