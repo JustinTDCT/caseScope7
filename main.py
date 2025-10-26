@@ -5994,25 +5994,9 @@ def render_file_list(case, files, pagination=None, show_hidden=False, total_hidd
         </div>
         '''
     
-    # Get IOC match counts for all files
-    from sqlalchemy import func
+    # v9.4.0: IOC counts are now pre-calculated in CaseFile.ioc_event_count
+    # No need for expensive IOCMatch join query anymore!
     ioc_counts = {}
-    if files:
-        # IOCMatch uses source_filename, not file_id, so we need to join with CaseFile
-        ioc_count_results = db.session.query(
-            CaseFile.id.label('file_id'),
-            func.count(func.distinct(IOCMatch.event_id)).label('ioc_count')
-        ).join(
-            IOCMatch, 
-            (IOCMatch.source_filename == CaseFile.original_filename) & 
-            (IOCMatch.case_id == CaseFile.case_id)
-        ).filter(
-            CaseFile.case_id == case.id,
-            CaseFile.is_deleted == False
-        ).group_by(CaseFile.id).all()
-        
-        for file_id, count in ioc_count_results:
-            ioc_counts[file_id] = count
     
     file_rows = ""
     for file in files:
@@ -6085,8 +6069,8 @@ def render_file_list(case, files, pagination=None, show_hidden=False, total_hidd
         else:
             violations_display = f'<span id="violation-count-{file.id}">-</span>'
         
-        # IOC match count
-        ioc_count = ioc_counts.get(file.id, 0)
+        # v9.4.0: Use pre-calculated IOC event count from database
+        ioc_count = file.ioc_event_count or 0
         if ioc_count > 0:
             iocs_display = f'<span id="ioc-count-{file.id}">{ioc_count:,}</span>'
         else:
@@ -11216,26 +11200,9 @@ def render_file_management(files, cases, pagination=None, show_hidden=False, tot
         </div>
         '''
     
-    # Get IOC match counts for all files
-    from sqlalchemy import func
+    # v9.4.0: IOC counts are now pre-calculated in CaseFile.ioc_event_count
+    # No need for expensive IOCMatch join query anymore!
     ioc_counts = {}
-    if files:
-        # IOCMatch uses source_filename, not file_id, so we need to join with CaseFile
-        file_ids = [f.id for f in files]
-        ioc_count_results = db.session.query(
-            CaseFile.id.label('file_id'),
-            func.count(func.distinct(IOCMatch.event_id)).label('ioc_count')
-        ).join(
-            IOCMatch, 
-            (IOCMatch.source_filename == CaseFile.original_filename) & 
-            (IOCMatch.case_id == CaseFile.case_id)
-        ).filter(
-            CaseFile.id.in_(file_ids),
-            CaseFile.is_deleted == False
-        ).group_by(CaseFile.id).all()
-        
-        for file_id, count in ioc_count_results:
-            ioc_counts[file_id] = count
     
     # Build file rows
     file_rows = ""
@@ -11275,8 +11242,8 @@ def render_file_management(files, cases, pagination=None, show_hidden=False, tot
         events_display = f'{file.event_count:,}' if file.event_count and file.event_count > 0 else '-'
         violations_display = f'{file.violation_count:,}' if file.violation_count and file.violation_count > 0 else '-'
         
-        # IOC match count
-        ioc_count = ioc_counts.get(file.id, 0)
+        # v9.4.0: Use pre-calculated IOC event count from database
+        ioc_count = file.ioc_event_count or 0
         iocs_display = f'{ioc_count:,}' if ioc_count > 0 else '-'
         
         # Action buttons
