@@ -18,7 +18,7 @@ from pathlib import Path
 def migrate_add_is_hidden():
     """Add is_hidden column to case_file table"""
     
-    db_path = '/opt/casescope/casescope.db'
+    db_path = '/opt/casescope/data/casescope.db'
     
     # Check if database exists
     if not Path(db_path).exists():
