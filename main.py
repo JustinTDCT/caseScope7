@@ -1645,7 +1645,7 @@ def get_case_stats(case_id):
 @app.route('/files')
 @login_required
 def list_files():
-    """List files in active case"""
+    """List files in active case with pagination"""
     clear_search_filters()  # Clear search filters when leaving search page
     active_case_id = session.get('active_case_id')
     if not active_case_id:
@@ -1656,25 +1656,56 @@ def list_files():
     if not case:
         flash('Case not found.', 'error')
         return redirect(url_for('case_selection'))
-    files = db.session.query(CaseFile).filter_by(case_id=case.id, is_deleted=False).order_by(CaseFile.uploaded_at.desc()).all()
     
-    return render_file_list(case, files)
+    # Pagination
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 100, type=int)  # 100 files per page
+    per_page = min(per_page, 500)  # Max 500 per page
+    
+    # Query with pagination
+    pagination = db.session.query(CaseFile).filter_by(
+        case_id=case.id, 
+        is_deleted=False
+    ).order_by(CaseFile.uploaded_at.desc()).paginate(
+        page=page,
+        per_page=per_page,
+        error_out=False
+    )
+    
+    return render_file_list(case, pagination.items, pagination)
 
 
 @app.route('/file-management')
 @login_required
 def file_management():
-    """File management page - view and manage all files across all cases"""
-    # Get all files across all cases
-    files = db.session.query(CaseFile).filter_by(is_deleted=False).order_by(CaseFile.uploaded_at.desc()).all()
+    """File management page - view and manage all files across all cases with pagination"""
+    # Pagination
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 100, type=int)  # 100 files per page
+    per_page = min(per_page, 500)  # Max 500 per page
+    
+    # Optional case filter
+    case_filter = request.args.get('case_id', type=int)
+    
+    # Build query
+    query = db.session.query(CaseFile).filter_by(is_deleted=False)
+    if case_filter:
+        query = query.filter_by(case_id=case_filter)
+    
+    # Query with pagination
+    pagination = query.order_by(CaseFile.uploaded_at.desc()).paginate(
+        page=page,
+        per_page=per_page,
+        error_out=False
+    )
     
     # Get all cases for case filter dropdown
     cases = db.session.query(Case).order_by(Case.name).all()
     
     # Audit log
-    log_audit('file_management', 'view', 'Viewed file management page', True)
+    log_audit('file_management', 'view', f'Viewed file management page (page {page})', True)
     
-    return render_file_management(files, cases)
+    return render_file_management(pagination.items, cases, pagination)
 
 
 @app.route('/file/reindex/<int:file_id>', methods=['POST'])
@@ -5227,6 +5258,99 @@ def change_password():
     '''
 
 # UI Rendering Functions
+def render_pagination_controls(pagination, endpoint):
+    """Render pagination controls for file lists"""
+    if not pagination or pagination.pages <= 1:
+        return ''
+    
+    # Build page links
+    pages_html = ''
+    
+    # Show: First | Prev | 1 2 3 ... 10 | Next | Last
+    # Always show first, last, current, and 2 pages on each side of current
+    
+    current_page = pagination.page
+    total_pages = pagination.pages
+    
+    # First page
+    if current_page > 1:
+        pages_html += f'<a href="?page=1&per_page={pagination.per_page}" class="pagination-btn">First</a>'
+        pages_html += f'<a href="?page={current_page - 1}&per_page={pagination.per_page}" class="pagination-btn">‹ Prev</a>'
+    
+    # Page numbers
+    start_page = max(1, current_page - 2)
+    end_page = min(total_pages, current_page + 2)
+    
+    if start_page > 1:
+        pages_html += f'<a href="?page=1&per_page={pagination.per_page}" class="pagination-btn">1</a>'
+        if start_page > 2:
+            pages_html += '<span class="pagination-ellipsis">...</span>'
+    
+    for page_num in range(start_page, end_page + 1):
+        if page_num == current_page:
+            pages_html += f'<span class="pagination-btn pagination-current">{page_num}</span>'
+        else:
+            pages_html += f'<a href="?page={page_num}&per_page={pagination.per_page}" class="pagination-btn">{page_num}</a>'
+    
+    if end_page < total_pages:
+        if end_page < total_pages - 1:
+            pages_html += '<span class="pagination-ellipsis">...</span>'
+        pages_html += f'<a href="?page={total_pages}&per_page={pagination.per_page}" class="pagination-btn">{total_pages}</a>'
+    
+    # Next/Last
+    if current_page < total_pages:
+        pages_html += f'<a href="?page={current_page + 1}&per_page={pagination.per_page}" class="pagination-btn">Next ›</a>'
+        pages_html += f'<a href="?page={total_pages}&per_page={pagination.per_page}" class="pagination-btn">Last</a>'
+    
+    # Per-page selector
+    per_page_options = ''
+    for option in [50, 100, 200, 500]:
+        selected = 'selected' if pagination.per_page == option else ''
+        per_page_options += f'<option value="{option}" {selected}>{option}</option>'
+    
+    return f'''
+    <div class="pagination-container" style="margin-top: 30px; padding: 20px; background: linear-gradient(145deg, #1e293b, #334155); border-radius: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <div class="pagination-info" style="color: #94a3b8;">
+            Showing {pagination.first} - {pagination.last} of {pagination.total:,} files
+        </div>
+        <div class="pagination-controls" style="display: flex; gap: 8px; align-items: center;">
+            {pages_html}
+        </div>
+        <div class="pagination-per-page" style="display: flex; gap: 10px; align-items: center; color: #94a3b8;">
+            <label for="perPageSelect">Files per page:</label>
+            <select id="perPageSelect" onchange="window.location.href='?page=1&per_page=' + this.value" style="padding: 8px 12px; background: #0f172a; color: #f1f5f9; border: 1px solid #334155; border-radius: 6px;">
+                {per_page_options}
+            </select>
+        </div>
+    </div>
+    <style>
+        .pagination-btn {{
+            padding: 8px 12px;
+            background: linear-gradient(145deg, #334155, #475569);
+            color: #f1f5f9;
+            text-decoration: none;
+            border-radius: 6px;
+            transition: all 0.2s;
+            font-weight: 500;
+        }}
+        .pagination-btn:hover {{
+            background: linear-gradient(145deg, #475569, #64748b);
+            transform: translateY(-1px);
+        }}
+        .pagination-current {{
+            background: linear-gradient(145deg, #2196f3, #1976d2);
+            cursor: default;
+        }}
+        .pagination-current:hover {{
+            transform: none;
+        }}
+        .pagination-ellipsis {{
+            color: #64748b;
+            padding: 8px;
+        }}
+    </style>
+    '''
+
 def render_upload_form(case):
     """Render professional file upload form with drag-and-drop"""
     # Get flash messages
@@ -5653,7 +5777,7 @@ def render_upload_form(case):
     </html>
     '''
 
-def render_file_list(case, files):
+def render_file_list(case, files, pagination=None):
     """Render file list for case"""
     # Get flash messages
     from flask import get_flashed_messages
@@ -5916,6 +6040,9 @@ def render_file_list(case, files):
                         {file_rows}
                     </tbody>
                 </table>
+                
+                <!-- Pagination Controls -->
+                {render_pagination_controls(pagination, 'list_files') if pagination else ''}
             </div>
         </div>
         
@@ -10754,7 +10881,7 @@ def render_case_management(cases, users):
     </html>
     '''
 
-def render_file_management(files, cases):
+def render_file_management(files, cases, pagination=None):
     """Render file management page - matches files list structure"""
     from flask import get_flashed_messages
     sidebar_menu = render_sidebar_menu('file_management')
@@ -10948,6 +11075,9 @@ def render_file_management(files, cases):
                         {file_rows}
                     </tbody>
                 </table>
+                
+                <!-- Pagination Controls -->
+                {render_pagination_controls(pagination, 'file_management') if pagination else ''}
             </div>
         </div>
         
