@@ -1937,13 +1937,13 @@ def hunt_iocs_for_file(self, file_id, index_name):
                 should_clauses = []
                 for field in search_fields:
                     # Use query_string with lenient flag to ignore incompatible field types
+                    # Note: search_value already lowercased at line 1927, provides case-insensitive matching
                     should_clauses.append({
                         "query_string": {
                             "query": f"*{escaped_value}*",
                             "fields": [f"{field}*"],  # Wildcard to match nested paths
                             "default_operator": "AND",
-                            "lenient": True,  # Ignore field type errors
-                            "case_insensitive": True  # Match regardless of case (Xerox = xerox = XEROX)
+                            "lenient": True  # Ignore field type errors
                         }
                     })
                 
@@ -2138,12 +2138,12 @@ def build_ioc_search_query(ioc, field_mapping):
     
     # CRITICAL: Add wildcard search across ALL fields to catch flattened field paths
     # e.g., EventData.Data_12.#text where Data_12.@Name might be "IpAddress"
+    # Note: search_value already lowercased, provides case-insensitive matching
     should_clauses.append({
         "query_string": {
             "query": f"*{search_value}*",
             "fields": ["*"],
-            "analyze_wildcard": True,
-            "case_insensitive": True  # Match regardless of case
+            "analyze_wildcard": True
         }
     })
     
@@ -2527,8 +2527,7 @@ def hunt_iocs_for_case(self, case_id):
                         "query_string": {
                             "query": f"*{search_value}*",
                             "default_operator": "AND",
-                            "lenient": True,
-                            "case_insensitive": True  # Match regardless of case
+                            "lenient": True
                         }
                     },
                     "size": 10000
@@ -3133,13 +3132,13 @@ def _hunt_iocs_helper(celery_task, file_id, case_file, index_name):
         
         # Search ALL fields - IOC can appear anywhere in event
         # Same approach as regular search (finds ALL occurrences)
+        # search_value lowercased for case-insensitive matching
         query = {
             "query": {
                 "query_string": {
                     "query": f"*{search_value}*",
                     "default_operator": "AND",
-                    "lenient": True,
-                    "case_insensitive": True  # Match regardless of case
+                    "lenient": True
                 }
             },
             "size": 10000  # Increased from 1000 to handle more matches

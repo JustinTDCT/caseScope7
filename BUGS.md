@@ -21,11 +21,11 @@ IOC "Hunt Now" and "Rehunt All IOCs" operations fail with "RequestError(400, 'to
 
 ### BUG-009: IOC Matching Is Case-Sensitive
 **Reported:** 2025-10-26 (v9.0.8)  
-**Status:** Open
+**Status:** Open (Partial Fix)
 
 IOC matching fails to detect IOCs when the case doesn't match exactly. Example: IOC database has "Xerox" (capital X) as username IOC. Event with "EventData.TargetUserName: Xerox" (capital X) gets matched and flagged with USERNAME tag. But searching for "xerox" (lowercase) only finds one flagged event, not all events containing that username. The IOC hunting in tasks.py uses OpenSearch query_string which is case-sensitive by default. This means if an IOC is entered as "Xerox" it won't match "xerox", "XEROX", or "XeRoX" in the event data, leading to missed detections.
 
-**Fixed:** 2025-10-26 (v9.0.9) - Added case_insensitive: True to all query_string queries in IOC hunting
+**Attempted Fix:** 2025-10-26 (v9.0.9) - Tried adding case_insensitive: True but OpenSearch 1.x doesn't support this parameter. Reverted in v9.0.11. Case-sensitivity now depends on OpenSearch analyzer configuration.
 
 ---
 
