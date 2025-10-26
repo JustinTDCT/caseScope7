@@ -809,6 +809,7 @@ create_directories() {
         "/opt/casescope/data:Database and case data"
         "/opt/casescope/data/backups:Data backups"
         "/opt/casescope/uploads:Uploaded files"
+        "/opt/casescope/local_uploads:Local bulk upload folder"
         "/opt/casescope/logs:Application logs"
         "/opt/casescope/logs/app:App logs"
         "/opt/casescope/logs/nginx:Web server logs"

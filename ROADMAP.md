@@ -9,7 +9,32 @@ This document tracks planned features and enhancements for caseScope.
 
 ## Priority 1: Search & Navigation Enhancements
 
-### 1. Pagination on Files List
+### 1. Local Upload Folder Processing (✅ COMPLETED - v9.1.0)
+**Status:** Completed  
+**Priority:** High  
+**Estimated Effort:** 2-3 hours  
+
+**Description:**  
+Allow users to drop files into a local folder on the server and process them with a single button click instead of uploading via web interface. Perfect for bulk processing and automation.
+
+**Features:**
+- System setting for local upload folder path (default: `/opt/casescope/local_uploads/`)
+- "Process Local Uploads" button on upload page
+- Background task scans folder for ZIP/EVTX/JSON files
+- ZIP files automatically decompressed
+- EVTX and JSON files processed normally
+- Original files cleaned up after successful processing
+- Audit log of processed files
+
+**Use Cases:**
+- Drop 100 ZIP files in folder, click button, walk away
+- Integration with external scripts
+- Faster than web upload for local processing
+- Matches user's bash workflow
+
+---
+
+### 2. Pagination on Files List
 **Status:** Planned  
 **Priority:** High  
 **Estimated Effort:** 2-3 hours  

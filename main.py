@@ -2389,6 +2389,54 @@ def api_reindex_all_files():
         traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)}), 500
 
+
+@app.route('/api/process-local-uploads', methods=['POST'])
+@login_required
+def api_process_local_uploads():
+    """
+    Process files from the local upload folder
+    Workflow: Drop files in folder → Click button → Walk away
+    """
+    try:
+        active_case_id = session.get('active_case_id')
+        if not active_case_id:
+            return jsonify({'success': False, 'message': 'No active case'}), 400
+        
+        # Get local upload folder setting
+        settings = db.session.query(SystemSettings).filter_by(setting_key='local_upload_folder').first()
+        local_folder = settings.setting_value if settings else '/opt/casescope/local_uploads'
+        
+        # Check if folder exists
+        if not os.path.exists(local_folder):
+            return jsonify({
+                'success': False, 
+                'message': f'Local upload folder not found: {local_folder}'
+            }), 404
+        
+        # Count files in folder
+        file_count = len([f for f in os.listdir(local_folder) if os.path.isfile(os.path.join(local_folder, f))])
+        
+        if file_count == 0:
+            return jsonify({
+                'success': False,
+                'message': 'No files found in local upload folder'
+            }), 404
+        
+        # Queue the background task
+        task = celery_app.send_task('tasks.process_local_uploads', args=[active_case_id])
+        
+        log_audit('file', 'local_upload_start', f'Started processing {file_count} files from local folder', case_id=active_case_id)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Processing {file_count} file(s) from {local_folder}',
+            'file_count': file_count,
+            'task_id': task.id
+        })
+    except Exception as e:
+        print(f"[Local Upload] Error: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/api/rerun-all-rules', methods=['POST'])
 @login_required
 def api_rerun_all_rules():
@@ -5262,6 +5310,22 @@ def render_upload_form(case):
                             </a>
                         </div>
                     </form>
+                    
+                    <div class="upload-info-card" style="margin-top: 30px; border-left: 4px solid #ffa500;">
+                        <h3>📂 Local Upload Folder Processing</h3>
+                        <p>Drop files directly on the server and process them in bulk:</p>
+                        <ul>
+                            <li><strong>Folder:</strong> <code>/opt/casescope/local_uploads/</code></li>
+                            <li>Supports: ZIP, EVTX, JSON files</li>
+                            <li>ZIP files automatically decompressed</li>
+                            <li>Perfect for bulk processing 100+ files</li>
+                            <li>Original files cleaned up after successful processing</li>
+                        </ul>
+                        <button type="button" class="btn btn-primary" onclick="processLocalUploads()" id="processLocalBtn">
+                            <span>🚀 Process Local Uploads</span>
+                        </button>
+                        <div id="localUploadStatus" style="margin-top: 15px; display: none;"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -5542,6 +5606,47 @@ def render_upload_form(case):
              */
             function generateUploadId() {{
                 return `upload_${{Date.now()}}_${{Math.random().toString(36).substr(2, 9)}}`;
+            }}
+            
+            /**
+             * Process files from local upload folder
+             */
+            function processLocalUploads() {{
+                const btn = document.getElementById('processLocalBtn');
+                const status = document.getElementById('localUploadStatus');
+                
+                // Disable button
+                btn.disabled = true;
+                btn.innerHTML = '<span>⏳ Processing...</span>';
+                
+                // Show status
+                status.style.display = 'block';
+                status.innerHTML = '<div style="color: #ffa500;">🔄 Scanning local upload folder...</div>';
+                
+                fetch('/api/process-local-uploads', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json'
+                    }}
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) {{
+                        status.innerHTML = `<div style="color: #00ff7f;">✅ ${{data.message}}</div>`;
+                        setTimeout(() => {{
+                            window.location.href = '/files';
+                        }}, 2000);
+                    }} else {{
+                        status.innerHTML = `<div style="color: #ff4444;">❌ ${{data.message}}</div>`;
+                        btn.disabled = false;
+                        btn.innerHTML = '<span>🚀 Process Local Uploads</span>';
+                    }}
+                }})
+                .catch(error => {{
+                    status.innerHTML = `<div style="color: #ff4444;">❌ Error: ${{error.message}}</div>`;
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>🚀 Process Local Uploads</span>';
+                }});
             }}
         </script>
     </body>

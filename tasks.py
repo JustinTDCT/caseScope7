@@ -9,6 +9,8 @@ import sys
 import time
 import json
 import logging
+import zipfile
+import hashlib
 from datetime import datetime
 from celery_app import celery_app
 from opensearchpy import OpenSearch, helpers
@@ -3572,3 +3574,258 @@ def process_file_complete(self, file_id, operation='full'):
                 logger.error(f"Failed to update file status: {db_err}")
             
             return {'status': 'error', 'message': str(e)}
+
+
+# ============================================================================
+# LOCAL UPLOAD FOLDER PROCESSING
+# ============================================================================
+
+@celery_app.task(bind=True, name='tasks.process_local_uploads')
+def process_local_uploads(self, case_id):
+    """
+    Process all files from the local upload folder.
+    Works like: Drop files in folder → Click button → Walk away
+    
+    Supports:
+    - ZIP files (automatically decompressed)
+    - EVTX files (processed normally)
+    - JSON files (processed normally)
+    
+    Cleanup: Original files deleted after successful queue
+    """
+    import os
+    import shutil
+    from main import app, db, SystemSettings, Case, CaseFile, log_audit
+    from utils import sanitize_filename, make_index_name
+    
+    with app.app_context():
+        logger.info("="*80)
+        logger.info("LOCAL UPLOAD FOLDER PROCESSING STARTED")
+        logger.info(f"Case ID: {case_id}")
+        logger.info("="*80)
+        
+        # Get case
+        case = db.session.get(Case, case_id)
+        if not case:
+            logger.error(f"Case {case_id} not found")
+            return {'status': 'error', 'message': 'Case not found', 'files_processed': 0}
+        
+        # Get local upload folder from settings
+        settings = db.session.query(SystemSettings).filter_by(setting_key='local_upload_folder').first()
+        local_folder = settings.setting_value if settings else '/opt/casescope/local_uploads'
+        
+        if not os.path.exists(local_folder):
+            logger.warning(f"Local upload folder does not exist: {local_folder}")
+            return {'status': 'error', 'message': f'Folder not found: {local_folder}', 'files_processed': 0}
+        
+        logger.info(f"Scanning folder: {local_folder}")
+        
+        # Get all files from folder
+        files = []
+        for filename in os.listdir(local_folder):
+            file_path = os.path.join(local_folder, filename)
+            if os.path.isfile(file_path):
+                files.append((filename, file_path))
+        
+        if not files:
+            logger.info("No files found in local upload folder")
+            return {'status': 'success', 'message': 'No files to process', 'files_processed': 0}
+        
+        logger.info(f"Found {len(files)} files to process")
+        
+        # Stats
+        files_processed = 0
+        files_failed = 0
+        zips_extracted = 0
+        evtx_queued = 0
+        json_queued = 0
+        
+        # Process each file
+        for filename, file_path in files:
+            try:
+                file_ext = filename.lower().split('.')[-1]
+                logger.info(f"Processing: {filename} ({file_ext})")
+                
+                # Handle ZIP files
+                if file_ext == 'zip':
+                    try:
+                        # Extract ZIP to case upload folder
+                        case_upload_dir = f"/opt/casescope/uploads/{case.id}"
+                        os.makedirs(case_upload_dir, exist_ok=True)
+                        
+                        extracted_files = []
+                        with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                            for zip_info in zip_ref.filelist:
+                                if zip_info.filename.lower().endswith('.evtx'):
+                                    # Extract EVTX file
+                                    zip_ref.extract(zip_info, case_upload_dir)
+                                    extracted_path = os.path.join(case_upload_dir, zip_info.filename)
+                                    extracted_files.append((zip_info.filename, extracted_path))
+                        
+                        logger.info(f"Extracted {len(extracted_files)} EVTX files from {filename}")
+                        zips_extracted += 1
+                        
+                        # Queue each extracted EVTX file
+                        for evtx_name, evtx_path in extracted_files:
+                            evtx_size = os.path.getsize(evtx_path)
+                            evtx_hash = hashlib.sha256(open(evtx_path, 'rb').read()).hexdigest()
+                            
+                            # Check for duplicate
+                            existing = db.session.query(CaseFile).filter_by(case_id=case.id, sha256_hash=evtx_hash).first()
+                            if existing:
+                                logger.info(f"Duplicate file skipped: {evtx_name}")
+                                os.remove(evtx_path)
+                                continue
+                            
+                            # Create CaseFile record
+                            case_file = CaseFile(
+                                case_id=case.id,
+                                original_filename=sanitize_filename(evtx_name),
+                                storage_filename=os.path.basename(evtx_path),
+                                file_size=evtx_size,
+                                file_type='evtx',
+                                sha256_hash=evtx_hash,
+                                status='Queued',
+                                uploaded_by=1  # System user
+                            )
+                            db.session.add(case_file)
+                            db.session.commit()
+                            
+                            # Queue for processing
+                            celery_app.send_task('tasks.process_file_complete', args=[case_file.id])
+                            evtx_queued += 1
+                            logger.info(f"Queued: {evtx_name}")
+                        
+                        # Delete original ZIP after successful extraction
+                        os.remove(file_path)
+                        logger.info(f"Deleted original ZIP: {filename}")
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to process ZIP {filename}: {e}")
+                        files_failed += 1
+                        continue
+                
+                # Handle EVTX files
+                elif file_ext == 'evtx':
+                    try:
+                        # Move to case upload folder
+                        case_upload_dir = f"/opt/casescope/uploads/{case.id}"
+                        os.makedirs(case_upload_dir, exist_ok=True)
+                        dest_path = os.path.join(case_upload_dir, filename)
+                        shutil.move(file_path, dest_path)
+                        
+                        file_size = os.path.getsize(dest_path)
+                        file_hash = hashlib.sha256(open(dest_path, 'rb').read()).hexdigest()
+                        
+                        # Check for duplicate
+                        existing = db.session.query(CaseFile).filter_by(case_id=case.id, sha256_hash=file_hash).first()
+                        if existing:
+                            logger.info(f"Duplicate file skipped: {filename}")
+                            os.remove(dest_path)
+                            continue
+                        
+                        # Create CaseFile record
+                        case_file = CaseFile(
+                            case_id=case.id,
+                            original_filename=sanitize_filename(filename),
+                            storage_filename=filename,
+                            file_size=file_size,
+                            file_type='evtx',
+                            sha256_hash=file_hash,
+                            status='Queued',
+                            uploaded_by=1
+                        )
+                        db.session.add(case_file)
+                        db.session.commit()
+                        
+                        # Queue for processing
+                        celery_app.send_task('tasks.process_file_complete', args=[case_file.id])
+                        evtx_queued += 1
+                        logger.info(f"Queued: {filename}")
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to process EVTX {filename}: {e}")
+                        files_failed += 1
+                        continue
+                
+                # Handle JSON files
+                elif file_ext in ['json', 'ndjson']:
+                    try:
+                        # Move to case upload folder
+                        case_upload_dir = f"/opt/casescope/uploads/{case.id}"
+                        os.makedirs(case_upload_dir, exist_ok=True)
+                        dest_path = os.path.join(case_upload_dir, filename)
+                        shutil.move(file_path, dest_path)
+                        
+                        file_size = os.path.getsize(dest_path)
+                        file_hash = hashlib.sha256(open(dest_path, 'rb').read()).hexdigest()
+                        
+                        # Check for duplicate
+                        existing = db.session.query(CaseFile).filter_by(case_id=case.id, sha256_hash=file_hash).first()
+                        if existing:
+                            logger.info(f"Duplicate file skipped: {filename}")
+                            os.remove(dest_path)
+                            continue
+                        
+                        # Create CaseFile record
+                        case_file = CaseFile(
+                            case_id=case.id,
+                            original_filename=sanitize_filename(filename),
+                            storage_filename=filename,
+                            file_size=file_size,
+                            file_type='ndjson',
+                            sha256_hash=file_hash,
+                            status='Queued',
+                            uploaded_by=1
+                        )
+                        db.session.add(case_file)
+                        db.session.commit()
+                        
+                        # Queue for processing  
+                        celery_app.send_task('tasks.process_file_complete', args=[case_file.id])
+                        json_queued += 1
+                        logger.info(f"Queued: {filename}")
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to process JSON {filename}: {e}")
+                        files_failed += 1
+                        continue
+                
+                else:
+                    logger.warning(f"Unsupported file type: {filename}")
+                    files_failed += 1
+                    continue
+                
+                files_processed += 1
+                
+            except Exception as e:
+                logger.error(f"Error processing {filename}: {e}")
+                files_failed += 1
+        
+        # Log audit trail
+        log_audit(
+            'file', 
+            'local_upload', 
+            f'Processed {files_processed} files from local folder: {zips_extracted} ZIPs extracted, {evtx_queued} EVTX queued, {json_queued} JSON queued, {files_failed} failed',
+            user_id=1,
+            case_id=case.id
+        )
+        
+        logger.info("="*80)
+        logger.info("LOCAL UPLOAD FOLDER PROCESSING COMPLETED")
+        logger.info(f"Files Processed: {files_processed}")
+        logger.info(f"ZIPs Extracted: {zips_extracted}")
+        logger.info(f"EVTX Queued: {evtx_queued}")
+        logger.info(f"JSON Queued: {json_queued}")
+        logger.info(f"Failed: {files_failed}")
+        logger.info("="*80)
+        
+        return {
+            'status': 'success',
+            'message': f'Processed {files_processed} files',
+            'files_processed': files_processed,
+            'zips_extracted': zips_extracted,
+            'evtx_queued': evtx_queued,
+            'json_queued': json_queued,
+            'files_failed': files_failed
+        }
