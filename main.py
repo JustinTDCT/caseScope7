@@ -1753,7 +1753,7 @@ def reindex_file(file_id):
             if celery_app:
                 celery_app.send_task(
                     'tasks.process_file_complete',
-                    args=[file_id, 'reindex'],
+                    args=[file_id],
                     queue='celery',
                     priority=0,
                 )
@@ -2368,7 +2368,7 @@ def api_reindex_all_files():
                 if celery_app:
                     celery_app.send_task(
                         'tasks.process_file_complete',
-                        args=[case_file.id, 'reindex'],
+                        args=[case_file.id],
                         queue='celery',
                         priority=0,
                     )
