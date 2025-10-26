@@ -696,7 +696,12 @@ def index_evtx_file(self, file_id):
             # Generate index name using shared helper
             index_name = make_index_name(case.id, case_file.original_filename)
             
-            logger.info(f"TASK SUMMARY: TaskID={self.request.id}, FileID={file_id}, Filename={case_file.original_filename}, Index={index_name}")
+            # v9.4.0: Set opensearch_key for DB<->OpenSearch linking
+            opensearch_key = f"case{case.id}_{index_name}"
+            case_file.opensearch_key = opensearch_key
+            db.session.commit()
+            
+            logger.info(f"TASK SUMMARY: TaskID={self.request.id}, FileID={file_id}, Filename={case_file.original_filename}, Index={index_name}, Key={opensearch_key}")
             
             # AUDIT LOG: Started indexing
             estimated_events = case_file.estimated_event_count or 'unknown'
@@ -799,6 +804,9 @@ def index_evtx_file(self, file_id):
                                 'source_type': 'evtx'
                             }
                             
+                            # v9.4.0: Add opensearch_key for DB<->OpenSearch linking
+                            flat_event['opensearch_key'] = opensearch_key
+                            
                             events.append(flat_event)
                             event_count += 1
                             
@@ -849,6 +857,10 @@ def index_evtx_file(self, file_id):
                 logger.info(f"Auto-hiding file with 0 events: {case_file.original_filename}")
             
             db.session.commit()
+            
+            # v9.4.0: Update case-level aggregates after indexing
+            from aggregates import update_case_aggregates
+            update_case_aggregates(case.id)
             
             logger.info("="*80)
             logger.info(f"INDEXING COMPLETED: {event_count:,} events indexed from {case_file.original_filename}")
@@ -1230,9 +1242,22 @@ def process_sigma_rules(self, file_id, index_name):
             
             # Update file record with violation count and mark as completed
             case_file.violation_count = total_violations
+            
+            # v9.4.0: Calculate number of unique events with SIGMA violations
+            sigma_event_count = db.session.query(SigmaViolation.event_id)\
+                .filter_by(file_id=file_id)\
+                .distinct()\
+                .count()
+            case_file.sigma_event_count = sigma_event_count
+            logger.info(f"✓ {sigma_event_count} unique events have SIGMA violations (out of {total_violations} total violations)")
+            
             case_file.indexing_status = 'Completed'
             case_file.celery_task_id = None  # Clear task ID on completion
             commit_with_retry(db.session, logger_instance=logger)
+            
+            # v9.4.0: Update case-level aggregates after SIGMA processing
+            from aggregates import update_case_aggregates
+            update_case_aggregates(case.id)
             
             # Clean up temporary directory
             if temp_dir and os.path.exists(temp_dir):
@@ -1705,7 +1730,14 @@ def index_ndjson_file(self, file_id):
             
             # Create OpenSearch index name
             index_name = make_index_name(case.id, case_file.original_filename)
+            
+            # v9.4.0: Set opensearch_key for DB<->OpenSearch linking
+            opensearch_key = f"case{case.id}_{index_name}"
+            case_file.opensearch_key = opensearch_key
+            db.session.commit()
+            
             logger.info(f"OpenSearch index: {index_name}")
+            logger.info(f"OpenSearch key: {opensearch_key}")
             
             # Parse and index NDJSON
             total_events = 0
@@ -1738,6 +1770,9 @@ def index_ndjson_file(self, file_id):
                             'indexed_at': datetime.utcnow().isoformat(),
                             'source_type': 'ndjson'  # Tag as NDJSON/EDR data
                         }
+                        
+                        # v9.4.0: Add opensearch_key for DB<->OpenSearch linking
+                        event['opensearch_key'] = opensearch_key
                         
                         # Generate document ID (use line number + file hash for uniqueness)
                         doc_id = f"{case_file.file_hash}_{line_num}"
@@ -1811,6 +1846,10 @@ def index_ndjson_file(self, file_id):
             case_file.is_indexed = True
             case_file.indexed_at = datetime.utcnow()
             db.session.commit()
+            
+            # v9.4.0: Update case-level aggregates after indexing
+            from aggregates import update_case_aggregates
+            update_case_aggregates(case.id)
             
             elapsed_time = time.time() - task_start_time
             logger.info("="*80)
@@ -2036,6 +2075,22 @@ def hunt_iocs_for_file(self, file_id, index_name):
             logger.info(f"Total IOCs processed: {len(iocs)}")
             logger.info(f"Total matches found: {total_matches}")
             logger.info(f"Duration: {task_duration:.2f} seconds")
+            
+            # v9.4.0: Calculate number of unique events with IOC matches
+            ioc_event_count = db.session.query(IOCMatch.event_id)\
+                .filter_by(case_id=case.id, file_id=file_id)\
+                .join(IOCMatch.ioc)\
+                .filter(IOC.is_active == True)\
+                .distinct()\
+                .count()
+            case_file.ioc_event_count = ioc_event_count
+            commit_with_retry(db.session, logger_instance=logger)
+            logger.info(f"✓ {ioc_event_count} unique events have IOC matches (out of {total_matches} total matches)")
+            
+            # v9.4.0: Update case-level aggregates after IOC hunting
+            from aggregates import update_case_aggregates
+            update_case_aggregates(case.id)
+            
             logger.info("="*80)
             
             # AUDIT LOG: Finished IOC hunting
@@ -3734,7 +3789,8 @@ def process_local_uploads(self, case_id):
                                 file_hash=evtx_hash,
                                 mime_type='application/evtx',
                                 uploaded_by=1,  # System user
-                                indexing_status='Queued'
+                                indexing_status='Queued',
+                                upload_type='local'  # v9.4.0: Track upload method
                             )
                             db.session.add(case_file)
                             db.session.commit()
@@ -3800,7 +3856,8 @@ def process_local_uploads(self, case_id):
                             file_hash=file_hash,
                             mime_type='application/evtx',
                             uploaded_by=1,
-                            indexing_status='Queued'
+                            indexing_status='Queued',
+                            upload_type='local'  # v9.4.0: Track upload method
                         )
                         db.session.add(case_file)
                         db.session.commit()
@@ -3862,7 +3919,8 @@ def process_local_uploads(self, case_id):
                             file_hash=file_hash,
                             mime_type='application/json',
                             uploaded_by=1,
-                            indexing_status='Queued'
+                            indexing_status='Queued',
+                            upload_type='local'  # v9.4.0: Track upload method
                         )
                         db.session.add(case_file)
                         db.session.commit()

@@ -202,7 +202,8 @@ def extract_and_process_zip(zip_path, case_id, zip_filename, user_id):
                         file_hash=sha256_hash,
                         mime_type='application/octet-stream',
                         uploaded_by=user_id,
-                        indexing_status='Queued'
+                        indexing_status='Queued',
+                        upload_type='http'  # v9.4.0: Track upload method
                     )
                     
                     db.session.add(case_file)
@@ -1202,11 +1203,11 @@ def upload_files():
                                 print(f"[Upload Debug] Progress: {file_size/1048576:.1f} MB ({chunk_count} chunks)")
                             
                             # Check size limit during upload (3GB)
-                            if file_size > 3221225472:
+                    if file_size > 3221225472:
                                 f.close()
                                 os.remove(temp_path)
-                                flash(f'File {file.filename} exceeds 3GB limit.', 'error')
-                                error_count += 1
+                        flash(f'File {file.filename} exceeds 3GB limit.', 'error')
+                        error_count += 1
                                 break
                     
                     # Skip if size limit exceeded
@@ -1253,7 +1254,8 @@ def upload_files():
                         file_hash=sha256_hash,
                         mime_type=mime_type,
                         uploaded_by=current_user.id,
-                        indexing_status='Queued'  # Changed from 'Uploaded' to show queue status
+                        indexing_status='Queued',  # Changed from 'Uploaded' to show queue status
+                        upload_type='http'  # v9.4.0: Track upload method
                     )
                     
                     db.session.add(case_file)
@@ -1541,7 +1543,8 @@ def upload_finalize():
             file_hash=sha256_hash,
             mime_type=mime_type,
             uploaded_by=current_user.id,
-            indexing_status='Queued'
+            indexing_status='Queued',
+            upload_type='http'  # v9.4.0: Track upload method
         )
         
         db.session.add(case_file)
@@ -4246,6 +4249,12 @@ def search():
     sort_field = params['sort_field']
     sort_order = params['sort_order']
     
+    # v9.4.0: Check for opensearch_key parameter (file-specific view)
+    opensearch_key = request.args.get('opensearch_key')
+    if opensearch_key:
+        # User clicked a filename - show only events from that file
+        query_str = query_str or '*'  # Default to match all if no query
+    
     results = []
     total_hits = 0
     error_message = None
@@ -4270,14 +4279,22 @@ def search():
             if time_query:
                 filters.append(time_query)
             
-            # Exclude hidden files from search
-            # Filter by filename in metadata (only search non-hidden files)
-            if non_hidden_filenames:
+            # v9.4.0: Filter by opensearch_key if provided (file-specific view)
+            if opensearch_key:
                 filters.append({
-                    "terms": {
-                        "_casescope_metadata.filename": non_hidden_filenames
+                    "term": {
+                        "opensearch_key": opensearch_key
                     }
                 })
+            else:
+                # Exclude hidden files from search
+                # Filter by filename in metadata (only search non-hidden files)
+                if non_hidden_filenames:
+                    filters.append({
+                        "terms": {
+                            "_casescope_metadata.filename": non_hidden_filenames
+                        }
+                    })
             
             # Combine base query with filters
             if filters:
@@ -6103,7 +6120,7 @@ def render_file_list(case, files, pagination=None, show_hidden=False, total_hidd
         
         file_rows += f'''
         <tr>
-            <td>{file.original_filename}</td>
+            <td><a href="/search?opensearch_key={file.opensearch_key or ''}" style="color: #3b82f6; text-decoration: none; font-weight: 500;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">{file.original_filename}</a></td>
             <td>{file.uploaded_at.strftime('%Y-%m-%d %H:%M')}</td>
             <td>{file_size_mb:.2f} MB</td>
             <td>{file.uploader.username}</td>

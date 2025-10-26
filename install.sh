@@ -1345,7 +1345,8 @@ copy_application() {
     
     # Core application files (required for all install types)
     # v9.0.0: Added models.py and utils.py (modular architecture)
-    for file in main.py models.py utils.py requirements.txt version.json wsgi.py celery_app.py tasks.py theme.py iris_client.py iris_sync.py; do
+    # v9.4.0: Added aggregates.py, migrate_statistics_v9_4_0.py, backfill_statistics_v9_4_0.py
+    for file in main.py models.py utils.py aggregates.py requirements.txt version.json wsgi.py celery_app.py tasks.py theme.py iris_client.py iris_sync.py migrate_statistics_v9_4_0.py backfill_statistics_v9_4_0.py; do
         if [ -f "$APP_SOURCE_DIR/$file" ]; then
             log "✓ Found $file in source directory"
             cp "$APP_SOURCE_DIR/$file" /opt/casescope/app/ 2>/dev/null || log_error "Failed to copy $file"
@@ -1910,6 +1911,28 @@ except Exception as e:
                 log_error "Database migrations failed (exit code: $MIGRATION_RESULT)"
                 log_error "Check logs above for details"
                 # Non-fatal - continue installation
+            fi
+            
+            # v9.4.0: Run statistics migration
+            if [ -f "/opt/casescope/app/migrate_statistics_v9_4_0.py" ]; then
+                log "Running v9.4.0 statistics migration..."
+                sudo -u casescope /opt/casescope/venv/bin/python3 /opt/casescope/app/migrate_statistics_v9_4_0.py
+                STATS_MIGRATION_RESULT=$?
+                
+                if [ $STATS_MIGRATION_RESULT -eq 0 ]; then
+                    log "✓ v9.4.0 statistics migration completed"
+                    
+                    # Offer to run backfill script
+                    if [ -f "/opt/casescope/app/backfill_statistics_v9_4_0.py" ]; then
+                        log ""
+                        log "📊 Statistics backfill available for existing files"
+                        log "   This will populate statistics for files indexed before v9.4.0"
+                        log "   Run manually: python3 /opt/casescope/app/backfill_statistics_v9_4_0.py"
+                        log ""
+                    fi
+                else
+                    log_warning "v9.4.0 statistics migration had errors (non-fatal)"
+                fi
             fi
         else
             log_warning "Unified migration script not found, using legacy migration scripts..."

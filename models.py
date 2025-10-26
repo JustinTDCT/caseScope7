@@ -122,6 +122,12 @@ class Case(db.Model):
     iris_case_id = db.Column(db.Integer)  # DFIR-IRIS case ID
     iris_synced_at = db.Column(db.DateTime)  # Last sync timestamp
     
+    # Aggregate Statistics (v9.4.0 - cached from CaseFile for performance)
+    total_files = db.Column(db.Integer, default=0)
+    total_events = db.Column(db.BigInteger, default=0)
+    total_events_with_iocs = db.Column(db.Integer, default=0)
+    total_events_with_sigma = db.Column(db.Integer, default=0)
+    
     # Relationships
     creator = db.relationship('User', foreign_keys=[created_by], backref='created_cases')
     assignee = db.relationship('User', foreign_keys=[assignee_id], backref='assigned_cases')
@@ -169,6 +175,13 @@ class CaseFile(db.Model):
     violation_count = db.Column(db.Integer, default=0)
     indexing_status = db.Column(db.String(20), default='Queued')  # Queued, Estimating, Indexing, SIGMA Hunting, IOC Hunting, Completed, Failed
     celery_task_id = db.Column(db.String(100), nullable=True)  # Current Celery task ID for progress tracking
+    
+    # v9.4.0 - Statistics and Linking
+    ioc_event_count = db.Column(db.Integer, default=0)  # Number of events with IOC matches
+    sigma_event_count = db.Column(db.Integer, default=0)  # Number of events with SIGMA violations
+    upload_type = db.Column(db.String(50), default='http')  # 'http' or 'local'
+    opensearch_key = db.Column(db.String(255), index=True)  # 'case{id}_{filename}' for DB<->OpenSearch linking
+    is_tagged = db.Column(db.Boolean, default=False)  # If file has any tagged events
     
     # Relationships
     case = db.relationship('Case', backref='files')
