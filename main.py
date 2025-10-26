@@ -6530,16 +6530,16 @@ def render_file_list(case, files, pagination=None, show_hidden=False, total_hidd
                 // Show progress overlay
                 const progressOverlay = document.createElement('div');
                 progressOverlay.id = 'deleteProgressOverlay';
-                progressOverlay.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 10000; display: flex; align-items: center; justify-center;';
+                progressOverlay.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 10000; display: flex; align-items: center; justify-content: center;';
                 progressOverlay.innerHTML = `
-                    <div style="background: #1e293b; padding: 40px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); max-width: 500px; width: 90%;">
+                    <div style="background: linear-gradient(145deg, #1e293b, #334155); padding: 40px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); max-width: 500px; width: 90%; text-align: center;">
                         <h2 style="color: #ef4444; margin: 0 0 20px 0; font-size: 1.5em;">🗑️ Deleting All Files</h2>
                         <div id="deleteProgressStatus" style="color: #e2e8f0; margin-bottom: 15px; font-size: 1.1em;">Initializing deletion...</div>
                         <div style="background: #0f172a; border-radius: 8px; height: 40px; position: relative; overflow: hidden; margin-bottom: 15px;">
                             <div id="deleteProgressBar" style="height: 100%; background: linear-gradient(90deg, #ef4444, #dc2626); width: 0%; transition: width 0.3s;"></div>
                             <div id="deleteProgressText" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-weight: bold; font-size: 1.1em;">0%</div>
                         </div>
-                        <div id="deleteProgressDetails" style="color: #94a3b8; font-size: 0.9em; line-height: 1.6;">Please wait...</div>
+                        <div id="deleteProgressDetails" style="color: #94a3b8; font-size: 0.9em; line-height: 1.6; text-align: left;">Please wait...</div>
                     </div>
                 `;
                 document.body.appendChild(progressOverlay);
