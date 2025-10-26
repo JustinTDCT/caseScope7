@@ -1446,7 +1446,16 @@ setup_python() {
 configure_services() {
     log "Configuring system services..."
     
-    # Create Celery worker service
+    # Check if worker service needs updating (for upgrades)
+    if [ -f /etc/systemd/system/casescope-worker.service ]; then
+        CURRENT_TASKS=$(grep -oP 'max-tasks-per-child=\K\d+' /etc/systemd/system/casescope-worker.service 2>/dev/null || echo "0")
+        if [ "$CURRENT_TASKS" != "500" ]; then
+            log_warning "Detected old max-tasks-per-child value: $CURRENT_TASKS (should be 500)"
+            log "Updating casescope-worker.service with correct configuration..."
+        fi
+    fi
+    
+    # Create Celery worker service (overwrites existing)
     cat > /etc/systemd/system/casescope-worker.service << 'EOF'
 [Unit]
 Description=caseScope Celery Worker
@@ -1541,13 +1550,23 @@ EOF
     rm -f /etc/nginx/sites-enabled/default
     
     # Reload systemd and enable services
+    log "Reloading systemd daemon to apply service changes..."
     systemctl daemon-reload
+    
+    # Verify worker service has correct configuration
+    UPDATED_TASKS=$(grep -oP 'max-tasks-per-child=\K\d+' /etc/systemd/system/casescope-worker.service 2>/dev/null || echo "0")
+    if [ "$UPDATED_TASKS" = "500" ]; then
+        log "✓ Worker service configured correctly (max-tasks-per-child=500)"
+    else
+        log_warning "⚠️ Worker service may not be configured correctly (found: $UPDATED_TASKS, expected: 500)"
+    fi
+    
     systemctl enable casescope-worker
     systemctl enable casescope-web
     systemctl enable nginx
     systemctl enable redis-server
     
-    log "Services configured"
+    log "Services configured and enabled"
 }
 
 # Start services
