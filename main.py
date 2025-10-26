@@ -1455,6 +1455,7 @@ def upload_files():
                 # Check if file is a ZIP archive (NEW IN v7.43.0)
                 if file.filename.lower().endswith('.zip'):
                     # Stream ZIP file to disk (FAST - no memory buffering)
+                    print(f"[Upload Debug] Starting ZIP stream for {file.filename}")
                     import time
                     case_upload_dir = f"/opt/casescope/uploads/{case.id}"
                     os.makedirs(case_upload_dir, exist_ok=True)
@@ -1463,10 +1464,16 @@ def upload_files():
                     
                     # Stream to disk in 64KB chunks
                     file_size = 0
+                    chunk_count = 0
                     with open(temp_zip_path, 'wb') as f:
                         while chunk := file.stream.read(65536):  # 64KB chunks
                             f.write(chunk)
                             file_size += len(chunk)
+                            chunk_count += 1
+                            
+                            # Debug logging every 10MB
+                            if file_size % 10485760 < 65536:
+                                print(f"[Upload Debug] ZIP Progress: {file_size/1048576:.1f} MB ({chunk_count} chunks)")
                             
                             # Check size limit during upload (500MB)
                             if file_size > 524288000:
@@ -1475,6 +1482,8 @@ def upload_files():
                                 flash(f'ZIP file {file.filename} exceeds 500MB limit.', 'error')
                                 error_count += 1
                                 break
+                    
+                    print(f"[Upload Debug] ZIP Finished streaming {file_size/1048576:.1f} MB in {chunk_count} chunks")
                     
                     # Skip if size limit exceeded
                     if file_size > 524288000:
