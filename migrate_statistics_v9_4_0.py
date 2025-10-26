@@ -60,7 +60,8 @@ with engine.connect() as conn:
         for field_name, field_type in case_fields:
             if field_name not in case_columns:
                 print(f"  Adding column: {field_name} ({field_type})")
-                conn.execute(text(f"ALTER TABLE case ADD COLUMN {field_name} {field_type}"))
+                # Use double quotes to escape 'case' reserved keyword
+                conn.execute(text(f'ALTER TABLE "case" ADD COLUMN {field_name} {field_type}'))
                 changes_made += 1
             else:
                 print(f"  ✓ Column already exists: {field_name}")
