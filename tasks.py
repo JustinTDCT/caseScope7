@@ -3671,7 +3671,7 @@ def process_local_uploads(self, case_id):
                             evtx_hash = hashlib.sha256(open(evtx_path, 'rb').read()).hexdigest()
                             
                             # Check for duplicate
-                            existing = db.session.query(CaseFile).filter_by(case_id=case.id, sha256_hash=evtx_hash).first()
+                            existing = db.session.query(CaseFile).filter_by(case_id=case.id, file_hash=evtx_hash).first()
                             if existing:
                                 logger.info(f"Duplicate file skipped: {evtx_name}")
                                 os.remove(evtx_path)
@@ -3680,13 +3680,14 @@ def process_local_uploads(self, case_id):
                             # Create CaseFile record
                             case_file = CaseFile(
                                 case_id=case.id,
+                                filename=os.path.basename(evtx_path),
                                 original_filename=sanitize_filename(evtx_name),
-                                storage_filename=os.path.basename(evtx_path),
+                                file_path=evtx_path,
                                 file_size=evtx_size,
-                                file_type='evtx',
-                                sha256_hash=evtx_hash,
-                                status='Queued',
-                                uploaded_by=1  # System user
+                                file_hash=evtx_hash,
+                                mime_type='application/evtx',
+                                uploaded_by=1,  # System user
+                                indexing_status='Queued'
                             )
                             db.session.add(case_file)
                             db.session.commit()
@@ -3718,7 +3719,7 @@ def process_local_uploads(self, case_id):
                         file_hash = hashlib.sha256(open(dest_path, 'rb').read()).hexdigest()
                         
                         # Check for duplicate
-                        existing = db.session.query(CaseFile).filter_by(case_id=case.id, sha256_hash=file_hash).first()
+                        existing = db.session.query(CaseFile).filter_by(case_id=case.id, file_hash=file_hash).first()
                         if existing:
                             logger.info(f"Duplicate file skipped: {filename}")
                             os.remove(dest_path)
@@ -3727,13 +3728,14 @@ def process_local_uploads(self, case_id):
                         # Create CaseFile record
                         case_file = CaseFile(
                             case_id=case.id,
+                            filename=filename,
                             original_filename=sanitize_filename(filename),
-                            storage_filename=filename,
+                            file_path=dest_path,
                             file_size=file_size,
-                            file_type='evtx',
-                            sha256_hash=file_hash,
-                            status='Queued',
-                            uploaded_by=1
+                            file_hash=file_hash,
+                            mime_type='application/evtx',
+                            uploaded_by=1,
+                            indexing_status='Queued'
                         )
                         db.session.add(case_file)
                         db.session.commit()
@@ -3761,7 +3763,7 @@ def process_local_uploads(self, case_id):
                         file_hash = hashlib.sha256(open(dest_path, 'rb').read()).hexdigest()
                         
                         # Check for duplicate
-                        existing = db.session.query(CaseFile).filter_by(case_id=case.id, sha256_hash=file_hash).first()
+                        existing = db.session.query(CaseFile).filter_by(case_id=case.id, file_hash=file_hash).first()
                         if existing:
                             logger.info(f"Duplicate file skipped: {filename}")
                             os.remove(dest_path)
@@ -3770,13 +3772,14 @@ def process_local_uploads(self, case_id):
                         # Create CaseFile record
                         case_file = CaseFile(
                             case_id=case.id,
+                            filename=filename,
                             original_filename=sanitize_filename(filename),
-                            storage_filename=filename,
+                            file_path=dest_path,
                             file_size=file_size,
-                            file_type='ndjson',
-                            sha256_hash=file_hash,
-                            status='Queued',
-                            uploaded_by=1
+                            file_hash=file_hash,
+                            mime_type='application/json',
+                            uploaded_by=1,
+                            indexing_status='Queued'
                         )
                         db.session.add(case_file)
                         db.session.commit()
@@ -3804,11 +3807,9 @@ def process_local_uploads(self, case_id):
         
         # Log audit trail
         log_audit(
-            'file', 
             'local_upload', 
-            f'Processed {files_processed} files from local folder: {zips_extracted} ZIPs extracted, {evtx_queued} EVTX queued, {json_queued} JSON queued, {files_failed} failed',
-            user_id=1,
-            case_id=case.id
+            'file', 
+            f'Processed {files_processed} files from local folder: {zips_extracted} ZIPs extracted, {evtx_queued} EVTX queued, {json_queued} JSON queued, {files_failed} failed'
         )
         
         logger.info("="*80)
