@@ -960,15 +960,15 @@ def delete_case(case_id):
         case_name = case.name
         
         # 1. Delete OpenSearch indices for all case files
-        from tasks import make_index_name
+        es = get_opensearch_client()
         case_files = db.session.query(CaseFile).filter_by(case_id=case_id, is_deleted=False).all()
         
         for file in case_files:
             if file.is_indexed:
                 index_name = make_index_name(case_id, file.original_filename)
                 try:
-                    if opensearch_client.indices.exists(index=index_name):
-                        opensearch_client.indices.delete(index=index_name)
+                    if es.indices.exists(index=index_name):
+                        es.indices.delete(index=index_name)
                         print(f"[Delete Case] Deleted OpenSearch index: {index_name}")
                 except Exception as e:
                     print(f"[Delete Case] Error deleting index {index_name}: {e}")
@@ -3835,7 +3835,6 @@ def export_search():
         flash('No indexed files to export.', 'error')
         return redirect(url_for('search'))
     
-    from tasks import make_index_name
     indices = [make_index_name(case.id, f.original_filename) for f in indexed_files]
     
     # Build query
@@ -3869,8 +3868,11 @@ def export_search():
         "size": 10000  # Max export size
     }
     
+    # Get OpenSearch client
+    es = get_opensearch_client()
+    
     try:
-        response = opensearch_client.search(
+        response = es.search(
             index=','.join(indices),
             body=search_body,
             ignore_unavailable=True
@@ -3971,8 +3973,10 @@ def search():
         return redirect(url_for('list_files'))
     
     # Build list of indices to search
-    from tasks import make_index_name
     indices = [make_index_name(case.id, f.original_filename) for f in indexed_files]
+    
+    # Get OpenSearch client
+    es = get_opensearch_client()
     
     # Parse search request parameters (handles POST, IOC filter, threat filter, GET)
     params = parse_search_request(request, session)
@@ -4060,7 +4064,7 @@ def search():
                 "_source": True
             }
             
-            response = opensearch_client.search(
+            response = es.search(
                 index=','.join(indices),
                 body=search_body,
                 ignore_unavailable=True
@@ -4901,7 +4905,8 @@ def dashboard():
         sqlite_version = "Unknown"
     
     try:
-        opensearch_info = opensearch_client.info()
+        es = get_opensearch_client()
+        opensearch_info = es.info()
         opensearch_version = opensearch_info.get('version', {}).get('number', 'Unknown')
     except:
         opensearch_version = "Unknown"
