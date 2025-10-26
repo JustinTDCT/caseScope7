@@ -9,11 +9,21 @@ Simple bug tracking - one paragraph per bug, updated with fix date/version when 
 
 ## Open Bugs
 
-### BUG-005: SIGMA and IOC Processing Failing After Indexing
-**Reported:** 2025-10-26 (v9.0.3)  
+### BUG-006: UI Not Auto-Refreshing During File Processing
+**Reported:** 2025-10-26 (v9.0.5)  
 **Status:** Open
 
-After files index successfully, SIGMA rule processing crashes with "TypeError: process_sigma_rules() missing 1 required positional argument: 'index_name'". Files index correctly and show event counts, but then fail before SIGMA processing can start. The error occurs in tasks_queue.py line 83 where process_sigma_rules is called with only file_id, but the function signature requires both file_id and index_name parameters. This causes the entire processing pipeline to fail after indexing, so no SIGMA violations are detected and IOC hunting never runs. Files end up in "Completed" status but with 0 violations and 0 IOC matches even when IOCs are known to exist in the data.
+During re-indexing, the UI does not automatically update to show current processing status. Event counts (xx/yyy) sometimes update but other times don't, and files get stuck displaying "Hunting IOCs" status even after processing completes. Users must manually refresh the page (F5) to see the actual "Completed" status and final statistics. This creates confusion about whether files are still processing or have finished. The progress bar and status text should update in real-time without requiring manual page refresh.
+
+**Fixed:** _(pending)_
+
+---
+
+### BUG-007: IOC Search Failing for Command-Line IOCs with Special Characters
+**Reported:** 2025-10-26 (v9.0.5)  
+**Status:** Open
+
+IOC hunting fails when searching for command-line IOCs that contain special characters like backslashes and quotes. Logs show "RequestError(400, 'search_phase_execution_exception')" with message "Cannot parse '*c:\\windows\\system32\\nltest.exe\" /domain_trusts /all_trusts*': Encountered \" \\\" \\\" \" at line 1". The IOC value "C:\WINDOWS\system32\nltest.exe\" /domain_Trusts /all_trusts" contains backslashes (Windows paths) and quotes that break OpenSearch query parsing. Multiple IOCs with similar patterns are failing: "C:\WINDOWS\system32\nltest.exe\" /dclist:" and "C:\WINDOWS\system32\nltest.exe\" /domain_Trusts /all_trusts". The IOC hunting continues despite errors but these specific IOCs are never matched even if they exist in the data.
 
 **Fixed:** _(pending)_
 
@@ -50,6 +60,26 @@ File deletion endpoints (`/api/file/1330`, `/api/file/1287`, `/api/file/1283`, `
 ---
 
 ## Fixed Bugs
+
+### BUG-005: SIGMA and IOC Processing Failing After Indexing
+**Reported:** 2025-10-26 (v9.0.3)  
+**Status:** Fixed
+
+After files indexed successfully, SIGMA rule processing crashed with "TypeError: process_sigma_rules() missing 1 required positional argument: 'index_name'". Files indexed correctly and showed event counts, but then failed before SIGMA processing could start. The error occurred in tasks_queue.py line 83 where process_sigma_rules was called with only file_id, but the function signature required both file_id and index_name parameters. This caused the entire processing pipeline to fail after indexing, so no SIGMA violations were detected and IOC hunting never ran. Files ended up in "Completed" status but with 0 violations and 0 IOC matches even when IOCs were known to exist in the data.
+
+**Fixed:** 2025-10-26 (v9.0.4) - Extract index_name from index_result and pass both file_id and index_name to process_sigma_rules(); added validation for index_name existence; initialized sigma_result for NDJSON files; fixed all 'indexed_events' → 'event_count' references.
+
+---
+
+### BUG-REINDEX: Re-index Button Passing Extra Argument
+**Reported:** 2025-10-26 (v9.0.4)  
+**Status:** Fixed
+
+Re-index button (single and bulk) were passing 2 arguments to process_file_complete: args=[file_id, 'reindex'], but the function only accepts 1 argument (plus self). This caused "TypeError: process_file_complete() takes 2 positional arguments but 3 were given" and all re-index operations failed immediately. Files stuck in "Queued" status indefinitely. The 'reindex' string was a legacy parameter no longer used.
+
+**Fixed:** 2025-10-26 (v9.0.5) - Removed 'reindex' parameter from both single file re-index (line 1756) and bulk re-index (line 2371) endpoints; both now correctly pass args=[file_id] only.
+
+---
 
 ### BUG-004: ZIP Files Not Extracting via Chunked Upload
 **Reported:** 2025-10-26 (v9.0.2)  
