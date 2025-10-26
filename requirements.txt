@@ -14,7 +14,7 @@ bcrypt==4.1.2
 SQLAlchemy==2.0.23
 
 # Search Engine
-opensearch-py==2.4.2
+opensearch-py==2.7.1
 
 # Background Processing
 celery==5.3.4
