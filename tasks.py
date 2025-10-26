@@ -1934,17 +1934,28 @@ def hunt_iocs_for_file(self, file_id, index_name):
                     escaped_value = escaped_value.replace(char, '\\\\' + char)
                 
                 # Build multi-field query with nested field support
+                # Search for both original case and lowercase for case-insensitive matching
                 should_clauses = []
                 for field in search_fields:
-                    # Use query_string with lenient flag to ignore incompatible field types
-                    # case_insensitive requires opensearch-py 2.7+ and OpenSearch 2.0+
+                    # Search original value
                     should_clauses.append({
                         "query_string": {
                             "query": f"*{escaped_value}*",
-                            "fields": [f"{field}*"],  # Wildcard to match nested paths
+                            "fields": [f"{field}*"],
                             "default_operator": "AND",
-                            "lenient": True,  # Ignore field type errors
-                            "case_insensitive": True  # Match regardless of case (Xerox = xerox = XEROX)
+                            "lenient": True
+                        }
+                    })
+                    # Also search uppercase version for better matching
+                    escaped_value_upper = search_value.upper()
+                    for char in special_chars:
+                        escaped_value_upper = escaped_value_upper.replace(char, '\\\\' + char)
+                    should_clauses.append({
+                        "query_string": {
+                            "query": f"*{escaped_value_upper}*",
+                            "fields": [f"{field}*"],
+                            "default_operator": "AND",
+                            "lenient": True
                         }
                     })
                 
@@ -2138,13 +2149,19 @@ def build_ioc_search_query(ioc, field_mapping):
             })
     
     # CRITICAL: Add wildcard search across ALL fields to catch flattened field paths
-    # e.g., EventData.Data_12.#text where Data_12.@Name might be "IpAddress"
+    # Search for both lowercase and uppercase for case-insensitive matching
     should_clauses.append({
         "query_string": {
             "query": f"*{search_value}*",
             "fields": ["*"],
-            "analyze_wildcard": True,
-            "case_insensitive": True  # Match regardless of case
+            "analyze_wildcard": True
+        }
+    })
+    should_clauses.append({
+        "query_string": {
+            "query": f"*{search_value.upper()}*",
+            "fields": ["*"],
+            "analyze_wildcard": True
         }
     })
     
@@ -2522,14 +2539,17 @@ def hunt_iocs_for_case(self, case_id):
                     pass
                 
                 # V8.0.3 ALL-FIELDS SEARCH (not field-specific)
+                # Search for both lowercase and uppercase for case-insensitive matching
                 search_value = ioc.ioc_value_normalized or ioc.ioc_value.lower()
+                search_value_upper = (ioc.ioc_value_normalized or ioc.ioc_value).upper()
                 query = {
                     "query": {
-                        "query_string": {
-                            "query": f"*{search_value}*",
-                            "default_operator": "AND",
-                            "lenient": True,
-                            "case_insensitive": True  # Match regardless of case
+                        "bool": {
+                            "should": [
+                                {"query_string": {"query": f"*{search_value}*", "default_operator": "AND", "lenient": True}},
+                                {"query_string": {"query": f"*{search_value_upper}*", "default_operator": "AND", "lenient": True}}
+                            ],
+                            "minimum_should_match": 1
                         }
                     },
                     "size": 10000
@@ -3133,14 +3153,16 @@ def _hunt_iocs_helper(celery_task, file_id, case_file, index_name):
         search_value = ioc.ioc_value_normalized or ioc.ioc_value.lower()
         
         # Search ALL fields - IOC can appear anywhere in event
-        # Same approach as regular search (finds ALL occurrences)
+        # Search for both lowercase and uppercase for case-insensitive matching
+        search_value_upper = (ioc.ioc_value_normalized or ioc.ioc_value).upper()
         query = {
             "query": {
-                "query_string": {
-                    "query": f"*{search_value}*",
-                    "default_operator": "AND",
-                    "lenient": True,
-                    "case_insensitive": True  # Match regardless of case
+                "bool": {
+                    "should": [
+                        {"query_string": {"query": f"*{search_value}*", "default_operator": "AND", "lenient": True}},
+                        {"query_string": {"query": f"*{search_value_upper}*", "default_operator": "AND", "lenient": True}}
+                    ],
+                    "minimum_should_match": 1
                 }
             },
             "size": 10000  # Increased from 1000 to handle more matches
