@@ -9,6 +9,16 @@ Simple bug tracking - one paragraph per bug, updated with fix date/version when 
 
 ## Open Bugs
 
+### BUG-004: ZIP Files Not Extracting via Chunked Upload
+**Reported:** 2025-10-26 (v9.0.2)  
+**Status:** Open
+
+ZIP files uploaded via the chunked upload system are being queued to Celery as-is without extraction, causing them to fail with "Unsupported file type" errors. The worker sees "desktop-jsqt9gm.zip" and "draftsite10.zip" files and rejects them because Celery tasks only process EVTX or NDJSON files. The chunked upload finalize endpoint creates a CaseFile record for the ZIP and queues it directly to Celery without checking if it needs extraction first. This breaks the ZIP upload feature that worked in v8.5.0+. All uploaded ZIP files show as "Failed" status and extracted EVTX files never appear in the files list.
+
+**Fixed:** _(pending)_
+
+---
+
 ### BUG-001: Search Date Sorting Not Working
 **Reported:** 2025-10-26 (v9.0.1)  
 **Status:** Open

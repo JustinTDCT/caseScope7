@@ -1483,7 +1483,55 @@ def upload_finalize():
         # Determine MIME type
         mime_type = mimetypes.guess_type(file_name)[0] or 'application/octet-stream'
         
-        # Create database record
+        # Check if this is a ZIP file that needs extraction
+        if file_name.lower().endswith('.zip'):
+            print(f"[Chunked Upload] ZIP file detected: {file_name}, extracting EVTX files...")
+            
+            # Use extract_and_process_zip function
+            try:
+                extracted_files = extract_and_process_zip(
+                    final_path,
+                    case.id,
+                    file_name,
+                    current_user.id
+                )
+                
+                # Clean up temp chunks
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                
+                # Remove the ZIP file after extraction
+                os.remove(final_path)
+                
+                # Audit log
+                log_audit(
+                    'file_upload',
+                    'file_operation',
+                    f'Uploaded and extracted {file_name} via chunked upload: {len(extracted_files)} EVTX files extracted'
+                )
+                
+                print(f"[Chunked Upload] ZIP extraction complete: {len(extracted_files)} EVTX files")
+                
+                return jsonify({
+                    'status': 'success',
+                    'message': f'Successfully uploaded and extracted {len(extracted_files)} EVTX files from {file_name}',
+                    'extracted_count': len(extracted_files)
+                })
+                
+            except Exception as zip_error:
+                print(f"[Chunked Upload] ZIP extraction failed: {zip_error}")
+                # Clean up
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                if os.path.exists(final_path):
+                    os.remove(final_path)
+                
+                return jsonify({
+                    'status': 'error',
+                    'message': f'ZIP extraction failed: {str(zip_error)}'
+                }), 500
+        
+        # Not a ZIP file - create database record for normal file (EVTX, NDJSON)
         case_file = CaseFile(
             case_id=case.id,
             filename=safe_filename,
