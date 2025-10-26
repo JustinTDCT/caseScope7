@@ -1515,13 +1515,20 @@ def upload_files():
                     temp_path = os.path.join(case_upload_dir, f"{timestamp}_temp_{file.filename}")
                     
                     # Stream to disk in 64KB chunks while calculating hash
+                    print(f"[Upload Debug] Starting chunked stream for {file.filename}")
                     sha256_hash = hashlib.sha256()
                     file_size = 0
+                    chunk_count = 0
                     with open(temp_path, 'wb') as f:
                         while chunk := file.stream.read(65536):  # 64KB chunks
                             f.write(chunk)
                             sha256_hash.update(chunk)
                             file_size += len(chunk)
+                            chunk_count += 1
+                            
+                            # Debug logging every 10MB
+                            if file_size % 10485760 < 65536:  # Every ~10MB
+                                print(f"[Upload Debug] Progress: {file_size/1048576:.1f} MB ({chunk_count} chunks)")
                             
                             # Check size limit during upload (3GB)
                             if file_size > 3221225472:
@@ -1535,9 +1542,13 @@ def upload_files():
                     if file_size > 3221225472:
                         continue
                     
+                    print(f"[Upload Debug] Finished streaming {file_size/1048576:.1f} MB in {chunk_count} chunks")
+                    print(f"[Upload Debug] Calculating final hash...")
                     sha256_hash = sha256_hash.hexdigest()
+                    print(f"[Upload Debug] Hash complete: {sha256_hash[:16]}...")
                     
                     # Check for duplicate hash in this case
+                    print(f"[Upload Debug] Checking for duplicates...")
                     duplicate = db.session.query(CaseFile).filter_by(
                         case_id=case.id, 
                         file_hash=sha256_hash,
@@ -1545,6 +1556,7 @@ def upload_files():
                     ).first()
                     
                     if duplicate:
+                        print(f"[Upload Debug] Duplicate found! Skipping file.")
                         os.remove(temp_path)  # Clean up temp file
                         flash(f'⚠️ File "{file.filename}" already exists in this case (duplicate detected by SHA256 hash). Original file: "{duplicate.original_filename}"', 'warning')
                         error_count += 1
@@ -1554,9 +1566,11 @@ def upload_files():
                     mime_type = mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
                     
                     # Rename temp file to final name
+                    print(f"[Upload Debug] No duplicate, saving file...")
                     safe_filename = f"{timestamp}_{file.filename}"
                     file_path = os.path.join(case_upload_dir, safe_filename)
                     os.rename(temp_path, file_path)
+                    print(f"[Upload Debug] File saved as {safe_filename}")
                     
                     # Create database record with Queued status
                     case_file = CaseFile(
