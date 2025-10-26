@@ -163,6 +163,7 @@ class CaseFile(db.Model):
     indexed_at = db.Column(db.DateTime)
     is_indexed = db.Column(db.Boolean, default=False)
     is_deleted = db.Column(db.Boolean, default=False)
+    is_hidden = db.Column(db.Boolean, default=False)  # Hide from file lists and searches
     event_count = db.Column(db.Integer, default=0)
     estimated_event_count = db.Column(db.Integer, default=0)  # Estimated total events for progress
     violation_count = db.Column(db.Integer, default=0)

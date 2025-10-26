@@ -842,6 +842,12 @@ def index_evtx_file(self, file_id):
             case_file.indexed_at = datetime.utcnow()
             case_file.is_indexed = True
             case_file.indexing_status = 'SIGMA Hunting'
+            
+            # Auto-hide files with 0 events (empty files)
+            if event_count == 0:
+                case_file.is_hidden = True
+                logger.info(f"Auto-hiding file with 0 events: {case_file.original_filename}")
+            
             db.session.commit()
             
             logger.info("="*80)
@@ -3488,6 +3494,12 @@ def process_file_complete(self, file_id, operation='full'):
                 case_file.event_count = result['event_count']
                 case_file.indexed_at = datetime.utcnow()
                 case_file.is_indexed = True
+                
+                # Auto-hide files with 0 events (empty files)
+                if result['event_count'] == 0:
+                    case_file.is_hidden = True
+                    logger.info(f"Auto-hiding file with 0 events: {filename}")
+                
                 commit_with_retry(db.session, logger_instance=logger)
                 
                 write_audit_log('INDEX', case.name, filename, 

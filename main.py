@@ -1202,11 +1202,11 @@ def upload_files():
                                 print(f"[Upload Debug] Progress: {file_size/1048576:.1f} MB ({chunk_count} chunks)")
                             
                             # Check size limit during upload (3GB)
-                            if file_size > 3221225472:
+                    if file_size > 3221225472:
                                 f.close()
                                 os.remove(temp_path)
-                                flash(f'File {file.filename} exceeds 3GB limit.', 'error')
-                                error_count += 1
+                        flash(f'File {file.filename} exceeds 3GB limit.', 'error')
+                        error_count += 1
                                 break
                     
                     # Skip if size limit exceeded
@@ -1662,17 +1662,26 @@ def list_files():
     per_page = request.args.get('per_page', 100, type=int)  # 100 files per page
     per_page = min(per_page, 500)  # Max 500 per page
     
-    # Query with pagination
-    pagination = db.session.query(CaseFile).filter_by(
+    # Show hidden files toggle
+    show_hidden = request.args.get('show_hidden', '0') == '1'
+    
+    # Query with pagination and hidden filter
+    query = db.session.query(CaseFile).filter_by(
         case_id=case.id, 
         is_deleted=False
-    ).order_by(CaseFile.uploaded_at.desc()).paginate(
+    )
+    
+    # Filter hidden files unless explicitly showing them
+    if not show_hidden:
+        query = query.filter_by(is_hidden=False)
+    
+    pagination = query.order_by(CaseFile.uploaded_at.desc()).paginate(
         page=page,
         per_page=per_page,
         error_out=False
     )
     
-    return render_file_list(case, pagination.items, pagination)
+    return render_file_list(case, pagination.items, pagination, show_hidden)
 
 
 @app.route('/file-management')
@@ -1687,10 +1696,17 @@ def file_management():
     # Optional case filter
     case_filter = request.args.get('case_id', type=int)
     
+    # Show hidden files toggle
+    show_hidden = request.args.get('show_hidden', '0') == '1'
+    
     # Build query
     query = db.session.query(CaseFile).filter_by(is_deleted=False)
     if case_filter:
         query = query.filter_by(case_id=case_filter)
+    
+    # Filter hidden files unless explicitly showing them
+    if not show_hidden:
+        query = query.filter_by(is_hidden=False)
     
     # Query with pagination
     pagination = query.order_by(CaseFile.uploaded_at.desc()).paginate(
@@ -1705,7 +1721,7 @@ def file_management():
     # Audit log
     log_audit('file_management', 'view', f'Viewed file management page (page {page})', True)
     
-    return render_file_management(pagination.items, cases, pagination)
+    return render_file_management(pagination.items, cases, pagination, show_hidden)
 
 
 @app.route('/file/reindex/<int:file_id>', methods=['POST'])
@@ -2072,6 +2088,62 @@ def rehunt_iocs(file_id):
         traceback.print_exc()
     
     return redirect(url_for('list_files'))
+
+
+@app.route('/api/file/<int:file_id>/hide', methods=['POST'])
+@login_required
+def hide_file(file_id):
+    """Hide a file from file lists and searches"""
+    try:
+        case_file = db.session.get(CaseFile, file_id)
+        if not case_file:
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        # Verify access
+        active_case_id = session.get('active_case_id')
+        if not active_case_id or case_file.case_id != active_case_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        case_file.is_hidden = True
+        db.session.commit()
+        
+        log_audit('file_hide', 'file', f'Hidden file: {case_file.original_filename}', True)
+        
+        return jsonify({
+            'success': True,
+            'message': f'File hidden: {case_file.original_filename}'
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/file/<int:file_id>/unhide', methods=['POST'])
+@login_required
+def unhide_file(file_id):
+    """Unhide a file (make visible in lists and searches)"""
+    try:
+        case_file = db.session.get(CaseFile, file_id)
+        if not case_file:
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        # Verify access
+        active_case_id = session.get('active_case_id')
+        if not active_case_id or case_file.case_id != active_case_id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        case_file.is_hidden = False
+        db.session.commit()
+        
+        log_audit('file_unhide', 'file', f'Unhidden file: {case_file.original_filename}', True)
+        
+        return jsonify({
+            'success': True,
+            'message': f'File unhidden: {case_file.original_filename}'
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/file/<int:file_id>', methods=['DELETE'])
@@ -4043,19 +4115,26 @@ def search():
         session.pop('active_case_id', None)
         return redirect(url_for('case_selection'))
     
-    # Get all indexed files for this case
-    indexed_files = db.session.query(CaseFile).filter_by(
+    # Get all indexed files for this case (for checking existence)
+    all_indexed_files = db.session.query(CaseFile).filter_by(
         case_id=case.id, is_indexed=True, is_deleted=False
     ).all()
     
-    if not indexed_files:
+    # Get non-hidden files for search filtering
+    non_hidden_files = db.session.query(CaseFile).filter_by(
+        case_id=case.id, is_indexed=True, is_deleted=False, is_hidden=False
+    ).all()
+    
+    if not all_indexed_files:
         flash('No indexed files in this case. Upload and index files first.', 'warning')
         return redirect(url_for('list_files'))
     
-    # Build index pattern to search
-    # Use wildcard pattern instead of listing all indices to avoid HTTP line too long error
-    # Pattern: case{case_id}_* matches all indices for this case
+    # Build index pattern (search all case indices)
+    # We'll filter hidden files via query, not index pattern
     index_pattern = f"case{case.id}_*"
+    
+    # Get list of non-hidden filenames for filtering
+    non_hidden_filenames = [f.original_filename for f in non_hidden_files]
     
     # Get OpenSearch client
     es = get_opensearch_client()
@@ -4094,6 +4173,15 @@ def search():
             time_query = build_time_filter_query(time_range, custom_start, custom_end)
             if time_query:
                 filters.append(time_query)
+            
+            # Exclude hidden files from search
+            # Filter by filename in metadata (only search non-hidden files)
+            if non_hidden_filenames:
+                filters.append({
+                    "terms": {
+                        "_casescope_metadata.filename": non_hidden_filenames
+                    }
+                })
             
             # Combine base query with filters
             if filters:
@@ -5643,11 +5731,11 @@ def render_upload_form(case):
                     setTimeout(() => {{
                         window.location.reload();
                     }}, 1500);
-                }} else {{
+                    }} else {{
                     document.getElementById('currentFileStatus').textContent = `⚠️ Uploaded ${{successCount}} file(s), ${{errorCount}} failed`;
                     document.getElementById('detailedStatus').innerHTML = '<div style="color: #f44336; margin-top: 10px;">Errors:<br>' + errors.join('<br>') + '</div>';
-                    submitBtn.style.display = 'block';
-                    submitBtn.disabled = false;
+                        submitBtn.style.display = 'block';
+                        submitBtn.disabled = false;
                 }}
                 
                 return false;
@@ -5777,7 +5865,7 @@ def render_upload_form(case):
     </html>
     '''
 
-def render_file_list(case, files, pagination=None):
+def render_file_list(case, files, pagination=None, show_hidden=False):
     """Render file list for case"""
     # Get flash messages
     from flask import get_flashed_messages
@@ -5906,6 +5994,12 @@ def render_file_list(case, files, pagination=None):
         if file.is_indexed and file.indexing_status in ['SIGMA Hunting', 'IOC Hunting', 'Completed', 'Failed']:
             actions_list.append(f'<button class="btn-action btn-iocs" onclick="confirmRehuntIocs({file.id})">🎯 Re-hunt IOCs</button>')
         
+        # Hide/Unhide button
+        if file.is_hidden:
+            actions_list.append(f'<button class="btn-action btn-unhide" onclick="unhideFile({file.id})">👁️ Unhide</button>')
+        else:
+            actions_list.append(f'<button class="btn-action btn-hide" onclick="hideFile({file.id})">🙈 Hide</button>')
+        
         if current_user.role == 'administrator':
             actions_list.append(f'<button class="btn-action btn-delete" onclick="confirmDelete({file.id}, \'{file.original_filename}\')">🗑️ Delete</button>')
         
@@ -5956,6 +6050,17 @@ def render_file_list(case, files, pagination=None):
                 <p>Files uploaded to: {case.name}</p>
                 
                 {flash_messages_html}
+                
+                <!-- Show Hidden Files Toggle -->
+                <div style="margin-bottom: 20px; padding: 15px; background: linear-gradient(145deg, #1e293b, #334155); border-radius: 8px; display: flex; align-items: center; gap: 12px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #f1f5f9;">
+                        <input type="checkbox" id="showHiddenCheckbox" {"checked" if show_hidden else ""} 
+                               onchange="toggleHiddenFiles(this.checked)" 
+                               style="width: 18px; height: 18px; cursor: pointer;">
+                        <span style="font-weight: 500;">Show Hidden Files (0 events, manually hidden)</span>
+                    </label>
+                    <span style="color: #94a3b8; font-size: 0.9em; margin-left: auto;">Hidden files are excluded from searches</span>
+                </div>
                 
                 <!-- Real-time Statistics Tiles -->
                 <div class="stats-tiles" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 30px;">
@@ -6117,6 +6222,57 @@ def render_file_list(case, files, pagination=None):
                         }});
                     }}
                 }}
+            }}
+            
+            function toggleHiddenFiles(show) {{
+                // Update URL and reload page
+                const url = new URL(window.location);
+                if (show) {{
+                    url.searchParams.set('show_hidden', '1');
+                }} else {{
+                    url.searchParams.delete('show_hidden');
+                }}
+                window.location = url.toString();
+            }}
+            
+            function hideFile(fileId) {{
+                if (confirm('Hide this file? It will be excluded from file lists and searches (but still indexed/processed).')) {{
+                    fetch('/api/file/' + fileId + '/hide', {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/json'}}
+                    }})
+                    .then(response => response.json())
+                    .then(data => {{
+                        if (data.success) {{
+                            alert('✓ File hidden: ' + data.message);
+                            location.reload();
+                        }} else {{
+                            alert('❌ Failed to hide file: ' + data.error);
+                        }}
+                    }})
+                    .catch(error => {{
+                        alert('❌ Error hiding file: ' + error.message);
+                    }});
+                }}
+            }}
+            
+            function unhideFile(fileId) {{
+                fetch('/api/file/' + fileId + '/unhide', {{
+                    method: 'POST',
+                    headers: {{'Content-Type': 'application/json'}}
+                }})
+                .then(response => response.json())
+                .then(data => {{
+                    if (data.success) {{
+                        alert('✓ File unhidden: ' + data.message);
+                        location.reload();
+                    }} else {{
+                        alert('❌ Failed to unhide file: ' + data.error);
+                    }}
+                }})
+                .catch(error => {{
+                    alert('❌ Error unhiding file: ' + error.message);
+                }});
             }}
             
             // Real-time progress tracking
@@ -10881,7 +11037,7 @@ def render_case_management(cases, users):
     </html>
     '''
 
-def render_file_management(files, cases, pagination=None):
+def render_file_management(files, cases, pagination=None, show_hidden=False):
     """Render file management page - matches files list structure"""
     from flask import get_flashed_messages
     sidebar_menu = render_sidebar_menu('file_management')
@@ -11027,6 +11183,17 @@ def render_file_management(files, cases, pagination=None):
                 
                 {flash_messages_html}
                 
+                <!-- Show Hidden Files Toggle -->
+                <div style="margin-bottom: 20px; padding: 15px; background: linear-gradient(145deg, #1e293b, #334155); border-radius: 8px; display: flex; align-items: center; gap: 12px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #f1f5f9;">
+                        <input type="checkbox" id="showHiddenCheckbox" {"checked" if show_hidden else ""} 
+                               onchange="toggleHiddenFiles(this.checked)" 
+                               style="width: 18px; height: 18px; cursor: pointer;">
+                        <span style="font-weight: 500;">Show Hidden Files (0 events, manually hidden)</span>
+                    </label>
+                    <span style="color: #94a3b8; font-size: 0.9em; margin-left: auto;">Hidden files are excluded from searches</span>
+                </div>
+                
                 <div class="filter-box">
                     <input type="text" id="searchBox" placeholder="Search filename..." onkeyup="filterFiles()">
                     <select id="caseFilter" onchange="filterFiles()">
@@ -11110,6 +11277,17 @@ def render_file_management(files, cases, pagination=None):
                 filterFiles();
             }}
             
+            function toggleHiddenFiles(show) {{
+                // Update URL and reload page
+                const url = new URL(window.location);
+                if (show) {{
+                    url.searchParams.set('show_hidden', '1');
+                }} else {{
+                    url.searchParams.delete('show_hidden');
+                }}
+                window.location = url.toString();
+            }}
+            
             function toggleSelectAll() {{
                 const selectAll = document.getElementById('selectAll').checked;
                 document.querySelectorAll('.file-checkbox').forEach(cb => {{
@@ -11163,13 +11341,13 @@ def render_file_management(files, cases, pagination=None):
                         let completed = 0;
                         let failed = 0;
                         
-                        ids.forEach(id => {{
+                    ids.forEach(id => {{
                             fetch('/api/file/' + id, {{ 
                                 method: 'DELETE',
                                 headers: {{ 'Content-Type': 'application/json' }}
                             }})
-                            .then(response => response.json())
-                            .then(data => {{
+                        .then(response => response.json())
+                        .then(data => {{
                                 completed++;
                                 if (!data.success) failed++;
                                 
@@ -11188,8 +11366,8 @@ def render_file_management(files, cases, pagination=None):
                                     alert(`Completed with errors. ${{failed}} file(s) failed to delete.`);
                                     location.reload();
                                 }}
-                            }});
                         }});
+                    }});
                     }}
                 }}
             }}
@@ -11219,8 +11397,8 @@ def render_file_management(files, cases, pagination=None):
                             method: 'DELETE',
                             headers: {{ 'Content-Type': 'application/json' }}
                         }})
-                        .then(response => response.json())
-                        .then(data => {{
+                    .then(response => response.json())
+                    .then(data => {{
                             if (data.success) {{
                                 alert('✓ Successfully deleted: ' + filename + '\\n\\nCleanup:\\n• OpenSearch: ' + data.cleanup_stats.opensearch_index + '\\n• SIGMA: ' + data.cleanup_stats.sigma_violations + '\\n• IOCs: ' + data.cleanup_stats.ioc_matches + '\\n• Tags: ' + data.cleanup_stats.event_tags + '\\n• Physical file: ' + data.cleanup_stats.physical_file);
                                 location.reload();
