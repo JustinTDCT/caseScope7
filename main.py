@@ -2392,126 +2392,128 @@ def _delete_files_background(task_id, case_id, case_name, files):
     import json
     import os
     
-    r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
-    total_files = len(files)
-    deleted_count = 0
-    failed_count = 0
-    failed_files = []
-    
-    total_cleanup = {
-        'opensearch_indices': 0,
-        'sigma_violations': 0,
-        'ioc_matches': 0,
-        'event_tags': 0,
-        'physical_files': 0
-    }
-    
-    print(f"[Delete All] Background deletion started: {total_files} files for case: {case_name}")
-    
-    try:
-        # Delete each file with progress updates
-        for idx, file in enumerate(files, 1):
-            try:
-                filename = file.original_filename
-                file_id = file.id
+    # CRITICAL: Background thread needs Flask app context for db.session and utilities!
+    with app.app_context():
+        r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+        total_files = len(files)
+        deleted_count = 0
+        failed_count = 0
+        failed_files = []
+        
+        total_cleanup = {
+            'opensearch_indices': 0,
+            'sigma_violations': 0,
+            'ioc_matches': 0,
+            'event_tags': 0,
+            'physical_files': 0
+        }
+        
+        print(f"[Delete All] Background deletion started: {total_files} files for case: {case_name}")
+        
+        try:
+                # Delete each file with progress updates
+                for idx, file in enumerate(files, 1):
+                    try:
+                        filename = file.original_filename
+                        file_id = file.id
+                        
+                        # Update progress
+                        progress = {
+                            'status': 'deleting',
+                            'current': idx,
+                            'total': total_files,
+                            'current_file': filename,
+                            'deleted': deleted_count,
+                            'failed': failed_count,
+                            'percent': int((idx / total_files) * 100)
+                        }
+                        r.setex(f'delete_progress:{task_id}', 3600, json.dumps(progress))
+                        
+                        print(f"[Delete All] Deleting file {idx}/{total_files}: {filename}")
+                        
+                        # STEP 1: Delete OpenSearch index
+                        try:
+                            es = get_opensearch_client()
+                            index_name = make_index_name(case_id, filename)
+                            
+                            if es.indices.exists(index=index_name):
+                                es.indices.delete(index=index_name)
+                                total_cleanup['opensearch_indices'] += 1
+                                
+                        except Exception as es_error:
+                            print(f"[Delete All] Error deleting OpenSearch index for {filename}: {es_error}")
+                        
+                        # STEP 2: Delete SIGMA violations
+                        violations_deleted = db.session.query(SigmaViolation).filter_by(file_id=file_id).delete(synchronize_session=False)
+                        total_cleanup['sigma_violations'] += violations_deleted
+                        
+                        # STEP 3: Delete IOC matches
+                        ioc_matches_deleted = db.session.query(IOCMatch).filter_by(
+                            source_filename=filename,
+                            case_id=case_id
+                        ).delete(synchronize_session=False)
+                        total_cleanup['ioc_matches'] += ioc_matches_deleted
+                        
+                        # STEP 4: Delete physical file
+                        try:
+                            if os.path.exists(file.file_path):
+                                os.remove(file.file_path)
+                                total_cleanup['physical_files'] += 1
+                        except Exception as file_error:
+                            print(f"[Delete All] Error deleting physical file {filename}: {file_error}")
+                        
+                        # STEP 5: Delete CaseFile record
+                        db.session.delete(file)
+                        
+                        deleted_count += 1
+                        
+                    except Exception as file_error:
+                        failed_count += 1
+                        failed_files.append(filename)
+                        print(f"[Delete All] Failed to delete {filename}: {file_error}")
+                        import traceback
+                        traceback.print_exc()
                 
-                # Update progress
-                progress = {
-                    'status': 'deleting',
-                    'current': idx,
+                # Commit all deletions
+                db.session.commit()
+                
+                print(f"[Delete All] ✓ Background deletion complete: {deleted_count} deleted, {failed_count} failed")
+                
+                # Audit log
+                log_audit(
+                    'bulk_delete_files',
+                    'file_operation',
+                    f'Bulk deleted {deleted_count} files from case {case_name} | OpenSearch: {total_cleanup["opensearch_indices"]} | SIGMA: {total_cleanup["sigma_violations"]} | IOC: {total_cleanup["ioc_matches"]} | Physical: {total_cleanup["physical_files"]} | Failed: {failed_count}',
+                    success=True
+                )
+                
+                # Final progress update
+                final_progress = {
+                    'status': 'complete',
+                    'current': total_files,
                     'total': total_files,
-                    'current_file': filename,
                     'deleted': deleted_count,
                     'failed': failed_count,
-                    'percent': int((idx / total_files) * 100)
+                    'failed_files': failed_files,
+                    'cleanup_stats': total_cleanup,
+                    'percent': 100
                 }
-                r.setex(f'delete_progress:{task_id}', 3600, json.dumps(progress))
+                r.setex(f'delete_progress:{task_id}', 3600, json.dumps(final_progress))
                 
-                print(f"[Delete All] Deleting file {idx}/{total_files}: {filename}")
-                
-                # STEP 1: Delete OpenSearch index
-                try:
-                    es = get_opensearch_client()
-                    index_name = make_index_name(case_id, filename)
-                    
-                    if es.indices.exists(index=index_name):
-                        es.indices.delete(index=index_name)
-                        total_cleanup['opensearch_indices'] += 1
-                        
-                except Exception as es_error:
-                    print(f"[Delete All] Error deleting OpenSearch index for {filename}: {es_error}")
-                
-                # STEP 2: Delete SIGMA violations
-                violations_deleted = db.session.query(SigmaViolation).filter_by(file_id=file_id).delete(synchronize_session=False)
-                total_cleanup['sigma_violations'] += violations_deleted
-                
-                # STEP 3: Delete IOC matches
-                ioc_matches_deleted = db.session.query(IOCMatch).filter_by(
-                    source_filename=filename,
-                    case_id=case_id
-                ).delete(synchronize_session=False)
-                total_cleanup['ioc_matches'] += ioc_matches_deleted
-                
-                # STEP 4: Delete physical file
-                try:
-                    if os.path.exists(file.file_path):
-                        os.remove(file.file_path)
-                        total_cleanup['physical_files'] += 1
-                except Exception as file_error:
-                    print(f"[Delete All] Error deleting physical file {filename}: {file_error}")
-                
-                # STEP 5: Delete CaseFile record
-                db.session.delete(file)
-                
-                deleted_count += 1
-                
-            except Exception as file_error:
-                failed_count += 1
-                failed_files.append(filename)
-                print(f"[Delete All] Failed to delete {filename}: {file_error}")
-                import traceback
-                traceback.print_exc()
-        
-        # Commit all deletions
-        db.session.commit()
-        
-        print(f"[Delete All] ✓ Background deletion complete: {deleted_count} deleted, {failed_count} failed")
-        
-        # Audit log
-        log_audit(
-            'bulk_delete_files',
-            'file_operation',
-            f'Bulk deleted {deleted_count} files from case {case_name} | OpenSearch: {total_cleanup["opensearch_indices"]} | SIGMA: {total_cleanup["sigma_violations"]} | IOC: {total_cleanup["ioc_matches"]} | Physical: {total_cleanup["physical_files"]} | Failed: {failed_count}',
-            success=True
-        )
-        
-        # Final progress update
-        final_progress = {
-            'status': 'complete',
-            'current': total_files,
-            'total': total_files,
-            'deleted': deleted_count,
-            'failed': failed_count,
-            'failed_files': failed_files,
-            'cleanup_stats': total_cleanup,
-            'percent': 100
-        }
-        r.setex(f'delete_progress:{task_id}', 3600, json.dumps(final_progress))
-        
-    except Exception as e:
-        print(f"[Delete All] Background worker error: {e}")
-        import traceback
-        traceback.print_exc()
-        
-        # Error progress update
-        error_progress = {
-            'status': 'error',
-            'error': str(e),
-            'deleted': deleted_count,
-            'failed': failed_count
-        }
-        r.setex(f'delete_progress:{task_id}', 3600, json.dumps(error_progress))
-        db.session.rollback()
+        except Exception as e:
+            print(f"[Delete All] Background worker error: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Error progress update
+            error_progress = {
+                'status': 'error',
+                'error': str(e),
+                'deleted': deleted_count,
+                'failed': failed_count
+            }
+            r.setex(f'delete_progress:{task_id}', 3600, json.dumps(error_progress))
+            db.session.rollback()
 
 
 @app.route('/api/delete-progress/<task_id>')
