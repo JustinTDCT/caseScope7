@@ -49,17 +49,17 @@ def update_case_aggregates(case_id):
             CaseFile.is_hidden == False  # Only count visible files
         ).first()
         
-        # Get the case
-        case = Case.query.get(case_id)
+        # Get the case - use db.session.get() instead of Case.query.get()
+        case = db.session.get(Case, case_id)
         if not case:
             logger.error(f"Case {case_id} not found for aggregate update")
             return None
         
-        # Update case statistics
-        case.total_files = aggregates.total_files or 0
-        case.total_events = aggregates.total_events or 0
-        case.total_events_with_iocs = aggregates.total_events_with_iocs or 0
-        case.total_events_with_sigma = aggregates.total_events_with_sigma or 0
+        # Update case statistics using setattr (safer than direct assignment)
+        setattr(case, 'total_files', aggregates.total_files or 0)
+        setattr(case, 'total_events', int(aggregates.total_events or 0))
+        setattr(case, 'total_events_with_iocs', int(aggregates.total_events_with_iocs or 0))
+        setattr(case, 'total_events_with_sigma', int(aggregates.total_events_with_sigma or 0))
         
         db.session.commit()
         
