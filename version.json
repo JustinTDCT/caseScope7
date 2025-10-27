@@ -1,9 +1,10 @@
 {
-  "version": "9.5.5",
+  "version": "9.5.6",
   "release_date": "2025-10-27",
   "description": "v9.5.2 - HOTFIX: Import Error (commit_with_retry)",
   "build": "production",
   "changelog": {
+    "9.5.6": "v9.5.6 - Fix: file_processing.py CaseFile() uses uploaded_by not uploader_id (SQLAlchemy TypeError)",
     "9.5.5": "v9.5.5 - AttributeError uploader_id: CaseFile has uploaded_by not uploader_id; Fix: tasks.py line 3539",
     "9.5.4": "v9.5.4 - Duplicate Check Matching Against Self: CaseFile created during upload, then worker runs duplicate_check and finds itself; Fix: Added exclude_file_id parameter to duplicate_check(); Pass file_id in process_file_v9 to exclude current file; FILES: file_processing.py line 37, 114-116; tasks.py line 3515",
     "9.5.3": "v9.5.3 - Delete All Files Not Clearing SkippedFile Table: Delete All Files was not clearing skipped_file records; duplicate_check() found old skipped records and rejected re-uploads; FIX: Added SkippedFile cleanup in _delete_files_background() at line 2589; FILES: main.py line 2589-2594",

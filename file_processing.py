@@ -226,7 +226,7 @@ def index_file(db, opensearch_client, CaseFile, Case, case_id: int, filename: st
         file_path=file_path,
         file_size=file_size,
         file_hash=file_hash,
-        uploader_id=uploader_id,
+        uploaded_by=uploader_id,
         indexing_status='Indexing',
         is_indexed=False,
         upload_type=upload_type,
