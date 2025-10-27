@@ -247,7 +247,7 @@ def index_file(db, opensearch_client, CaseFile, Case, case_id: int, filename: st
             json_file.close()
             
             # Run evtx_dump
-            cmd = ['/opt/evtx_dump/evtx_dump', '-o', 'jsonl', file_path]
+            cmd = ['/opt/casescope/bin/evtx_dump', '-o', 'jsonl', file_path]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             
             if result.returncode != 0:

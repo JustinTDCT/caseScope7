@@ -1,9 +1,10 @@
 {
-  "version": "9.5.6",
+  "version": "9.5.7",
   "release_date": "2025-10-27",
   "description": "v9.5.2 - HOTFIX: Import Error (commit_with_retry)",
   "build": "production",
   "changelog": {
+    "9.5.7": "v9.5.7 - CRITICAL: Wrong evtx_dump Path (All Files Failed): USER REPORT: 1,568 files showing as FAILED; 'FileNotFoundError: /opt/evtx_dump/evtx_dump'; ISSUE: file_processing.py line 250 used WRONG PATH '/opt/evtx_dump/evtx_dump'; Correct path is '/opt/casescope/bin/evtx_dump' (used everywhere else: tasks.py lines 726, 1571, 2919, 3372; install.sh lines 157, 704, 738, 754, 758); FIX: Changed file_processing.py line 250 to use correct path; IMPACT: This broke ALL file processing in v9.5.0 modular architecture; Every file upload failed during indexing phase; Database showed files but they never processed",
     "9.5.6": "v9.5.6 - Fix: file_processing.py CaseFile() uses uploaded_by not uploader_id (SQLAlchemy TypeError)",
     "9.5.5": "v9.5.5 - AttributeError uploader_id: CaseFile has uploaded_by not uploader_id; Fix: tasks.py line 3539",
     "9.5.4": "v9.5.4 - Duplicate Check Matching Against Self: CaseFile created during upload, then worker runs duplicate_check and finds itself; Fix: Added exclude_file_id parameter to duplicate_check(); Pass file_id in process_file_v9 to exclude current file; FILES: file_processing.py line 37, 114-116; tasks.py line 3515",
