@@ -97,13 +97,14 @@ def stage_http_upload(case_id: int, uploaded_file, filename: str) -> Dict:
         }
 
 
-def stage_bulk_upload(case_id: int, source_folder: str) -> Dict:
+def stage_bulk_upload(case_id: int, source_folder: str, cleanup_after: bool = True) -> Dict:
     """
-    Stage files from bulk upload folder
+    Stage files from bulk upload folder (e.g. /opt/casescope/local_uploads)
     
     Args:
         case_id: Case ID
         source_folder: Path to bulk upload folder
+        cleanup_after: If True, delete original files after successful copy (default: True)
     
     Returns:
         dict: {'success': bool, 'files_staged': int, 'message': str}
@@ -118,6 +119,7 @@ def stage_bulk_upload(case_id: int, source_folder: str) -> Dict:
         }
     
     files_staged = 0
+    staged_files = []  # Track successfully staged files for cleanup
     
     for filename in os.listdir(source_folder):
         source_path = os.path.join(source_folder, filename)
@@ -126,14 +128,29 @@ def stage_bulk_upload(case_id: int, source_folder: str) -> Dict:
             continue
         
         dest_path = os.path.join(staging_dir, filename)
-        shutil.copy2(source_path, dest_path)
-        files_staged += 1
-        logger.info(f"[STAGE] Bulk upload: {filename}")
+        
+        try:
+            shutil.copy2(source_path, dest_path)
+            files_staged += 1
+            staged_files.append(source_path)
+            logger.info(f"[STAGE] Bulk upload: {filename}")
+        except Exception as e:
+            logger.error(f"[STAGE] Failed to stage {filename}: {e}")
+            continue
+    
+    # Cleanup: Delete originals after successful staging
+    if cleanup_after and files_staged > 0:
+        for source_path in staged_files:
+            try:
+                os.remove(source_path)
+                logger.info(f"[CLEANUP] Removed: {os.path.basename(source_path)}")
+            except Exception as e:
+                logger.warning(f"[CLEANUP] Failed to remove {source_path}: {e}")
     
     return {
         'success': True,
         'files_staged': files_staged,
-        'message': f'Staged {files_staged} files from bulk upload'
+        'message': f'Staged {files_staged} files from bulk upload' + (' (originals cleaned up)' if cleanup_after else '')
     }
 
 
