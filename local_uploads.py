@@ -162,7 +162,7 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
         Dict with status, message, and statistics
     """
     logger.info("="*80)
-    logger.info("LOCAL UPLOAD PROCESSING v9.4.6 - TWO-PHASE")
+    logger.info("LOCAL UPLOAD PROCESSING v9.4.9 - TWO-PHASE (STRICT SEQUENTIAL)")
     logger.info(f"Case ID: {case_id}")
     logger.info("="*80)
     
@@ -211,102 +211,113 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
     logger.info("PHASE 1: EXTRACTING & REGISTERING FILES")
     logger.info("="*80)
     
-    for filename, file_path in source_files:
-        try:
-            file_ext = filename.lower().split('.')[-1]
-            logger.info(f"Processing: {filename} ({file_ext})")
-            
-            # ──────────────────────────────────────────────────────────
-            # HANDLE ZIP FILES
-            # ──────────────────────────────────────────────────────────
-            if file_ext == 'zip':
-                try:
-                    zip_name = os.path.splitext(filename)[0]  # Remove .zip extension
-                    logger.info(f"Extracting ZIP: {filename}")
-                    
-                    # Extract all EVTX files with ZIP prefix
-                    extracted_files = extract_evtx_from_zip(file_path, zip_name, case_upload_dir)
-                    
-                    if not extracted_files:
-                        logger.warning(f"No EVTX files found in ZIP: {filename}")
+    # ──────────────────────────────────────────────────────────────────
+    # STEP 1.1: Extract ALL ZIP files first (unzip everything!)
+    # ──────────────────────────────────────────────────────────────────
+    zip_files = [f for f in source_files if f[0].lower().endswith('.zip')]
+    total_zips = len(zip_files)
+    
+    if total_zips > 0:
+        logger.info(f"STEP 1.1: Extracting {total_zips} ZIP file(s)...")
+        
+        for filename, file_path in zip_files:
+            try:
+                zip_name = os.path.splitext(filename)[0]  # Remove .zip extension
+                logger.info(f"Extracting ZIP: {filename}")
+                
+                # Extract all EVTX files with ZIP prefix
+                extracted_files = extract_evtx_from_zip(file_path, zip_name, case_upload_dir)
+                
+                if not extracted_files:
+                    logger.warning(f"No EVTX files found in ZIP: {filename}")
+                    stats['files_failed'] += 1
+                    os.remove(file_path)
+                    continue
+                
+                logger.info(f"Extracted {len(extracted_files)} EVTX files from {filename}")
+                stats['zips_processed'] += 1
+                
+                # Register each extracted EVTX in database
+                for prefixed_name, evtx_path, evtx_size in extracted_files:
+                    # Skip zero-byte files
+                    if evtx_size == 0:
+                        logger.warning(f"Skipping zero-byte file: {prefixed_name}")
+                        os.remove(evtx_path)
                         stats['files_failed'] += 1
-                        os.remove(file_path)
                         continue
                     
-                    logger.info(f"Extracted {len(extracted_files)} EVTX files from {filename}")
-                    stats['zips_processed'] += 1
+                    # Hash file
+                    evtx_hash = hash_file_chunked(evtx_path)
                     
-                    # Process each extracted EVTX
-                    for prefixed_name, evtx_path, evtx_size in extracted_files:
-                        # Skip zero-byte files
-                        if evtx_size == 0:
-                            logger.warning(f"Skipping zero-byte file: {prefixed_name}")
-                            os.remove(evtx_path)
-                            stats['files_failed'] += 1
-                            continue
-                        
-                        # Hash file
-                        evtx_hash = hash_file_chunked(evtx_path)
-                        
-                        # Check for duplicate
-                        existing = db.session.query(CaseFile).filter_by(
-                            case_id=case.id, 
-                            file_hash=evtx_hash
-                        ).first()
-                        
-                        if existing:
-                            logger.info(f"Duplicate skipped: {prefixed_name}")
-                            os.remove(evtx_path)
-                            stats['duplicates_skipped'] += 1
-                            continue
-                        
-                        # Create CaseFile record
-                        case_file = create_casefile_record(
-                            db, CaseFile, case.id, prefixed_name, evtx_path, 
-                            evtx_size, evtx_hash, 'application/evtx', 'local'
-                        )
-                        db.session.commit()
-                        
-                        # v9.4.7: Capture ID immediately after commit (before expunge!)
-                        file_id = case_file.id
-                        
-                        # Add to queue list for Phase 2
-                        files_to_queue.append((file_id, prefixed_name))
-                        stats['evtx_from_zips'] += 1
-                        logger.info(f"Registered: {prefixed_name}")
+                    # Check for duplicate
+                    existing = db.session.query(CaseFile).filter_by(
+                        case_id=case.id, 
+                        file_hash=evtx_hash
+                    ).first()
                     
-                    # Clean up memory after each ZIP
-                    db.session.expunge_all()
-                    import gc
-                    gc.collect()
+                    if existing:
+                        logger.info(f"Duplicate skipped: {prefixed_name}")
+                        os.remove(evtx_path)
+                        stats['duplicates_skipped'] += 1
+                        continue
                     
-                    # Delete original ZIP
-                    os.remove(file_path)
-                    logger.info(f"Deleted original ZIP: {filename}")
+                    # Create CaseFile record
+                    case_file = create_casefile_record(
+                        db, CaseFile, case.id, prefixed_name, evtx_path, 
+                        evtx_size, evtx_hash, 'application/evtx', 'local'
+                    )
+                    db.session.commit()
                     
-                    # v9.4.8: Update progress after each ZIP
-                    if progress_callback:
-                        # Count total ZIPs from source_files
-                        total_zips = len([f for f in source_files if f[0].lower().endswith('.zip')])
-                        progress_callback(
-                            status='extracting',
-                            current_zip=filename,
-                            zips_processed=stats['zips_processed'],
-                            total_zips=total_zips,
-                            files_extracted=len(extracted_files),
-                            files_registered=stats['evtx_from_zips']
-                        )
+                    # v9.4.7: Capture ID immediately after commit (before expunge!)
+                    file_id = case_file.id
                     
-                except Exception as e:
-                    logger.error(f"Failed to process ZIP {filename}: {e}")
-                    stats['files_failed'] += 1
-                    continue
-            
-            # ──────────────────────────────────────────────────────────
-            # HANDLE DIRECT EVTX FILES
-            # ──────────────────────────────────────────────────────────
-            elif file_ext == 'evtx':
-                try:
+                    # Add to queue list for Phase 2
+                    files_to_queue.append((file_id, prefixed_name))
+                    stats['evtx_from_zips'] += 1
+                    logger.info(f"Registered: {prefixed_name}")
+                
+                # Clean up memory after each ZIP
+                db.session.expunge_all()
+                import gc
+                gc.collect()
+                
+                # Delete original ZIP
+                os.remove(file_path)
+                logger.info(f"Deleted original ZIP: {filename}")
+                
+                # v9.4.8: Update progress after each ZIP
+                if progress_callback:
+                    progress_callback(
+                        status='extracting',
+                        current_zip=filename,
+                        zips_processed=stats['zips_processed'],
+                        total_zips=total_zips,
+                        files_extracted=len(extracted_files),
+                        files_registered=stats['evtx_from_zips']
+                    )
+                
+            except Exception as e:
+                logger.error(f"Failed to process ZIP {filename}: {e}")
+                stats['files_failed'] += 1
+                continue
+    
+    # ──────────────────────────────────────────────────────────────────
+    # STEP 1.2: Register direct EVTX/JSON files (after ALL ZIPs done!)
+    # ──────────────────────────────────────────────────────────────────
+    non_zip_files = [f for f in source_files if not f[0].lower().endswith('.zip')]
+    
+    if non_zip_files:
+        logger.info(f"STEP 1.2: Registering {len(non_zip_files)} direct EVTX/JSON file(s)...")
+        
+        for filename, file_path in non_zip_files:
+            try:
+                file_ext = filename.lower().split('.')[-1]
+                logger.info(f"Processing: {filename} ({file_ext})")
+                
+                # ──────────────────────────────────────────────────────────
+                # HANDLE DIRECT EVTX FILES
+                # ──────────────────────────────────────────────────────────
+                if file_ext == 'evtx':
                     # Move to case folder
                     dest_path = os.path.join(case_upload_dir, filename)
                     shutil.move(file_path, dest_path)
@@ -354,17 +365,11 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     db.session.expunge_all()
                     import gc
                     gc.collect()
-                    
-                except Exception as e:
-                    logger.error(f"Failed to process EVTX {filename}: {e}")
-                    stats['files_failed'] += 1
-                    continue
-            
-            # ──────────────────────────────────────────────────────────
-            # HANDLE JSON/NDJSON FILES
-            # ──────────────────────────────────────────────────────────
-            elif file_ext in ['json', 'ndjson']:
-                try:
+                
+                # ──────────────────────────────────────────────────────────
+                # HANDLE JSON/NDJSON FILES
+                # ──────────────────────────────────────────────────────────
+                elif file_ext in ['json', 'ndjson']:
                     # Move to case folder
                     dest_path = os.path.join(case_upload_dir, filename)
                     shutil.move(file_path, dest_path)
@@ -412,19 +417,15 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     db.session.expunge_all()
                     import gc
                     gc.collect()
-                    
-                except Exception as e:
-                    logger.error(f"Failed to process JSON {filename}: {e}")
+                
+                else:
+                    logger.warning(f"Unsupported file type: {filename}")
                     stats['files_failed'] += 1
-                    continue
             
-            else:
-                logger.warning(f"Unsupported file type: {filename}")
+            except Exception as e:
+                logger.error(f"Error processing {filename}: {e}")
                 stats['files_failed'] += 1
-        
-        except Exception as e:
-            logger.error(f"Error processing {filename}: {e}")
-            stats['files_failed'] += 1
+                continue
     
     # ═══════════════════════════════════════════════════════════════════
     # PHASE 2: QUEUE ALL FILES FOR INGESTION (Parallel processing!)
