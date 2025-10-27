@@ -2472,7 +2472,11 @@ def bulk_clear_ioc_data(case_id, logger):
 @celery_app.task(bind=True, name='tasks.hunt_iocs_for_case')
 def hunt_iocs_for_case(self, case_id):
     """
-    V8.1 UNIFIED IOC HUNTING
+    V8.1 UNIFIED IOC HUNTING (BULK - searches ALL files at once with case*_*)
+    
+    ⚠️  WARNING: This searches case{N}_* (ALL INDICES) and can timeout!
+    ⚠️  DO NOT CALL THIS during normal queue processing!
+    ⚠️  This is ONLY for button operations (Hunt Now, Re-hunt All IOCs)
     
     This is the NEW unified IOC hunting task that replaces both:
     - Old hunt_iocs (Hunt Now button)
@@ -2499,7 +2503,8 @@ def hunt_iocs_for_case(self, case_id):
     import time
     
     logger.info("="*80)
-    logger.info(f"V8.1 UNIFIED IOC HUNT STARTED - Case ID: {case_id}")
+    logger.info(f"⚠️  V8.1 BULK IOC HUNT (case{case_id}_*) STARTED - Case ID: {case_id}")
+    logger.info(f"⚠️  This searches ALL files at once! Should ONLY be from button click!")
     logger.info("="*80)
     
     task_start_time = time.time()
@@ -3189,14 +3194,18 @@ def _find_matching_rule(enabled_rules, rule_name, rule_id_yaml):
 
 def _hunt_iocs_helper(celery_task, file_id, case_file, index_name):
     """
-    Hunt for IOCs in indexed events
+    Hunt for IOCs in indexed events (PER-FILE, not bulk!)
     
     Returns:
         dict: {'status': 'success'|'error', 'matches': int, 'message': str}
     """
     from main import IOC, IOCMatch
     
-    logger.info(f"[IOC Hunt] Searching for IOCs in: {index_name}")
+    logger.info("="*80)
+    logger.info(f"[PER-FILE IOC HUNT] _hunt_iocs_helper() called")
+    logger.info(f"[PER-FILE IOC HUNT] file_id={file_id}, index_name={index_name}")
+    logger.info(f"[PER-FILE IOC HUNT] This should ONLY search ONE file's index!")
+    logger.info("="*80)
     
     # Get case IOCs
     iocs = db.session.query(IOC).filter_by(case_id=case_file.case_id, is_active=True).all()
@@ -3594,10 +3603,14 @@ def process_file_complete(self, file_id, operation='full'):
                     logger.info("STEP: SIGMA Processing - SKIPPED (ioc_only operation)")
             
             # ═══════════════════════════════════════════════════════════════════
-            # STEP 5: IOC HUNTING (always run unless reindex-only)
+            # STEP 5: IOC HUNTING (PER-FILE - searches ONLY this file's index!)
             # ═══════════════════════════════════════════════════════════════════
             
-            logger.info("STEP: IOC Hunting")
+            logger.info("="*80)
+            logger.info("STEP 5: IOC HUNTING (PER-FILE)")
+            logger.info(f"Calling _hunt_iocs_helper() for: {index_name}")
+            logger.info(f"This will search ONLY this file's index (not case{case.id}_*)")
+            logger.info("="*80)
             case_file.indexing_status = 'IOC Hunting'
             commit_with_retry(db.session, logger_instance=logger)
             
