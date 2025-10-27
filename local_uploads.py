@@ -266,8 +266,11 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                         )
                         db.session.commit()
                         
+                        # v9.4.7: Capture ID immediately after commit (before expunge!)
+                        file_id = case_file.id
+                        
                         # Add to queue list for Phase 2
-                        files_to_queue.append((case_file.id, prefixed_name))
+                        files_to_queue.append((file_id, prefixed_name))
                         stats['evtx_from_zips'] += 1
                         logger.info(f"Registered: {prefixed_name}")
                     
@@ -325,8 +328,11 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     )
                     db.session.commit()
                     
+                    # v9.4.7: Capture ID immediately after commit (before expunge!)
+                    file_id = case_file.id
+                    
                     # Add to queue list for Phase 2
-                    files_to_queue.append((case_file.id, filename))
+                    files_to_queue.append((file_id, filename))
                     stats['direct_evtx'] += 1
                     logger.info(f"Registered: {filename}")
                     
@@ -380,8 +386,11 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     )
                     db.session.commit()
                     
+                    # v9.4.7: Capture ID immediately after commit (before expunge!)
+                    file_id = case_file.id
+                    
                     # Add to queue list for Phase 2
-                    files_to_queue.append((case_file.id, filename))
+                    files_to_queue.append((file_id, filename))
                     stats['direct_json'] += 1
                     logger.info(f"Registered: {filename}")
                     
