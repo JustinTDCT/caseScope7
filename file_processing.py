@@ -300,7 +300,12 @@ def index_file(db, opensearch_client, CaseFile, Case, case_id: int, filename: st
                     
                     # Bulk index every 1000 events
                     if len(bulk_data) >= 1000:
-                        opensearch_bulk(opensearch_client, bulk_data)
+                        try:
+                            success, errors = opensearch_bulk(opensearch_client, bulk_data, raise_on_error=False)
+                            if errors:
+                                logger.warning(f"[INDEX FILE] {len(errors)} events failed to index in batch")
+                        except Exception as e:
+                            logger.error(f"[INDEX FILE] Bulk index error: {e}")
                         bulk_data = []
                         
                         # Update progress
@@ -322,7 +327,12 @@ def index_file(db, opensearch_client, CaseFile, Case, case_id: int, filename: st
         
         # Index remaining events
         if bulk_data:
-            opensearch_bulk(opensearch_client, bulk_data)
+            try:
+                success, errors = opensearch_bulk(opensearch_client, bulk_data, raise_on_error=False)
+                if errors:
+                    logger.warning(f"[INDEX FILE] {len(errors)} events failed to index in final batch")
+            except Exception as e:
+                logger.error(f"[INDEX FILE] Final bulk index error: {e}")
         
         logger.info(f"[INDEX FILE] ✓ Indexed {event_count:,} events to {index_name}")
         
