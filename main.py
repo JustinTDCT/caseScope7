@@ -2586,6 +2586,13 @@ def _delete_files_background(task_id, case_id, case_name, files):
                         ).delete(synchronize_session=False)
                         total_cleanup['ioc_matches'] += ioc_matches_deleted
                         
+                        # STEP 3.5: Delete skipped file records (v9.5.3 fix)
+                        from models import SkippedFile
+                        db.session.query(SkippedFile).filter_by(
+                            case_id=case_id,
+                            filename=filename
+                        ).delete(synchronize_session=False)
+                        
                         # STEP 4: Delete physical file
                         try:
                             if os.path.exists(file.file_path):
