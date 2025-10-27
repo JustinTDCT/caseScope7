@@ -3536,7 +3536,7 @@ def process_file_v9(self, file_id, operation='full'):
                     file_path=file_path,
                     file_hash=dup_result['file_hash'],
                     file_size=dup_result['file_size'],
-                    uploader_id=case_file.uploader_id,
+                    uploader_id=case_file.uploaded_by,
                     upload_type=case_file.upload_type or 'http',
                     celery_task=self
                 )
