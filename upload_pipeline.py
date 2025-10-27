@@ -246,7 +246,9 @@ def build_file_queue(db, CaseFile, SkippedFile, case_id: int) -> Dict:
     Process:
     1. Scan all files in staging
     2. For each file: hash + check if (hash + filename) exists in DB
-    3. If duplicate: delete file, log to SkippedFile, don't queue
+    3. If duplicate (exists in CaseFile or SkippedFile): 
+       - Just delete file and skip (DON'T add to SkippedFile again)
+       - Already processed or already skipped, no need to log again
     4. If new: create DB record, add to queue
     
     Returns:
@@ -290,49 +292,40 @@ def build_file_queue(db, CaseFile, SkippedFile, case_id: int) -> Dict:
             logger.warning(f"[QUEUE] Skipping zero-byte file: {filename}")
             os.remove(staging_path)
             stats['zero_bytes_skipped'] += 1
-            
-            # Log to SkippedFile
-            skipped = SkippedFile(
-                case_id=case_id,
-                filename=filename,
-                file_size=0,
-                file_hash=None,
-                skip_reason='zero_bytes',
-                skip_details='File is 0 bytes (corrupt or empty)',
-                upload_type='staging'
-            )
-            db.session.add(skipped)
             continue
         
         # Hash file
         file_hash = hash_file_fast(staging_path)
         
-        # Check for duplicate (hash + filename)
-        existing = db.session.query(CaseFile).filter_by(
+        # Check if (hash + filename) exists in CaseFile
+        existing_case_file = db.session.query(CaseFile).filter_by(
             case_id=case_id,
             original_filename=filename,
             file_hash=file_hash
         ).first()
         
-        if existing:
-            logger.info(f"[QUEUE] Duplicate skipped: {filename} (matches file_id {existing.id})")
+        if existing_case_file:
+            # Already processed or in queue - just delete and skip
+            logger.info(f"[QUEUE] Duplicate skipped: {filename} (already in CaseFile, file_id {existing_case_file.id})")
             os.remove(staging_path)
             stats['duplicates_skipped'] += 1
-            
-            # Log to SkippedFile
-            skipped = SkippedFile(
-                case_id=case_id,
-                filename=filename,
-                file_size=file_size,
-                file_hash=file_hash,
-                skip_reason='duplicate_hash',
-                skip_details=f'Duplicate of file_id {existing.id}',
-                upload_type='staging'
-            )
-            db.session.add(skipped)
             continue
         
-        # Move to final upload directory
+        # Check if (hash + filename) exists in SkippedFile
+        existing_skipped = db.session.query(SkippedFile).filter_by(
+            case_id=case_id,
+            filename=filename,
+            file_hash=file_hash
+        ).first()
+        
+        if existing_skipped:
+            # Already skipped before - just delete and skip
+            logger.info(f"[QUEUE] Duplicate skipped: {filename} (already in SkippedFile, reason: {existing_skipped.skip_reason})")
+            os.remove(staging_path)
+            stats['duplicates_skipped'] += 1
+            continue
+        
+        # NEW FILE - Move to final upload directory
         final_path = os.path.join(final_dir, filename)
         shutil.move(staging_path, final_path)
         
@@ -375,12 +368,20 @@ def build_file_queue(db, CaseFile, SkippedFile, case_id: int) -> Dict:
 # STEP 4: FILTER ZERO-EVENT FILES
 # ============================================================================
 
-def filter_zero_event_files(db, CaseFile, SkippedFile, queue: List[Tuple]) -> Dict:
+def filter_zero_event_files(db, CaseFile, SkippedFile, queue: List[Tuple], case_id: int) -> Dict:
     """
-    Convert EVTX to JSON, get event counts, remove 0-event files from queue
+    Convert EVTX to JSON, get event counts, handle 0-event files
+    
+    For 0-event files:
+    1. Create CaseFile record (for audit trail)
+    2. Mark as hidden in UI
+    3. Archive EVTX to /opt/casescope/archive/{case_id}/
+    4. Add to SkippedFile table
+    5. Remove from processing queue
     
     Args:
         queue: List of (file_id, filename, file_path) tuples
+        case_id: Case ID for archive folder
     
     Returns:
         dict: {
@@ -396,6 +397,10 @@ def filter_zero_event_files(db, CaseFile, SkippedFile, queue: List[Tuple]) -> Di
         'valid_files': 0,
         'filtered_queue': []
     }
+    
+    # Create archive directory
+    archive_dir = f"/opt/casescope/archive/{case_id}"
+    os.makedirs(archive_dir, exist_ok=True)
     
     logger.info("="*80)
     logger.info("[FILTER] Checking for zero-event files")
@@ -428,36 +433,44 @@ def filter_zero_event_files(db, CaseFile, SkippedFile, queue: List[Tuple]) -> Di
             if event_count == 0:
                 logger.warning(f"[FILTER] Zero events: {filename}")
                 
-                # Update CaseFile record
+                # Get CaseFile record
                 case_file = db.session.get(CaseFile, file_id)
                 if case_file:
+                    # Update CaseFile: keep record for audit, but mark as hidden
                     case_file.event_count = 0
                     case_file.indexing_status = 'Completed'
                     case_file.is_indexed = True
-                    case_file.is_hidden = True  # Auto-hide
-                
-                # Log to SkippedFile
-                skipped = SkippedFile(
-                    case_id=case_file.case_id if case_file else 0,
-                    filename=filename,
-                    file_size=os.path.getsize(file_path) if os.path.exists(file_path) else 0,
-                    file_hash=case_file.file_hash if case_file else None,
-                    skip_reason='zero_events',
-                    skip_details='EVTX file has 0 events',
-                    upload_type='staging'
-                )
-                db.session.add(skipped)
+                    case_file.is_hidden = True  # Hidden from UI
+                    
+                    # Archive the EVTX file (for audit purposes)
+                    archive_path = os.path.join(archive_dir, filename)
+                    shutil.move(file_path, archive_path)
+                    case_file.file_path = archive_path  # Update path to archive location
+                    logger.info(f"[FILTER]   Archived to: {archive_path}")
+                    
+                    # Add to SkippedFile (for reporting)
+                    skipped = SkippedFile(
+                        case_id=case_id,
+                        filename=filename,
+                        file_size=case_file.file_size,
+                        file_hash=case_file.file_hash,
+                        skip_reason='zero_events',
+                        skip_details='EVTX file has 0 events (archived for audit)',
+                        upload_type='staging'
+                    )
+                    db.session.add(skipped)
                 
                 stats['zero_events'] += 1
+                # DO NOT add to filtered_queue - file won't be processed
             else:
-                # Valid file with events
+                # Valid file with events - add to queue for processing
                 stats['filtered_queue'].append((file_id, filename, file_path, event_count))
                 stats['valid_files'] += 1
                 logger.info(f"[FILTER] Valid: {filename} ({event_count} events)")
         
         except Exception as e:
             logger.error(f"[FILTER] Error processing {filename}: {e}")
-            # Assume valid on error
+            # Assume valid on error - better to process than skip
             stats['filtered_queue'].append((file_id, filename, file_path, None))
             stats['valid_files'] += 1
     
@@ -466,7 +479,7 @@ def filter_zero_event_files(db, CaseFile, SkippedFile, queue: List[Tuple]) -> Di
     logger.info("="*80)
     logger.info(f"[FILTER] Complete:")
     logger.info(f"  Files processed: {stats['processed']}")
-    logger.info(f"  Zero-event files: {stats['zero_events']}")
+    logger.info(f"  Zero-event files: {stats['zero_events']} (archived)")
     logger.info(f"  Valid files: {stats['valid_files']}")
     logger.info("="*80)
     
@@ -519,7 +532,7 @@ def process_upload_pipeline(db, CaseFile, SkippedFile, case_id: int,
         pipeline_stats['zero_bytes_skipped'] = queue_stats['zero_bytes_skipped']
         
         # STEP 4: Filter zero-event files
-        filter_stats = filter_zero_event_files(db, CaseFile, SkippedFile, queue_stats['queue'])
+        filter_stats = filter_zero_event_files(db, CaseFile, SkippedFile, queue_stats['queue'], case_id)
         pipeline_stats['stage'] = 'filtered'
         pipeline_stats['zero_events_skipped'] = filter_stats['zero_events']
         pipeline_stats['files_ready'] = filter_stats['valid_files']
