@@ -1238,15 +1238,14 @@ def upload_files():
                                 print(f"[Upload Debug] Progress: {file_size/1048576:.1f} MB ({chunk_count} chunks)")
                             
                             # Check size limit during upload (3GB)
-                    if file_size > 3221225472:
-                                f.close()
-                                os.remove(temp_path)
-                        flash(f'File {file.filename} exceeds 3GB limit.', 'error')
-                        error_count += 1
+                            if file_size > 3221225472:
                                 break
                     
                     # Skip if size limit exceeded
                     if file_size > 3221225472:
+                        os.remove(temp_path)
+                        flash(f'File {file.filename} exceeds 3GB limit.', 'error')
+                        error_count += 1
                         continue
                     
                     print(f"[Upload Debug] Finished streaming {file_size/1048576:.1f} MB in {chunk_count} chunks")
