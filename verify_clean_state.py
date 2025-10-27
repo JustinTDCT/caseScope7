@@ -13,7 +13,7 @@ from opensearchpy import OpenSearch
 import redis
 
 # Configuration
-DB_PATH = '/opt/casescope/app/casescope.db'
+DB_PATH = '/opt/casescope/data/casescope.db'  # v9.5.7 fix: correct path
 UPLOAD_BASE = '/opt/casescope/uploads'
 OPENSEARCH_HOST = 'localhost'
 OPENSEARCH_PORT = 9200
