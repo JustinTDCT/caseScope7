@@ -172,6 +172,10 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
         logger.error(f"Case {case_id} not found")
         return {'status': 'error', 'message': 'Case not found', 'files_processed': 0}
     
+    # v9.4.12: Capture case.id IMMEDIATELY (before any expunge_all() calls)
+    # This prevents "Instance is not bound to a Session" errors when processing multiple ZIPs
+    case_id_safe = case.id
+    
     # Validate folder exists
     if not os.path.exists(local_folder):
         logger.warning(f"Local upload folder does not exist: {local_folder}")
@@ -187,8 +191,8 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
     
     logger.info(f"Found {len(source_files)} files in local folder")
     
-    # Case upload directory
-    case_upload_dir = f"/opt/casescope/uploads/{case.id}"
+    # Case upload directory (use case_id_safe, not case.id!)
+    case_upload_dir = f"/opt/casescope/uploads/{case_id_safe}"
     os.makedirs(case_upload_dir, exist_ok=True)
     
     # Stats
@@ -251,7 +255,7 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     
                     # Check for duplicate
                     existing = db.session.query(CaseFile).filter_by(
-                        case_id=case.id, 
+                        case_id=case_id_safe, 
                         file_hash=evtx_hash
                     ).first()
                     
@@ -263,7 +267,7 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     
                     # Create CaseFile record
                     case_file = create_casefile_record(
-                        db, CaseFile, case.id, prefixed_name, evtx_path, 
+                        db, CaseFile, case_id_safe, prefixed_name, evtx_path, 
                         evtx_size, evtx_hash, 'application/evtx', 'local'
                     )
                     db.session.commit()
@@ -336,7 +340,7 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     
                     # Check for duplicate
                     existing = db.session.query(CaseFile).filter_by(
-                        case_id=case.id, 
+                        case_id=case_id_safe, 
                         file_hash=file_hash
                     ).first()
                     
@@ -348,7 +352,7 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     
                     # Create CaseFile record
                     case_file = create_casefile_record(
-                        db, CaseFile, case.id, filename, dest_path, 
+                        db, CaseFile, case_id_safe, filename, dest_path, 
                         file_size, file_hash, 'application/evtx', 'local'
                     )
                     db.session.commit()
@@ -388,7 +392,7 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     
                     # Check for duplicate
                     existing = db.session.query(CaseFile).filter_by(
-                        case_id=case.id, 
+                        case_id=case_id_safe, 
                         file_hash=file_hash
                     ).first()
                     
@@ -400,7 +404,7 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     
                     # Create CaseFile record
                     case_file = create_casefile_record(
-                        db, CaseFile, case.id, filename, dest_path, 
+                        db, CaseFile, case_id_safe, filename, dest_path, 
                         file_size, file_hash, 'application/json', 'local'
                     )
                     db.session.commit()
