@@ -199,9 +199,9 @@ def index_file(db, opensearch_client, CaseFile, Case, case_id: int, filename: st
     
     # Determine file type
     is_evtx = filename.lower().endswith('.evtx')
-    is_ndjson = filename.lower().endswith('.ndjson')
+    is_json = filename.lower().endswith(('.json', '.ndjson', '.jsonl'))
     
-    if not (is_evtx or is_ndjson):
+    if not (is_evtx or is_json):
         logger.error(f"[INDEX FILE] Unsupported file type: {filename}")
         return {
             'status': 'error',
@@ -213,7 +213,9 @@ def index_file(db, opensearch_client, CaseFile, Case, case_id: int, filename: st
     
     # Generate index name and opensearch_key
     index_name = make_index_name(case_id, filename)
-    opensearch_key = f"case{case_id}_{filename.replace('.evtx', '').replace('.ndjson', '')}"
+    # Strip all JSON-related extensions for opensearch_key
+    clean_name = filename.replace('.evtx', '').replace('.ndjson', '').replace('.jsonl', '').replace('.json', '')
+    opensearch_key = f"case{case_id}_{clean_name}"
     
     logger.info(f"[INDEX FILE] Target index: {index_name}")
     logger.info(f"[INDEX FILE] OpenSearch key: {opensearch_key}")
@@ -268,9 +270,9 @@ def index_file(db, opensearch_client, CaseFile, Case, case_id: int, filename: st
             
             logger.info(f"[INDEX FILE] ✓ EVTX converted to JSONL: {json_path}")
         else:
-            # Use existing NDJSON file
+            # Use existing JSON/NDJSON/JSONL file
             json_path = file_path
-            logger.info(f"[INDEX FILE] Using existing NDJSON file: {json_path}")
+            logger.info(f"[INDEX FILE] Using existing JSON file: {json_path}")
         
         # STEP 2: Count events and index to OpenSearch
         logger.info("[INDEX FILE] Indexing events to OpenSearch...")
@@ -476,7 +478,8 @@ def chainsaw_file(db, opensearch_client, CaseFile, SigmaRule, SigmaViolation,
         
         # Call existing SIGMA processing function directly (not via Celery)
         # Note: process_sigma_rules is a @celery_app.task with bind=True
-        # When calling directly, we need to pass (self, file_id, index_name)
+        # When calling directly via __wrapped__, it bypasses Celery decorator
+        # and gives us the raw function: def process_sigma_rules(self, file_id, index_name)
         # Create a mock 'self' object for progress tracking
         class MockSelf:
             def __init__(self, real_task):
@@ -489,7 +492,8 @@ def chainsaw_file(db, opensearch_client, CaseFile, SigmaRule, SigmaViolation,
         mock_self = MockSelf(celery_task)
         
         logger.info("[CHAINSAW FILE] Calling process_sigma_rules() from tasks.py")
-        result = process_sigma_rules(mock_self, file_id, index_name)
+        # Use .__wrapped__ to get the original function without Celery binding
+        result = process_sigma_rules.__wrapped__(mock_self, file_id, index_name)
         
         if result['status'] == 'success':
             violations = result.get('violations', 0)
