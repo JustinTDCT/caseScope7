@@ -296,9 +296,12 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     # Hash file
                     evtx_hash = hash_file_chunked(evtx_path)
                     
-                    # Check for duplicate
+                    # v9.4.14: Check for duplicate (BOTH original_filename AND hash must match)
+                    # Same hash + different filename = NEW FILE (different system with same content)
+                    # Same hash + same filename = DUPLICATE (exact re-upload)
                     existing = db.session.query(CaseFile).filter_by(
                         case_id=case_id_safe, 
+                        original_filename=prefixed_name,
                         file_hash=evtx_hash
                     ).first()
                     
@@ -401,9 +404,10 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     # Hash file
                     file_hash = hash_file_chunked(dest_path)
                     
-                    # Check for duplicate
+                    # v9.4.14: Check for duplicate (BOTH original_filename AND hash must match)
                     existing = db.session.query(CaseFile).filter_by(
                         case_id=case_id_safe, 
+                        original_filename=filename,
                         file_hash=file_hash
                     ).first()
                     
@@ -473,9 +477,10 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     # Hash file
                     file_hash = hash_file_chunked(dest_path)
                     
-                    # Check for duplicate
+                    # v9.4.14: Check for duplicate (BOTH original_filename AND hash must match)
                     existing = db.session.query(CaseFile).filter_by(
                         case_id=case_id_safe, 
+                        original_filename=filename,
                         file_hash=file_hash
                     ).first()
                     

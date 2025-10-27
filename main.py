@@ -191,9 +191,12 @@ def extract_and_process_zip(zip_path, case_id, zip_filename, user_id):
                         print(f"[ZIP Extract] Skipping {filename}: exceeds 3GB limit ({file_size/1024/1024/1024:.2f}GB)")
                         continue
                     
-                    # Check for duplicates
+                    # v9.4.14: Check for duplicates (BOTH original_filename AND hash must match)
+                    # Same hash + different filename = NEW FILE (different system with same content)
+                    # Same hash + same filename = DUPLICATE (exact re-upload)
                     duplicate = db.session.query(CaseFile).filter_by(
                         case_id=case_id,
+                        original_filename=prefixed_name,
                         file_hash=sha256_hash,
                         is_deleted=False
                     ).first()
@@ -1498,9 +1501,10 @@ def upload_finalize():
         
         print(f"[Chunked Upload] Assembled {assembled_size} bytes, hash: {sha256_hash[:16]}...")
         
-        # Check for duplicates
+        # v9.4.14: Check for duplicates (BOTH original_filename AND hash must match)
         duplicate = db.session.query(CaseFile).filter_by(
             case_id=case.id,
+            original_filename=file_name,
             file_hash=sha256_hash,
             is_deleted=False
         ).first()
@@ -1732,15 +1736,17 @@ def list_files():
     
     # Calculate statistics for this case
     from sqlalchemy import func
+    from models import SkippedFile
     stats_query = db.session.query(CaseFile).filter_by(
         case_id=case.id,
         is_deleted=False
     )
     
     total_hidden = stats_query.filter_by(is_hidden=True).count()
-    total_zero_events = stats_query.filter_by(event_count=0).count()
+    # v9.4.14: Count skipped files (duplicates, zero-byte, etc.) from audit table
+    total_skipped = db.session.query(SkippedFile).filter_by(case_id=case.id).count()
     
-    return render_file_list(case, pagination.items, pagination, show_hidden, total_hidden, total_zero_events)
+    return render_file_list(case, pagination.items, pagination, show_hidden, total_hidden, total_skipped)
 
 
 @app.route('/file-management')
@@ -1779,17 +1785,22 @@ def file_management():
     
     # Calculate global statistics (or case-specific if filtered)
     from sqlalchemy import func
+    from models import SkippedFile
     stats_query = db.session.query(CaseFile).filter_by(is_deleted=False)
     if case_filter:
         stats_query = stats_query.filter_by(case_id=case_filter)
     
     total_hidden = stats_query.filter_by(is_hidden=True).count()
-    total_zero_events = stats_query.filter_by(event_count=0).count()
+    # v9.4.14: Count skipped files from audit table
+    skipped_query = db.session.query(SkippedFile)
+    if case_filter:
+        skipped_query = skipped_query.filter_by(case_id=case_filter)
+    total_skipped = skipped_query.count()
     
     # Audit log
     log_audit('file_management', 'view', f'Viewed file management page (page {page})', True)
     
-    return render_file_management(pagination.items, cases, pagination, show_hidden, total_hidden, total_zero_events)
+    return render_file_management(pagination.items, cases, pagination, show_hidden, total_hidden, total_skipped)
 
 
 @app.route('/file/reindex/<int:file_id>', methods=['POST'])
@@ -6258,7 +6269,7 @@ def render_upload_form(case):
     </html>
     '''
 
-def render_file_list(case, files, pagination=None, show_hidden=False, total_hidden=0, total_zero_events=0):
+def render_file_list(case, files, pagination=None, show_hidden=False, total_hidden=0, total_skipped=0):
     """Render file list for case"""
     # Get flash messages
     from flask import get_flashed_messages
@@ -6497,8 +6508,8 @@ def render_file_list(case, files, pagination=None, show_hidden=False, total_hidd
                                 <div class="stat-value" style="color: #a78bfa; font-size: 1.8em; font-weight: 700;">{total_hidden:,}</div>
                             </div>
                             <div class="stat-item">
-                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">⚠️ Files w/ 0 Events</div>
-                                <div class="stat-value" style="color: #fb923c; font-size: 1.8em; font-weight: 700;">{total_zero_events:,}</div>
+                                <div class="stat-label" style="color: #94a3b8; font-size: 0.85em;">📋 Skipped Files</div>
+                                <div class="stat-value" style="color: #fb923c; font-size: 1.8em; font-weight: 700;">{total_skipped:,}</div>
                             </div>
                         </div>
                     </div>
@@ -11462,7 +11473,7 @@ def render_case_management(cases, users):
     </html>
     '''
 
-def render_file_management(files, cases, pagination=None, show_hidden=False, total_hidden=0, total_zero_events=0):
+def render_file_management(files, cases, pagination=None, show_hidden=False, total_hidden=0, total_skipped=0):
     """Render file management page - matches files list structure"""
     from flask import get_flashed_messages
     sidebar_menu = render_sidebar_menu('file_management')
