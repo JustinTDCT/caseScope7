@@ -489,12 +489,10 @@ def chainsaw_file(db, opensearch_client, CaseFile, SigmaRule, SigmaViolation,
                 if celery_task:
                     celery_task.update_state(state=state, meta=meta)
         
-        mock_self = MockSelf(celery_task)
-        
-        logger.info("[CHAINSAW FILE] Calling process_sigma_rules() from tasks.py")
-        # Call directly - Celery bind=True adds self automatically
-        # We pass mock_self which becomes the bound 'self' parameter
-        result = process_sigma_rules(mock_self, file_id, index_name)
+        # v9.7.4: SIMPLE FIX - Don't use bind=True task at all
+        # Call it via .apply() which handles the binding correctly
+        logger.info("[CHAINSAW FILE] Calling process_sigma_rules() via Celery apply()")
+        result = process_sigma_rules.apply(args=[file_id, index_name]).get()
         
         if result['status'] == 'success':
             violations = result.get('violations', 0)
