@@ -170,6 +170,22 @@ def extract_and_process_zip(zip_path, case_id, zip_filename, user_id):
                         print(f"[ZIP Extract] Error reading {filename}: {e}")
                         continue
                     
+                    # v9.4.13: Skip zero-byte files and log to audit
+                    if file_size == 0:
+                        print(f"[ZIP Extract] Skipping zero-byte file: {prefixed_name}")
+                        from models import SkippedFile
+                        skipped = SkippedFile(
+                            case_id=case_id,
+                            filename=prefixed_name,
+                            file_size=0,
+                            file_hash=None,
+                            skip_reason='zero_bytes',
+                            skip_details=f'Extracted from {zip_filename} but is 0 bytes',
+                            upload_type='http'
+                        )
+                        db.session.add(skipped)
+                        continue
+                    
                     # Validate file size (3GB limit per file)
                     if file_size > 3221225472:
                         print(f"[ZIP Extract] Skipping {filename}: exceeds 3GB limit ({file_size/1024/1024/1024:.2f}GB)")
@@ -184,6 +200,18 @@ def extract_and_process_zip(zip_path, case_id, zip_filename, user_id):
                     
                     if duplicate:
                         print(f"[ZIP Extract] Skipping duplicate: {prefixed_name} (matches {duplicate.original_filename})")
+                        # v9.4.13: Log skipped duplicate to audit database
+                        from models import SkippedFile
+                        skipped = SkippedFile(
+                            case_id=case_id,
+                            filename=prefixed_name,
+                            file_size=file_size,
+                            file_hash=sha256_hash,
+                            skip_reason='duplicate_hash',
+                            skip_details=f'Duplicate of file_id {duplicate.id} ({duplicate.filename})',
+                            upload_type='http'
+                        )
+                        db.session.add(skipped)
                         continue
                     
                     # Save with prefixed name
@@ -218,11 +246,11 @@ def extract_and_process_zip(zip_path, case_id, zip_filename, user_id):
         else:
             print(f"[ZIP Extract] Found {evtx_count} EVTX files, created {len(extracted_files)} records (duplicates skipped)")
         
-        # Commit all extractions
+        # Commit all extractions (and skipped file audit records - v9.4.13)
+        db.session.commit()
+        
+        # Queue processing for each file
         if extracted_files:
-            db.session.commit()
-            
-            # Queue processing for each file
             for case_file in extracted_files:
                 if celery_app:
                     celery_app.send_task(
@@ -1207,11 +1235,11 @@ def upload_files():
                                 print(f"[Upload Debug] Progress: {file_size/1048576:.1f} MB ({chunk_count} chunks)")
                             
                             # Check size limit during upload (3GB)
-                            if file_size > 3221225472:
+                    if file_size > 3221225472:
                                 f.close()
                                 os.remove(temp_path)
-                                flash(f'File {file.filename} exceeds 3GB limit.', 'error')
-                                error_count += 1
+                        flash(f'File {file.filename} exceeds 3GB limit.', 'error')
+                        error_count += 1
                                 break
                     
                     # Skip if size limit exceeded
@@ -1478,6 +1506,20 @@ def upload_finalize():
         ).first()
         
         if duplicate:
+            # v9.4.13: Log skipped duplicate to audit database
+            from models import SkippedFile
+            skipped = SkippedFile(
+                case_id=case.id,
+                filename=file_name,
+                file_size=assembled_size,
+                file_hash=sha256_hash,
+                skip_reason='duplicate_hash',
+                skip_details=f'Duplicate of file_id {duplicate.id} ({duplicate.filename})',
+                upload_type='http'
+            )
+            db.session.add(skipped)
+            db.session.commit()
+            
             os.remove(final_path)
             import shutil
             shutil.rmtree(temp_dir, ignore_errors=True)

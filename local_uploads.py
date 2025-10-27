@@ -84,13 +84,15 @@ def extract_evtx_from_zip(zip_path: str, zip_name: str, extract_dir: str) -> Lis
                 # Rename with prefix
                 shutil.move(original_path, prefixed_path)
                 
-                # Clean up any empty directories from extraction
-                extracted_dir = os.path.dirname(os.path.join(extract_dir, zip_info.filename))
-                if os.path.exists(extracted_dir) and extracted_dir != extract_dir:
+                # Clean up nested directories from extraction
+                # Walk up the directory tree and remove empty dirs
+                extracted_dir = os.path.dirname(original_path)
+                while extracted_dir != extract_dir and os.path.exists(extracted_dir):
                     try:
-                        os.rmdir(extracted_dir)
+                        os.rmdir(extracted_dir)  # Only removes if empty
+                        extracted_dir = os.path.dirname(extracted_dir)  # Move up one level
                     except OSError:
-                        pass  # Directory not empty, that's fine
+                        break  # Directory not empty or error, stop trying
                 
                 file_size = os.path.getsize(prefixed_path)
                 extracted_files.append((prefixed_name, prefixed_path, file_size))
@@ -136,9 +138,40 @@ def create_casefile_record(db, CaseFile, case_id: int, filename: str, file_path:
     return case_file
 
 
+def log_skipped_file(db, SkippedFile, case_id: int, filename: str, file_size: int,
+                     file_hash: str, skip_reason: str, skip_details: str = None,
+                     upload_type: str = 'local') -> None:
+    """
+    Log a skipped file to the audit database.
+    
+    Args:
+        db: SQLAlchemy database instance
+        SkippedFile: SkippedFile model class
+        case_id: Case ID
+        filename: Filename that was skipped
+        file_size: File size in bytes
+        file_hash: SHA256 hash (if calculated)
+        skip_reason: Reason for skipping (duplicate_hash, zero_bytes, zero_events, corrupt)
+        skip_details: Additional details about why it was skipped
+        upload_type: 'local' or 'http'
+    """
+    skipped = SkippedFile(
+        case_id=case_id,
+        filename=filename,
+        file_size=file_size,
+        file_hash=file_hash,
+        skip_reason=skip_reason,
+        skip_details=skip_details,
+        upload_type=upload_type
+    )
+    db.session.add(skipped)
+    db.session.commit()
+    logger.info(f"Audit: Skipped file logged - {filename} ({skip_reason})")
+
+
 def process_local_uploads_two_phase(case_id: int, local_folder: str, 
                                     db, Case, CaseFile, celery_app, 
-                                    log_audit_func, progress_callback=None) -> Dict[str, Any]:
+                                    log_audit_func, SkippedFile=None, progress_callback=None) -> Dict[str, Any]:
     """
     TWO-PHASE LOCAL UPLOAD PROCESSING (v9.4.8: with progress callback)
     
@@ -246,6 +279,16 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     # Skip zero-byte files
                     if evtx_size == 0:
                         logger.warning(f"Skipping zero-byte file: {prefixed_name}")
+                        
+                        # v9.4.13: Log zero-byte file to audit database
+                        if SkippedFile:
+                            log_skipped_file(
+                                db, SkippedFile, case_id_safe, prefixed_name, 0,
+                                None, 'zero_bytes',
+                                f'File extracted from {filename} but is 0 bytes',
+                                'local'
+                            )
+                        
                         os.remove(evtx_path)
                         stats['files_failed'] += 1
                         continue
@@ -261,6 +304,16 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     
                     if existing:
                         logger.info(f"Duplicate skipped: {prefixed_name}")
+                        
+                        # v9.4.13: Log skipped file to audit database
+                        if SkippedFile:
+                            log_skipped_file(
+                                db, SkippedFile, case_id_safe, prefixed_name, evtx_size,
+                                evtx_hash, 'duplicate_hash',
+                                f'Duplicate of file_id {existing.id} ({existing.filename})',
+                                'local'
+                            )
+                        
                         os.remove(evtx_path)
                         stats['duplicates_skipped'] += 1
                         continue
@@ -331,6 +384,16 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     # Skip zero-byte files
                     if file_size == 0:
                         logger.warning(f"Skipping zero-byte EVTX: {filename}")
+                        
+                        # v9.4.13: Log zero-byte file to audit database
+                        if SkippedFile:
+                            log_skipped_file(
+                                db, SkippedFile, case_id_safe, filename, 0,
+                                None, 'zero_bytes',
+                                'File is 0 bytes (corrupt or empty)',
+                                'local'
+                            )
+                        
                         os.remove(dest_path)
                         stats['files_failed'] += 1
                         continue
@@ -346,6 +409,16 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     
                     if existing:
                         logger.info(f"Duplicate skipped: {filename}")
+                        
+                        # v9.4.13: Log skipped file to audit database
+                        if SkippedFile:
+                            log_skipped_file(
+                                db, SkippedFile, case_id_safe, filename, file_size,
+                                file_hash, 'duplicate_hash',
+                                f'Duplicate of file_id {existing.id} ({existing.filename})',
+                                'local'
+                            )
+                        
                         os.remove(dest_path)
                         stats['duplicates_skipped'] += 1
                         continue
@@ -383,6 +456,16 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     # Skip zero-byte files
                     if file_size == 0:
                         logger.warning(f"Skipping zero-byte JSON: {filename}")
+                        
+                        # v9.4.13: Log zero-byte file to audit database
+                        if SkippedFile:
+                            log_skipped_file(
+                                db, SkippedFile, case_id_safe, filename, 0,
+                                None, 'zero_bytes',
+                                'File is 0 bytes (corrupt or empty)',
+                                'local'
+                            )
+                        
                         os.remove(dest_path)
                         stats['files_failed'] += 1
                         continue
@@ -398,6 +481,16 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     
                     if existing:
                         logger.info(f"Duplicate skipped: {filename}")
+                        
+                        # v9.4.13: Log skipped file to audit database
+                        if SkippedFile:
+                            log_skipped_file(
+                                db, SkippedFile, case_id_safe, filename, file_size,
+                                file_hash, 'duplicate_hash',
+                                f'Duplicate of file_id {existing.id} ({existing.filename})',
+                                'local'
+                            )
+                        
                         os.remove(dest_path)
                         stats['duplicates_skipped'] += 1
                         continue

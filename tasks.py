@@ -3695,6 +3695,7 @@ def process_local_uploads(self, case_id):
     Cleanup: Original files deleted after successful queue
     """
     from main import app, db, SystemSettings, Case, CaseFile, log_audit
+    from models import SkippedFile  # v9.4.13: Import for audit logging
     from local_uploads import process_local_uploads_two_phase
     
     with app.app_context():
@@ -3710,7 +3711,8 @@ def process_local_uploads(self, case_id):
             Case=Case,
             CaseFile=CaseFile,
             celery_app=celery_app,
-            log_audit_func=log_audit
+            log_audit_func=log_audit,
+            SkippedFile=SkippedFile  # v9.4.13: Pass for audit logging
         )
 # End of process_local_uploads wrapper
 

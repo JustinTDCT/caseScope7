@@ -354,3 +354,33 @@ class SystemSettings(db.Model):
     def __repr__(self):
         return f'<SystemSettings {self.setting_key}={self.setting_value[:30]}>'
 
+
+class SkippedFile(db.Model):
+    """
+    Audit log of files that were skipped during upload/processing.
+    Provides complete forensic trail of what was uploaded and why it wasn't processed.
+    
+    Skip reasons:
+    - duplicate_hash: File with same SHA256 hash already exists in case
+    - zero_bytes: File is 0 bytes (corrupt/empty)
+    - zero_events: EVTX file has 0 events after evtx_dump conversion
+    - corrupt: File couldn't be opened/processed
+    """
+    __tablename__ = 'skipped_file'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    case_id = db.Column(db.Integer, db.ForeignKey('case.id'), nullable=False)
+    filename = db.Column(db.String(500), nullable=False)  # Original or prefixed filename
+    file_size = db.Column(db.BigInteger, nullable=False)  # Size in bytes
+    file_hash = db.Column(db.String(64))  # SHA256 hash (if calculated)
+    skip_reason = db.Column(db.String(50), nullable=False)  # duplicate_hash, zero_bytes, zero_events, corrupt
+    skip_details = db.Column(db.Text)  # Additional details (e.g., "Duplicate of file_id 123")
+    upload_type = db.Column(db.String(20), default='local')  # 'local' or 'http'
+    skipped_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    case = db.relationship('Case', backref='skipped_files')
+    
+    def __repr__(self):
+        return f'<SkippedFile {self.filename} ({self.skip_reason})>'
+
