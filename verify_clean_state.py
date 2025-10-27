@@ -99,33 +99,83 @@ def check_database(case_id=None):
     else:
         print("   ✓ Clean (0 records)")
     
-    # Check Case aggregates
+    # Check Case aggregates (check what columns exist first)
+    cursor.execute("PRAGMA table_info('case')")
+    columns = {col[1] for col in cursor.fetchall()}
+    
+    # Build SELECT based on available columns
+    select_cols = ['id', 'name']
+    has_aggregates = False
+    
+    if 'total_files' in columns:
+        select_cols.append('total_files')
+        has_aggregates = True
+    if 'total_events' in columns:
+        select_cols.append('total_events')
+        has_aggregates = True
+    if 'total_events_with_IOCs' in columns:
+        select_cols.append('total_events_with_IOCs')
+    if 'total_events_with_SIGMA_violations' in columns:
+        select_cols.append('total_events_with_SIGMA_violations')
+    
     if case_id:
-        cursor.execute(f"""
-            SELECT id, name, total_files, total_events, 
-                   total_events_with_IOCs, total_events_with_SIGMA_violations
-            FROM "case" WHERE id = {case_id}
-        """)
+        cursor.execute(f"SELECT {', '.join(select_cols)} FROM \"case\" WHERE id = {case_id}")
     else:
-        cursor.execute("""
-            SELECT id, name, total_files, total_events, 
-                   total_events_with_IOCs, total_events_with_SIGMA_violations
-            FROM "case"
-        """)
+        cursor.execute(f"SELECT {', '.join(select_cols)} FROM \"case\"")
     
     print(f"\n📊 Case Statistics:")
     for row in cursor.fetchall():
-        case_id_db, name, total_files, total_events, ioc_events, sigma_events = row
+        case_id_db = row[0]
+        name = row[1]
         print(f"\n   Case {case_id_db}: {name}")
-        print(f"      Total Files: {total_files}")
-        print(f"      Total Events: {total_events}")
-        print(f"      IOC Events: {ioc_events}")
-        print(f"      SIGMA Events: {sigma_events}")
         
-        if total_files > 0 or total_events > 0 or ioc_events > 0 or sigma_events > 0:
-            print("      ⚠️  WARNING: All should be 0 after Delete All Files")
+        if has_aggregates:
+            col_idx = 2
+            if 'total_files' in columns:
+                total_files = row[col_idx]
+                print(f"      Total Files: {total_files}")
+                col_idx += 1
+            else:
+                total_files = None
+                
+            if 'total_events' in columns:
+                total_events = row[col_idx]
+                print(f"      Total Events: {total_events}")
+                col_idx += 1
+            else:
+                total_events = None
+                
+            if 'total_events_with_IOCs' in columns:
+                ioc_events = row[col_idx]
+                print(f"      IOC Events: {ioc_events}")
+                col_idx += 1
+            else:
+                ioc_events = None
+                
+            if 'total_events_with_SIGMA_violations' in columns:
+                sigma_events = row[col_idx]
+                print(f"      SIGMA Events: {sigma_events}")
+                col_idx += 1
+            else:
+                sigma_events = None
+            
+            # Check if clean
+            non_zero = []
+            if total_files and total_files > 0:
+                non_zero.append(f"files={total_files}")
+            if total_events and total_events > 0:
+                non_zero.append(f"events={total_events}")
+            if ioc_events and ioc_events > 0:
+                non_zero.append(f"ioc={ioc_events}")
+            if sigma_events and sigma_events > 0:
+                non_zero.append(f"sigma={sigma_events}")
+            
+            if non_zero:
+                print(f"      ⚠️  WARNING: Non-zero values: {', '.join(non_zero)}")
+            else:
+                print("      ✓ Clean (all zeros)")
         else:
-            print("      ✓ Clean (all zeros)")
+            print("      ℹ️  No aggregate columns in Case table")
     
     conn.close()
 
@@ -302,20 +352,26 @@ def cleanup_all(case_id=None):
     deleted_tags = cursor.rowcount
     print(f"   Deleted {deleted_tags} EventTag records")
     
-    # Reset case statistics
-    if case_id:
-        cursor.execute(f"""
-            UPDATE "case" 
-            SET total_files = 0, total_events = 0, 
-                total_events_with_IOCs = 0, total_events_with_SIGMA_violations = 0
-            WHERE id = {case_id}
-        """)
-    else:
-        cursor.execute("""
-            UPDATE "case" 
-            SET total_files = 0, total_events = 0, 
-                total_events_with_IOCs = 0, total_events_with_SIGMA_violations = 0
-        """)
+    # Reset case statistics (only if columns exist)
+    cursor.execute("PRAGMA table_info('case')")
+    columns = {col[1] for col in cursor.fetchall()}
+    
+    update_cols = []
+    if 'total_files' in columns:
+        update_cols.append('total_files = 0')
+    if 'total_events' in columns:
+        update_cols.append('total_events = 0')
+    if 'total_events_with_IOCs' in columns:
+        update_cols.append('total_events_with_IOCs = 0')
+    if 'total_events_with_SIGMA_violations' in columns:
+        update_cols.append('total_events_with_SIGMA_violations = 0')
+    
+    if update_cols:
+        if case_id:
+            cursor.execute(f"UPDATE \"case\" SET {', '.join(update_cols)} WHERE id = {case_id}")
+        else:
+            cursor.execute(f"UPDATE \"case\" SET {', '.join(update_cols)}")
+        print(f"   Reset {len(update_cols)} case statistics columns")
     
     conn.commit()
     conn.close()
