@@ -14,7 +14,7 @@ from flask import jsonify, request, current_app
 from datetime import datetime
 
 
-def handle_http_upload_v96(app, db, Case, CaseFile, SkippedFile, celery_app, current_user, uploaded_files):
+def handle_http_upload_v96(app, db, Case, CaseFile, SkippedFile, celery_app, current_user, uploaded_files, case_id):
     """
     Handle HTTP file uploads using v9.6.0 unified pipeline
     
@@ -27,6 +27,7 @@ def handle_http_upload_v96(app, db, Case, CaseFile, SkippedFile, celery_app, cur
         celery_app: Celery app for task queuing
         current_user: Current logged-in user
         uploaded_files: List of Flask file objects
+        case_id: Case ID (passed from route)
     
     Returns:
         Flask JSON response
@@ -40,11 +41,6 @@ def handle_http_upload_v96(app, db, Case, CaseFile, SkippedFile, celery_app, cur
         
         # Initialize logger
         init_logger(app.logger)
-        
-        # Get case_id from form
-        case_id = request.form.get('case_id')
-        if not case_id:
-            return jsonify({'success': False, 'error': 'Missing case_id'}), 400
         
         case_id = int(case_id)
         

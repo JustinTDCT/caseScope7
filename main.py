@@ -35,6 +35,20 @@ except ImportError as e:
     celery_app = None  # Celery not available (development mode)
     print(f"[Main] WARNING: Could not import celery_app: {e}")
 
+# v9.6.0: Import unified upload pipeline
+try:
+    from upload_integration import (
+        handle_http_upload_v96,
+        handle_bulk_upload_v96,
+        handle_chunked_upload_finalize_v96
+    )
+    print("[Main] Imported v9.6.0 unified upload pipeline")
+except ImportError as e:
+    print(f"[Main] WARNING: Could not import upload pipeline: {e}")
+    handle_http_upload_v96 = None
+    handle_bulk_upload_v96 = None
+    handle_chunked_upload_finalize_v96 = None
+
 # Version Management
 def get_version():
     try:
@@ -1114,10 +1128,8 @@ def case_dashboard():
 @app.route('/upload', methods=['GET', 'POST'])
 @login_required
 def upload_files():
-    """File upload for active case"""
+    """File upload for active case (v9.6.0 unified pipeline)"""
     clear_search_filters()  # Clear search filters when leaving search page
-    import hashlib
-    import mimetypes
     
     # Require active case
     active_case_id = session.get('active_case_id')
@@ -1130,6 +1142,44 @@ def upload_files():
         flash('Case not found.', 'error')
         return redirect(url_for('case_selection'))
     
+    if request.method == 'GET':
+        # GET request - show upload form
+        return render_upload_form(case)
+    
+    # POST: v9.6.0 Unified Pipeline
+    if handle_http_upload_v96 and request.method == 'POST':
+        files = request.files.getlist('files')
+        
+        if not files or files[0].filename == '':
+            flash('No files selected.', 'error')
+            return redirect(request.url)
+        
+        # Use v9.6.0 pipeline
+        response = handle_http_upload_v96(
+            app=app,
+            db=db,
+            Case=Case,
+            CaseFile=CaseFile,
+            SkippedFile=SkippedFile,
+            celery_app=celery_app,
+            current_user=current_user,
+            uploaded_files=files,
+            case_id=case.id
+        )
+        
+        result = response.get_json()
+        if result['success']:
+            flash(result['message'], 'success')
+            if result['stats']['duplicates_skipped'] > 0:
+                flash(f"⚠️ {result['stats']['duplicates_skipped']} duplicate file(s) skipped", 'warning')
+            if result['stats']['zero_events_skipped'] > 0:
+                flash(f"ℹ️ {result['stats']['zero_events_skipped']} zero-event file(s) archived", 'info')
+        else:
+            flash(result.get('error', 'Unknown error'), 'error')
+        
+        return redirect(url_for('list_files'))
+    
+    # FALLBACK: Old upload code (if v9.6.0 not available)
     if request.method == 'POST':
         files = request.files.getlist('files')
         
@@ -2695,12 +2745,41 @@ def get_extract_progress(task_id):
 
 def _process_local_uploads_with_progress(task_id, case_id, local_folder):
     """
-    v9.4.8: Background function to process local uploads with real-time progress
+    v9.6.0: Background function using unified pipeline
     Updates Redis with extraction progress for frontend polling
     """
     with app.app_context():
         try:
-            # Call the local_uploads module with progress callback
+            # Use v9.6.0 unified pipeline if available
+            if handle_bulk_upload_v96:
+                result = handle_bulk_upload_v96(
+                    app=app,
+                    db=db,
+                    Case=Case,
+                    CaseFile=CaseFile,
+                    SkippedFile=SkippedFile,
+                    celery_app=celery_app,
+                    case_id=case_id,
+                    local_folder=local_folder
+                )
+                
+                # Update Redis with final status
+                import redis
+                r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+                r.setex(f'extract_progress:{task_id}', 3600, json.dumps({
+                    'status': 'complete' if result['success'] else 'error',
+                    'phase': 'complete' if result['success'] else 'error',
+                    'files_queued': result.get('files_queued', 0),
+                    'files_staged': result.get('files_staged', 0),
+                    'zips_extracted': result.get('zips_extracted', 0),
+                    'duplicates_skipped': result.get('duplicates_skipped', 0),
+                    'zero_events_skipped': result.get('zero_events_skipped', 0),
+                    'message': result['message'],
+                    'percent': 100
+                }))
+                return
+            
+            # FALLBACK: Old local_uploads code
             from local_uploads import process_local_uploads_two_phase
             
             def progress_callback(status, current_zip='', zips_processed=0, total_zips=0, 
