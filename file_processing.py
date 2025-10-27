@@ -183,7 +183,8 @@ def index_file(db, opensearch_client, CaseFile, Case, case_id: int, filename: st
             'index_name': str
         }
     """
-    from utils import make_index_name, commit_with_retry
+    from utils import make_index_name
+    from tasks import commit_with_retry
     
     logger.info("="*80)
     logger.info("[INDEX FILE] Starting file indexing")
@@ -443,13 +444,13 @@ def chainsaw_file(db, opensearch_client, CaseFile, SigmaRule, SigmaViolation,
     if not case_file.original_filename.lower().endswith('.evtx'):
         logger.info("[CHAINSAW FILE] Skipping SIGMA (not an EVTX file)")
         case_file.violation_count = 0
-        from utils import commit_with_retry
+        from tasks import commit_with_retry
         commit_with_retry(db.session, logger_instance=logger)
         return {'status': 'success', 'message': 'Skipped (not EVTX)', 'violations': 0}
     
     # Update status
     case_file.indexing_status = 'SIGMA Hunting'
-    from utils import commit_with_retry
+    from tasks import commit_with_retry
     commit_with_retry(db.session, logger_instance=logger)
     
     try:
@@ -550,7 +551,7 @@ def hunt_iocs(db, opensearch_client, CaseFile, IOC, IOCMatch, file_id: int,
     
     # Update status
     case_file.indexing_status = 'IOC Hunting'
-    from utils import commit_with_retry
+    from tasks import commit_with_retry
     commit_with_retry(db.session, logger_instance=logger)
     
     try:

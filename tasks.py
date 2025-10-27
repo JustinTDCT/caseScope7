@@ -3487,13 +3487,12 @@ def process_file_v9(self, file_id, operation='full'):
             # Verify file exists
             if not os.path.exists(file_path):
                 case_file.indexing_status = 'Failed'
-                from utils import commit_with_retry
                 commit_with_retry(db.session, logger_instance=logger)
                 return {'status': 'error', 'message': f'File not found: {file_path}'}
             
             # Store task ID for progress tracking
             case_file.celery_task_id = self.request.id
-            from utils import commit_with_retry, make_index_name
+            from utils import make_index_name
             commit_with_retry(db.session, logger_instance=logger)
             
             # Generate index name
@@ -3726,7 +3725,6 @@ def process_file_v9(self, file_id, operation='full'):
                 if case_file:
                     case_file.indexing_status = 'Failed'
                     case_file.celery_task_id = None
-                    from utils import commit_with_retry
                     commit_with_retry(db.session, logger_instance=logger)
             except Exception as db_err:
                 logger.error(f"Failed to update file status: {db_err}")
