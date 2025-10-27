@@ -186,7 +186,7 @@ def retry_on_db_lock(max_retries=5, base_delay=0.1):
         return wrapper
     return decorator
 
-# OpenSearch connection with extended timeouts for complex SIGMA queries
+# OpenSearch connection with extended timeouts for complex SIGMA queries and bulk IOC hunting
 logger.info("Initializing OpenSearch client...")
 from opensearchpy import RequestsHttpConnection
 
@@ -198,7 +198,7 @@ opensearch_client = OpenSearch(
     ssl_assert_hostname=False,
     ssl_show_warn=False,
     connection_class=RequestsHttpConnection,
-    timeout=60,  # Default connect+read timeout
+    timeout=120,  # v9.4.16: Increased from 60s to 120s for bulk operations (many files)
     max_retries=3,
     retry_on_timeout=True
 )

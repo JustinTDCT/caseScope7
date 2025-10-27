@@ -7035,6 +7035,21 @@ def render_file_list(case, files, pagination=None, show_hidden=False, total_hidd
                 updateCaseStats();
                 // Update every 5 seconds
                 setInterval(updateCaseStats, 5000);
+                
+                // v9.4.16: Auto-refresh page if files are processing (Queued, Indexing, SIGMA/IOC Hunting)
+                // Only refresh if there are active processing files
+                const statQueued = parseInt(document.getElementById('stat-queued')?.textContent || '0');
+                const statIndexing = parseInt(document.getElementById('stat-indexing')?.textContent || '0');
+                const statSigma = parseInt(document.getElementById('stat-sigma')?.textContent || '0');
+                const statIocHunting = parseInt(document.getElementById('stat-ioc-hunting')?.textContent || '0');
+                const hasActiveFiles = statQueued > 0 || statIndexing > 0 || statSigma > 0 || statIocHunting > 0;
+                
+                if (hasActiveFiles) {{
+                    // Refresh every 10 seconds while files are processing
+                    setTimeout(function() {{
+                        location.reload();
+                    }}, 10000);
+                }}
             }});
         </script>
     </body>
