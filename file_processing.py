@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 def duplicate_check(db, CaseFile, SkippedFile, case_id: int, filename: str, 
-                   file_path: str, upload_type: str = 'http') -> dict:
+                   file_path: str, upload_type: str = 'http', exclude_file_id: int = None) -> dict:
     """
     Check if file already exists in case (hash + filename match).
     
@@ -104,12 +104,18 @@ def duplicate_check(db, CaseFile, SkippedFile, case_id: int, filename: str,
     logger.info(f"[DUPLICATE CHECK] File size: {file_size:,} bytes")
     
     # Check for existing file with same hash + filename
-    existing = db.session.query(CaseFile).filter_by(
+    query = db.session.query(CaseFile).filter_by(
         case_id=case_id,
         original_filename=filename,
         file_hash=file_hash,
         is_deleted=False
-    ).first()
+    )
+    
+    # v9.5.4: Exclude the current file being processed (don't match against self!)
+    if exclude_file_id:
+        query = query.filter(CaseFile.id != exclude_file_id)
+    
+    existing = query.first()
     
     if existing:
         logger.warning(f"[DUPLICATE CHECK] Duplicate found: hash + filename match (file_id={existing.id})")

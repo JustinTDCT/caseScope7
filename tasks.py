@@ -3503,7 +3503,7 @@ def process_file_v9(self, file_id, operation='full'):
             # ═══════════════════════════════════════════════════════════════════
             
             if operation == 'full':
-                # STEP 1: Duplicate Check
+                # STEP 1: Duplicate Check (exclude self!)
                 dup_result = duplicate_check(
                     db=db,
                     CaseFile=CaseFile,
@@ -3511,7 +3511,8 @@ def process_file_v9(self, file_id, operation='full'):
                     case_id=case.id,
                     filename=filename,
                     file_path=file_path,
-                    upload_type=case_file.upload_type or 'http'
+                    upload_type=case_file.upload_type or 'http',
+                    exclude_file_id=file_id  # v9.5.4: Don't match against self!
                 )
                 
                 if dup_result['status'] == 'skip':
