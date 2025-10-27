@@ -1,9 +1,10 @@
 {
-  "version": "9.5.7",
+  "version": "9.5.8",
   "release_date": "2025-10-27",
   "description": "v9.5.2 - HOTFIX: Import Error (commit_with_retry)",
   "build": "production",
   "changelog": {
+    "9.5.8": "v9.5.8 - CRITICAL: Property Override Breaking total_events Column: USER REPORT: 'property total_events of Case object has no setter'; 246 files FAILED; ISSUE: models.py had BOTH db.Column (line 127) AND @property (line 146) with same name 'total_events'; @property decorator overrides the column, making it read-only; file_processing.py tried to set case.total_events but failed; FIX: Removed @property total_events (lines 145-149); Column is now accessible for read/write; Added comment to prevent future conflicts; IMPACT: v9.5.0-9.5.7 could not update Case statistics",
     "9.5.7": "v9.5.7 - CRITICAL: Wrong evtx_dump Path (All Files Failed): USER REPORT: 1,568 files showing as FAILED; 'FileNotFoundError: /opt/evtx_dump/evtx_dump'; ISSUE: file_processing.py line 250 used WRONG PATH '/opt/evtx_dump/evtx_dump'; Correct path is '/opt/casescope/bin/evtx_dump' (used everywhere else: tasks.py lines 726, 1571, 2919, 3372; install.sh lines 157, 704, 738, 754, 758); FIX: Changed file_processing.py line 250 to use correct path; IMPACT: This broke ALL file processing in v9.5.0 modular architecture; Every file upload failed during indexing phase; Database showed files but they never processed",
     "9.5.6": "v9.5.6 - Fix: file_processing.py CaseFile() uses uploaded_by not uploader_id (SQLAlchemy TypeError)",
     "9.5.5": "v9.5.5 - AttributeError uploader_id: CaseFile has uploaded_by not uploader_id; Fix: tasks.py line 3539",

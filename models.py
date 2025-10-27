@@ -139,14 +139,10 @@ class Case(db.Model):
     
     @property
     def file_count(self):
-        """Get number of files in this case"""
+        """Get number of files in this case (live query - use total_files column for cached count)"""
         return db.session.query(CaseFile).filter_by(case_id=self.id, is_deleted=False).count()
     
-    @property
-    def total_events(self):
-        """Get total number of indexed events in this case"""
-        # This will be implemented when we add event indexing
-        return 0
+    # NOTE: total_events is a db.Column (line 127) - don't create @property or it will override the setter!
     
     @property
     def storage_size(self):
