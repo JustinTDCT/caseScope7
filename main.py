@@ -250,9 +250,9 @@ def extract_and_process_zip(zip_path, case_id, zip_filename, user_id):
             print(f"[ZIP Extract] Found {evtx_count} EVTX files, created {len(extracted_files)} records (duplicates skipped)")
         
         # Commit all extractions (and skipped file audit records - v9.4.13)
-        db.session.commit()
-        
-        # Queue processing for each file
+            db.session.commit()
+            
+            # Queue processing for each file
         if extracted_files:
             for case_file in extracted_files:
                 if celery_app:
@@ -1238,7 +1238,7 @@ def upload_files():
                                 print(f"[Upload Debug] Progress: {file_size/1048576:.1f} MB ({chunk_count} chunks)")
                             
                             # Check size limit during upload (3GB)
-                            if file_size > 3221225472:
+                    if file_size > 3221225472:
                                 break
                     
                     # Skip if size limit exceeded
@@ -1693,6 +1693,82 @@ def get_case_stats(case_id):
             'events_with_iocs': events_with_iocs  # Kept for compatibility
         }
     })
+
+
+@app.route('/api/case/files')
+@login_required
+def get_case_files_api():
+    """
+    v9.4.17: API endpoint for real-time file status updates (no page reload!)
+    Returns JSON with file details for AJAX updates
+    """
+    case_id = request.args.get('case_id', type=int)
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 100, type=int)
+    per_page = min(per_page, 500)  # Max 500 per page
+    
+    # Verify access
+    active_case_id = session.get('active_case_id')
+    if not active_case_id or case_id != active_case_id:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    # Show hidden files toggle
+    show_hidden = request.args.get('show_hidden', '0') == '1'
+    
+    # Query files
+    query = db.session.query(CaseFile).filter_by(
+        case_id=case_id,
+        is_deleted=False
+    )
+    
+    if not show_hidden:
+        query = query.filter_by(is_hidden=False)
+    
+    pagination = query.order_by(CaseFile.uploaded_at.desc()).paginate(
+        page=page,
+        per_page=per_page,
+        error_out=False
+    )
+    
+    # Build file list with status and progress
+    files_data = []
+    for file in pagination.items:
+        file_data = {
+            'id': file.id,
+            'filename': file.original_filename,
+            'indexing_status': file.indexing_status,
+            'event_count': file.event_count or 0,
+            'violation_count': file.violation_count or 0,
+            'ioc_event_count': file.ioc_event_count or 0,
+            'progress': None  # Will be populated if available
+        }
+        
+        # v9.4.17: Get real-time progress from Celery task state (if task is running)
+        if file.celery_task_id and file.indexing_status in ['Indexing', 'SIGMA Hunting', 'IOC Hunting']:
+            try:
+                from celery.result import AsyncResult
+                task = AsyncResult(file.celery_task_id, app=celery_app)
+                if task.state == 'PROGRESS' and task.info:
+                    file_data['progress'] = {
+                        'current': task.info.get('current', 0),
+                        'total': task.info.get('total', 0),
+                        'status': task.info.get('status', '')
+                    }
+            except Exception:
+                pass  # Task not found or error, skip progress
+        
+        files_data.append(file_data)
+    
+    return jsonify({
+        'files': files_data,
+        'pagination': {
+            'page': pagination.page,
+            'per_page': pagination.per_page,
+            'total': pagination.total,
+            'pages': pagination.pages
+        }
+    })
+
 
 @app.route('/files')
 @login_required
@@ -6393,15 +6469,15 @@ def render_file_list(case, files, pagination=None, show_hidden=False, total_hidd
         actions = '<div style="display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">' + ''.join(actions_list) + '</div>'
         
         file_rows += f'''
-        <tr>
+        <tr data-file-id="{file.id}">
             <td><a href="/search?opensearch_key={file.opensearch_key or ''}" style="color: #3b82f6; text-decoration: none; font-weight: 500;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">{file.original_filename}</a></td>
             <td>{file.uploaded_at.strftime('%Y-%m-%d %H:%M')}</td>
             <td>{file_size_mb:.2f} MB</td>
             <td>{file.uploader.username}</td>
-            <td><span class="status-{status_class}">{status_display}</span></td>
-            <td>{events_display}</td>
-            <td>{violations_display}</td>
-            <td>{iocs_display}</td>
+            <td class="status-cell"><span class="status-{status_class}">{status_display}</span></td>
+            <td class="events-cell">{events_display}</td>
+            <td class="violations-cell">{violations_display}</td>
+            <td class="iocs-cell">{iocs_display}</td>
             <td>{actions}</td>
         </tr>
         '''
@@ -7030,26 +7106,65 @@ def render_file_list(case, files, pagination=None, show_hidden=False, total_hidd
                     }});
             }}
             
+            // v9.4.17: Real-time AJAX updates (no page reload!)
+            function updateFileTable() {{
+                // Update file table rows via AJAX
+                fetch('/api/case/files?case_id={case.id}&page={pagination.page if pagination else 1}&per_page={pagination.per_page if pagination else 100}')
+                    .then(response => response.json())
+                    .then(data => {{
+                        // Update each file row
+                        data.files.forEach(file => {{
+                            const row = document.querySelector(`tr[data-file-id="${{file.id}}"]`);
+                            if (row) {{
+                                // Update status cell with real-time progress
+                                const statusCell = row.querySelector('.status-cell');
+                                if (statusCell) {{
+                                    let statusHTML = file.indexing_status;
+                                    
+                                    // Show progress for active statuses
+                                    if (file.indexing_status === 'Indexing' && file.progress) {{
+                                        statusHTML = `Indexing ${{file.progress.current.toLocaleString()}}/${{file.progress.total.toLocaleString()}}`;
+                                    }} else if (file.indexing_status === 'SIGMA Hunting') {{
+                                        statusHTML = `SIGMA Hunting`;
+                                    }} else if (file.indexing_status === 'IOC Hunting') {{
+                                        statusHTML = `IOC Hunting`;
+                                    }}
+                                    
+                                    statusCell.textContent = statusHTML;
+                                }}
+                                
+                                // Update event count
+                                const eventsCell = row.querySelector('.events-cell');
+                                if (eventsCell && file.event_count) {{
+                                    eventsCell.textContent = file.event_count.toLocaleString();
+                                }}
+                                
+                                // Update violations
+                                const violationsCell = row.querySelector('.violations-cell');
+                                if (violationsCell) {{
+                                    violationsCell.textContent = file.violation_count || '0';
+                                }}
+                                
+                                // Update IOCs
+                                const iocsCell = row.querySelector('.iocs-cell');
+                                if (iocsCell) {{
+                                    iocsCell.textContent = file.ioc_event_count || '0';
+                                }}
+                            }}
+                        }});
+                    }})
+                    .catch(error => console.error('Error updating file table:', error));
+            }}
+            
             // Update stats immediately on page load
             document.addEventListener('DOMContentLoaded', function() {{
                 updateCaseStats();
-                // Update every 5 seconds
-                setInterval(updateCaseStats, 5000);
                 
-                // v9.4.16: Auto-refresh page if files are processing (Queued, Indexing, SIGMA/IOC Hunting)
-                // Only refresh if there are active processing files
-                const statQueued = parseInt(document.getElementById('stat-queued')?.textContent || '0');
-                const statIndexing = parseInt(document.getElementById('stat-indexing')?.textContent || '0');
-                const statSigma = parseInt(document.getElementById('stat-sigma')?.textContent || '0');
-                const statIocHunting = parseInt(document.getElementById('stat-ioc-hunting')?.textContent || '0');
-                const hasActiveFiles = statQueued > 0 || statIndexing > 0 || statSigma > 0 || statIocHunting > 0;
-                
-                if (hasActiveFiles) {{
-                    // Refresh every 10 seconds while files are processing
-                    setTimeout(function() {{
-                        location.reload();
-                    }}, 10000);
-                }}
+                // v9.4.17: Update stats AND file table every 3 seconds (no page reload!)
+                setInterval(function() {{
+                    updateCaseStats();
+                    updateFileTable();
+                }}, 3000);
             }});
         </script>
     </body>
