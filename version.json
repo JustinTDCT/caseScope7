@@ -1,9 +1,10 @@
 {
-  "version": "9.6.4",
+  "version": "9.7.0",
   "release_date": "2025-10-27",
   "description": "v9.6.0 - Unified Upload Pipeline (Production Ready)",
   "build": "production",
   "changelog": {
+    "9.7.0": "v9.7.0 - CODE CONSOLIDATION Phase 1: Utility Functions: ANALYSIS: Found 3 duplicate utility functions across codebase (sanitize_filename x3, make_index_name x2, flatten_event x2); CONSOLIDATED: Moved all utilities to utils.py as single source of truth; REMOVED: ~60 lines of duplicate code from tasks.py; ADDED: CONSOLIDATION_PLAN.md - comprehensive 4-phase plan to eliminate ~5,000 lines of redundant code (-25% total); BENEFITS: Single source of truth, easier maintenance, fewer bugs from inconsistent implementations; NEXT: Phase 2 (remove old upload code after v9.6 proven stable), Phase 3 (remove old indexing), Phase 4 (modular architecture)",
     "9.6.4": "v9.6.4 - CRITICAL FIXES: SIGMA Processing + JSON Support: FIX #1: SIGMA processing error 'takes 3 positional arguments but 4 were given' - used .__wrapped__ to bypass Celery decorator when calling process_sigma_rules() directly; FIX #2: Added support for .json files (previously only .evtx and .ndjson worked) - now accepts .json, .jsonl, .ndjson; IMPACT: 33 'failed' files should now process successfully; CAUSE: File type validation was too strict; DEPLOYMENT: git pull + restart services",
     "9.6.3": "v9.6.3 - HOTFIX: Missing SkippedFile Import: FIXED NameError during local upload processing - added SkippedFile to models import in main.py; BUG: 'Error during processing: name SkippedFile is not defined'; CAUSE: Missing import statement; FIX: Added SkippedFile to from models import statement; STATUS: Ready for deployment",
     "9.6.2": "v9.6.2 - FIXED: Local Upload Cleanup: CORRECTED local upload folder path (no case_id subdirectory) - uses /opt/casescope/local_uploads/ directly; ADDED auto-cleanup feature - original files deleted after successful staging (as promised in UI); WORKFLOW: Drop files \u2192 /opt/casescope/local_uploads/ \u2192 Click 'Process Local Uploads' \u2192 Files staged to /opt/casescope/staging/{case_id}/ \u2192 Originals deleted \u2192 Pipeline processes; SAFE: Only deletes originals after successful copy to staging; ERROR HANDLING: Failed copies don't trigger cleanup",

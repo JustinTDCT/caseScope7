@@ -14,6 +14,9 @@ import hashlib
 from datetime import datetime
 from celery_app import celery_app
 from opensearchpy import OpenSearch, helpers
+
+# v9.7.0: Import shared utilities (consolidated to eliminate duplication)
+from utils import sanitize_filename, make_index_name
 # REMOVED in v7.19.0: Replaced python-evtx with evtx_dump binary for 50x faster parsing
 # import Evtx.Evtx as evtx
 # import xmltodict
@@ -272,39 +275,10 @@ CASESCOPE_FIELD_MAPPING = {
     'SubStatus': 'EventData.SubStatus',
 }
 
-def sanitize_filename(filename):
-    """
-    Sanitize filename for use in OpenSearch index names
-    Shared function to ensure consistent index naming across all code paths
-    
-    Args:
-        filename: Original filename (may include extension)
-    
-    Returns:
-        Sanitized lowercase string suitable for index names
-    """
-    import os
-    # Remove extension
-    name = os.path.splitext(filename)[0]
-    # Replace problematic characters
-    name = name.replace('%', '_').replace(' ', '_').replace('-', '_').lower()
-    # Limit length to prevent overly long index names
-    return name[:100]
+# v9.7.0: sanitize_filename() and make_index_name() moved to utils.py to eliminate duplication
+# Now imported at top of file: from utils import sanitize_filename, make_index_name
 
-def make_index_name(case_id, original_filename):
-    """
-    Generate OpenSearch index name from case ID and filename
-    SINGLE SOURCE OF TRUTH for index naming - used by all routes and tasks
-    
-    Args:
-        case_id: Database ID of the case
-        original_filename: Original filename of the EVTX file
-    
-    Returns:
-        Index name in format: case{ID}_{sanitized_filename}
-    """
-    sanitized = sanitize_filename(original_filename)
-    return f"case{case_id}_{sanitized}"
+# v9.7.0: make_index_name() REMOVED - now in utils.py
 
 def create_casescope_pipeline():
     """
@@ -1325,45 +1299,11 @@ def process_sigma_rules(self, file_id, index_name):
             return {'status': 'error', 'message': str(e)}
 
 
-def sanitize_filename(filename):
-    """Sanitize filename for use in OpenSearch index name"""
-    # Remove extension
-    name = os.path.splitext(filename)[0]
-    # Replace invalid characters
-    name = name.replace('%', '_').replace(' ', '_').replace('-', '_')
-    # Convert to lowercase
-    name = name.lower()
-    # Limit length
-    return name[:100]
+# v9.7.0: sanitize_filename() REMOVED (duplicate #2) - now in utils.py
 
 
-def flatten_event(event_data, parent_key='', sep='.'):
-    """
-    Flatten nested event structure for easier searching
-    Converts nested dicts to dot-notation keys
-    """
-    items = []
-    
-    if isinstance(event_data, dict):
-        for k, v in event_data.items():
-            new_key = f"{parent_key}{sep}{k}" if parent_key else k
-            
-            if isinstance(v, dict):
-                items.extend(flatten_event(v, new_key, sep=sep).items())
-            elif isinstance(v, list):
-                # Handle lists by indexing or concatenating
-                if v and isinstance(v[0], dict):
-                    for i, item in enumerate(v):
-                        items.extend(flatten_event(item, f"{new_key}_{i}", sep=sep).items())
-                else:
-                    items.append((new_key, v))
-            else:
-                items.append((new_key, v))
-    else:
-        items.append((parent_key, event_data))
-    
-    return dict(items)
-
+# v9.7.0: flatten_event() REMOVED (duplicate #2 - simpler version)
+# Kept the version at line ~442 with max_depth protection for safety
 
 def create_index_mapping(index_name):
     """
