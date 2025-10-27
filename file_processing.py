@@ -474,8 +474,11 @@ def chainsaw_file(db, opensearch_client, CaseFile, SigmaRule, SigmaViolation,
         # This provides battle-tested Chainsaw CLI integration
         from tasks import process_sigma_rules
         
-        # Create a mock Celery task object for progress tracking
-        class MockTask:
+        # Call existing SIGMA processing function directly (not via Celery)
+        # Note: process_sigma_rules is a @celery_app.task with bind=True
+        # When calling directly, we need to pass (self, file_id, index_name)
+        # Create a mock 'self' object for progress tracking
+        class MockSelf:
             def __init__(self, real_task):
                 self.request = type('obj', (object,), {'id': real_task.request.id if real_task else 'mock'})()
             
@@ -483,11 +486,10 @@ def chainsaw_file(db, opensearch_client, CaseFile, SigmaRule, SigmaViolation,
                 if celery_task:
                     celery_task.update_state(state=state, meta=meta)
         
-        mock_task = MockTask(celery_task)
+        mock_self = MockSelf(celery_task)
         
-        # Call existing SIGMA processing function
         logger.info("[CHAINSAW FILE] Calling process_sigma_rules() from tasks.py")
-        result = process_sigma_rules(mock_task, file_id, index_name)
+        result = process_sigma_rules(mock_self, file_id, index_name)
         
         if result['status'] == 'success':
             violations = result.get('violations', 0)
@@ -569,6 +571,18 @@ def hunt_iocs(db, opensearch_client, CaseFile, IOC, IOCMatch, file_id: int,
     case_file.indexing_status = 'IOC Hunting'
     from tasks import commit_with_retry
     commit_with_retry(db.session, logger_instance=logger)
+    
+    # v9.5.10: Check if index exists before hunting (0-event files have no index)
+    try:
+        if not opensearch_client.indices.exists(index=index_name):
+            logger.warning(f"[HUNT IOCS] Index {index_name} does not exist (0-event file?), skipping IOC hunt")
+            case_file.ioc_event_count = 0
+            case_file.indexing_status = 'Completed'
+            commit_with_retry(db.session, logger_instance=logger)
+            return {'status': 'success', 'message': 'Index does not exist (0-event file)', 'matches': 0}
+    except Exception as e:
+        logger.error(f"[HUNT IOCS] Error checking index existence: {e}")
+        # Continue anyway - might be a transient error
     
     try:
         # Get active IOCs for this case
