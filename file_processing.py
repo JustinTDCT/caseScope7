@@ -492,8 +492,9 @@ def chainsaw_file(db, opensearch_client, CaseFile, SigmaRule, SigmaViolation,
         mock_self = MockSelf(celery_task)
         
         logger.info("[CHAINSAW FILE] Calling process_sigma_rules() from tasks.py")
-        # Use .__wrapped__ to get the original function without Celery binding
-        result = process_sigma_rules.__wrapped__(mock_self, file_id, index_name)
+        # Call directly - Celery bind=True adds self automatically
+        # We pass mock_self which becomes the bound 'self' parameter
+        result = process_sigma_rules(mock_self, file_id, index_name)
         
         if result['status'] == 'success':
             violations = result.get('violations', 0)
