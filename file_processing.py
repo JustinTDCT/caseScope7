@@ -397,15 +397,19 @@ def index_file(db, opensearch_client, CaseFile, Case, case_id: int, filename: st
 def chainsaw_file(db, opensearch_client, CaseFile, SigmaRule, SigmaViolation,
                  file_id: int, index_name: str, celery_task=None) -> dict:
     """
-    Run SIGMA rules against file events and flag violations.
+    Run SIGMA rules against file events using Chainsaw and flag violations.
+    
+    v9.5.0: This function wraps the existing process_sigma_rules() implementation
+    from tasks.py, which uses Chainsaw CLI for SIGMA processing.
     
     Process:
-    1. Get enabled SIGMA rules
-    2. Search OpenSearch for matching events
-    3. Create SigmaViolation records
-    4. Update OpenSearch events with has_sigma_violation flag
-    5. Update CaseFile.violation_count
-    6. Update Case.total_events_with_SIGMA_violations
+    1. Check if file is EVTX (skip if not)
+    2. Get enabled SIGMA rules
+    3. Run Chainsaw CLI against EVTX file
+    4. Parse detections and create SigmaViolation records
+    5. Update OpenSearch events with has_sigma_violation flag
+    6. Update CaseFile.violation_count
+    7. Update Case.total_events_with_SIGMA_violations
     
     Args:
         db: SQLAlchemy database session
@@ -449,59 +453,47 @@ def chainsaw_file(db, opensearch_client, CaseFile, SigmaRule, SigmaViolation,
     commit_with_retry(db.session, logger_instance=logger)
     
     try:
-        # Get enabled SIGMA rules
-        rules = db.session.query(SigmaRule).filter_by(
-            is_enabled=True,
-            is_valid=True
-        ).all()
+        # v9.5.0: Use existing process_sigma_rules() implementation from tasks.py
+        # This provides battle-tested Chainsaw CLI integration
+        from tasks import process_sigma_rules
         
-        if not rules:
-            logger.warning("[CHAINSAW FILE] No enabled SIGMA rules found")
-            case_file.violation_count = 0
-            commit_with_retry(db.session, logger_instance=logger)
-            return {'status': 'success', 'message': 'No enabled rules', 'violations': 0}
-        
-        logger.info(f"[CHAINSAW FILE] Found {len(rules)} enabled SIGMA rules")
-        
-        total_violations = 0
-        
-        # Process each rule
-        for idx, rule in enumerate(rules, 1):
-            # TODO: Implement SIGMA rule matching logic
-            # This requires parsing rule.rule_yaml and converting to OpenSearch query
-            # For now, placeholder:
-            logger.info(f"[CHAINSAW FILE] Processing rule {idx}/{len(rules)}: {rule.title}")
+        # Create a mock Celery task object for progress tracking
+        class MockTask:
+            def __init__(self, real_task):
+                self.request = type('obj', (object,), {'id': real_task.request.id if real_task else 'mock'})()
             
-            if celery_task:
-                celery_task.update_state(
-                    state='PROGRESS',
-                    meta={
-                        'current': idx,
-                        'total': len(rules),
-                        'status': f'SIGMA rule {idx}/{len(rules)}'
-                    }
-                )
+            def update_state(self, state, meta):
+                if celery_task:
+                    celery_task.update_state(state=state, meta=meta)
         
-        # Update file violation count
-        case_file.violation_count = total_violations
-        commit_with_retry(db.session, logger_instance=logger)
+        mock_task = MockTask(celery_task)
         
-        # Update case aggregates
-        from main import Case
-        case = db.session.get(Case, case_file.case_id)
-        if case:
-            from sqlalchemy import func
-            case.total_events_with_SIGMA_violations = db.session.query(
-                func.sum(CaseFile.violation_count)
-            ).filter_by(case_id=case.id, is_deleted=False).scalar() or 0
-            commit_with_retry(db.session, logger_instance=logger)
+        # Call existing SIGMA processing function
+        logger.info("[CHAINSAW FILE] Calling process_sigma_rules() from tasks.py")
+        result = process_sigma_rules(mock_task, file_id, index_name)
         
-        logger.info(f"[CHAINSAW FILE] ✓ Found {total_violations} SIGMA violations")
-        return {
-            'status': 'success',
-            'message': f'Found {total_violations} violations',
-            'violations': total_violations
-        }
+        if result['status'] == 'success':
+            violations = result.get('violations', 0)
+            
+            # Update case aggregates
+            from main import Case
+            case = db.session.get(Case, case_file.case_id)
+            if case:
+                from sqlalchemy import func
+                case.total_events_with_SIGMA_violations = db.session.query(
+                    func.sum(CaseFile.violation_count)
+                ).filter_by(case_id=case.id, is_deleted=False).scalar() or 0
+                commit_with_retry(db.session, logger_instance=logger)
+            
+            logger.info(f"[CHAINSAW FILE] ✓ Found {violations} SIGMA violations")
+            return {
+                'status': 'success',
+                'message': f'Found {violations} violations',
+                'violations': violations
+            }
+        else:
+            logger.error(f"[CHAINSAW FILE] process_sigma_rules() failed: {result.get('message', 'Unknown error')}")
+            return result
     
     except Exception as e:
         logger.error(f"[CHAINSAW FILE] Error: {e}")

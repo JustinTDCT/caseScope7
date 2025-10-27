@@ -257,8 +257,8 @@ def extract_and_process_zip(zip_path, case_id, zip_filename, user_id):
             for case_file in extracted_files:
                 if celery_app:
                     celery_app.send_task(
-                        'tasks.process_file_complete',
-                        args=[case_file.id],
+                        'tasks.process_file_v9',
+                        args=[case_file.id, 'full'],
                         queue='celery',
                         priority=0
                     )
@@ -1318,8 +1318,8 @@ def upload_files():
                         if celery_app:
                             # Use new queued processing task (index + SIGMA + IOC)
                             celery_app.send_task(
-                                'tasks.process_file_complete',
-                                args=[uploaded_file.id],
+                                'tasks.process_file_v9',
+                                args=[uploaded_file.id, 'full'],
                                 queue='celery',
                                 priority=0,
                             )
@@ -1953,8 +1953,8 @@ def reindex_file(file_id):
         try:
             if celery_app:
                 celery_app.send_task(
-                    'tasks.process_file_complete',
-                    args=[file_id],
+                    'tasks.process_file_v9',
+                    args=[file_id, 'reindex'],
                     queue='celery',
                     priority=0,
                 )
@@ -2079,8 +2079,8 @@ def rerun_rules(file_id):
         try:
             if celery_app:
                 task = celery_app.send_task(
-                    'tasks.process_file_complete',
-                    args=[file_id, 'sigma_only'],
+                    'tasks.process_file_v9',
+                    args=[file_id, 'chainsaw_only'],
                     queue='celery',
                     priority=0,
                 )
@@ -2213,7 +2213,7 @@ def rehunt_iocs(file_id):
         try:
             if celery_app:
                 task = celery_app.send_task(
-                    'tasks.process_file_complete',
+                    'tasks.process_file_v9',
                     args=[file_id, 'ioc_only'],
                     queue='celery',
                     priority=0,

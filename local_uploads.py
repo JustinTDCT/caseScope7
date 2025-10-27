@@ -550,7 +550,7 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
     
     for file_id, filename in files_to_queue:
         try:
-            celery_app.send_task('tasks.process_file_complete', args=[file_id])
+            celery_app.send_task('tasks.process_file_v9', args=[file_id, 'full'])
             stats['files_queued'] += 1
             logger.debug(f"Queued: {filename} (ID: {file_id})")
         except Exception as e:
