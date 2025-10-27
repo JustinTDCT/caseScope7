@@ -138,9 +138,9 @@ def create_casefile_record(db, CaseFile, case_id: int, filename: str, file_path:
 
 def process_local_uploads_two_phase(case_id: int, local_folder: str, 
                                     db, Case, CaseFile, celery_app, 
-                                    log_audit_func) -> Dict[str, Any]:
+                                    log_audit_func, progress_callback=None) -> Dict[str, Any]:
     """
-    TWO-PHASE LOCAL UPLOAD PROCESSING
+    TWO-PHASE LOCAL UPLOAD PROCESSING (v9.4.8: with progress callback)
     
     Phase 1: Extract all ZIPs, rename files, create ALL CaseFile records
              → All files visible in UI immediately!
@@ -156,6 +156,7 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
         CaseFile: CaseFile model class
         celery_app: Celery app instance
         log_audit_func: Audit logging function
+        progress_callback: Optional callback(status, current_zip, zips_processed, total_zips, files_extracted, files_registered)
     
     Returns:
         Dict with status, message, and statistics
@@ -282,6 +283,19 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
                     # Delete original ZIP
                     os.remove(file_path)
                     logger.info(f"Deleted original ZIP: {filename}")
+                    
+                    # v9.4.8: Update progress after each ZIP
+                    if progress_callback:
+                        # Count total ZIPs from source_files
+                        total_zips = len([f for f in source_files if f[0].lower().endswith('.zip')])
+                        progress_callback(
+                            status='extracting',
+                            current_zip=filename,
+                            zips_processed=stats['zips_processed'],
+                            total_zips=total_zips,
+                            files_extracted=len(extracted_files),
+                            files_registered=stats['evtx_from_zips']
+                        )
                     
                 except Exception as e:
                     logger.error(f"Failed to process ZIP {filename}: {e}")
@@ -419,6 +433,17 @@ def process_local_uploads_two_phase(case_id: int, local_folder: str,
     logger.info("PHASE 2: QUEUING FILES FOR INGESTION")
     logger.info(f"Total files to queue: {len(files_to_queue)}")
     logger.info("="*80)
+    
+    # v9.4.8: Notify frontend that queueing has started
+    if progress_callback:
+        progress_callback(
+            status='queueing',
+            current_zip='',
+            zips_processed=stats['zips_processed'],
+            total_zips=stats['zips_processed'],
+            files_extracted=0,
+            files_registered=len(files_to_queue)
+        )
     
     for file_id, filename in files_to_queue:
         try:

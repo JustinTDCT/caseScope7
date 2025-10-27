@@ -2535,6 +2535,98 @@ def get_delete_progress(task_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/extract-progress/<task_id>')
+@login_required
+def get_extract_progress(task_id):
+    """v9.4.8: Poll endpoint for extraction progress"""
+    try:
+        import redis
+        r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+        progress_json = r.get(f'extract_progress:{task_id}')
+        
+        if not progress_json:
+            return jsonify({'success': False, 'error': 'Task not found'}), 404
+        
+        progress = json.loads(progress_json)
+        return jsonify({'success': True, 'progress': progress})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _process_local_uploads_with_progress(task_id, case_id, local_folder):
+    """
+    v9.4.8: Background function to process local uploads with real-time progress
+    Updates Redis with extraction progress for frontend polling
+    """
+    with app.app_context():
+        try:
+            # Call the local_uploads module with progress callback
+            from local_uploads import process_local_uploads_two_phase
+            
+            def progress_callback(status, current_zip='', zips_processed=0, total_zips=0, 
+                                files_extracted=0, files_registered=0):
+                """Update Redis with current progress"""
+                import redis
+                r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+                
+                percent = 0
+                if total_zips > 0 and zips_processed > 0:
+                    percent = int((zips_processed / total_zips) * 100)
+                
+                progress = {
+                    'status': status,
+                    'phase': 'extraction' if status != 'queueing' else 'queueing',
+                    'current_zip': current_zip,
+                    'zips_processed': zips_processed,
+                    'total_zips': total_zips,
+                    'files_extracted': files_extracted,
+                    'files_registered': files_registered,
+                    'percent': percent
+                }
+                r.setex(f'extract_progress:{task_id}', 3600, json.dumps(progress))
+            
+            # Run the two-phase processing with progress updates
+            result = process_local_uploads_two_phase(
+                case_id=case_id,
+                local_folder=local_folder,
+                db=db,
+                Case=Case,
+                CaseFile=CaseFile,
+                celery_app=celery_app,
+                log_audit_func=log_audit,
+                progress_callback=progress_callback
+            )
+            
+            # Mark as complete
+            import redis
+            r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+            final_progress = {
+                'status': 'complete',
+                'phase': 'complete',
+                'files_registered': result.get('evtx_from_zips', 0) + result.get('direct_evtx', 0) + result.get('direct_json', 0),
+                'files_queued': result.get('files_queued', 0),
+                'percent': 100
+            }
+            r.setex(f'extract_progress:{task_id}', 3600, json.dumps(final_progress))
+            
+        except Exception as e:
+            print(f"[Local Upload Progress] Error: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Mark as failed
+            import redis
+            r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+            error_progress = {
+                'status': 'error',
+                'phase': 'error',
+                'error': str(e),
+                'percent': 0
+            }
+            r.setex(f'extract_progress:{task_id}', 3600, json.dumps(error_progress))
+
+
 @app.route('/api/reindex-all-files', methods=['POST'])
 @login_required
 def api_reindex_all_files():
@@ -2598,8 +2690,8 @@ def api_reindex_all_files():
 @login_required
 def api_process_local_uploads():
     """
-    Process files from the local upload folder
-    Workflow: Drop files in folder → Click button → Walk away
+    v9.4.8: Process files from local upload folder with real-time extraction progress
+    Workflow: Drop files → Click button → See extraction progress → Files queue
     """
     try:
         active_case_id = session.get('active_case_id')
@@ -2617,28 +2709,63 @@ def api_process_local_uploads():
                 'message': f'Local upload folder not found: {local_folder}'
             }), 404
         
-        # Count files in folder
-        file_count = len([f for f in os.listdir(local_folder) if os.path.isfile(os.path.join(local_folder, f))])
+        # Scan folder to count ZIP vs EVTX/JSON files
+        all_files = [f for f in os.listdir(local_folder) if os.path.isfile(os.path.join(local_folder, f))]
         
-        if file_count == 0:
+        if len(all_files) == 0:
             return jsonify({
                 'success': False,
                 'message': 'No files found in local upload folder'
             }), 404
         
-        # Queue the background task
-        task = celery_app.send_task('tasks.process_local_uploads', args=[active_case_id])
+        # Count file types
+        zip_files = [f for f in all_files if f.lower().endswith('.zip')]
+        evtx_files = [f for f in all_files if f.lower().endswith('.evtx')]
+        json_files = [f for f in all_files if f.lower().endswith(('.json', '.jsonl', '.ndjson'))]
         
-        log_audit('local_upload_start', 'file', f'Started processing {file_count} files from local folder')
+        # Generate unique task ID for progress tracking
+        task_id = f"extract_{int(time.time())}_{os.urandom(4).hex()}"
+        
+        # Initialize progress in Redis
+        r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+        initial_progress = {
+            'status': 'starting',
+            'phase': 'extraction',
+            'total_zips': len(zip_files),
+            'total_evtx': len(evtx_files),
+            'total_json': len(json_files),
+            'zips_processed': 0,
+            'current_zip': '',
+            'files_extracted': 0,
+            'files_registered': 0,
+            'percent': 0
+        }
+        r.setex(f'extract_progress:{task_id}', 3600, json.dumps(initial_progress))
+        
+        # Start background processing with task_id
+        import threading
+        thread = threading.Thread(
+            target=_process_local_uploads_with_progress,
+            args=(task_id, active_case_id, local_folder)
+        )
+        thread.start()
+        
+        log_audit('local_upload_start', 'file', 
+                  f'Started processing: {len(zip_files)} ZIPs, {len(evtx_files)} EVTX, {len(json_files)} JSON')
         
         return jsonify({
             'success': True,
-            'message': f'Processing {file_count} file(s) from {local_folder}',
-            'file_count': file_count,
-            'task_id': task.id
+            'message': f'Processing started',
+            'task_id': task_id,
+            'total_zips': len(zip_files),
+            'total_evtx': len(evtx_files),
+            'total_json': len(json_files),
+            'has_zips': len(zip_files) > 0
         })
     except Exception as e:
         print(f"[Local Upload] Error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/rerun-all-rules', methods=['POST'])
@@ -5959,10 +6086,16 @@ def render_upload_form(case):
                 .then(response => response.json())
                 .then(data => {{
                     if (data.success) {{
-                        status.innerHTML = `<div style="color: #00ff7f;">✅ ${{data.message}}</div>`;
-                        setTimeout(() => {{
-                            window.location.href = '/files';
-                        }}, 2000);
+                        // v9.4.8: Show progress modal if ZIPs are being extracted
+                        if (data.has_zips) {{
+                            showExtractionProgress(data.task_id, data.total_zips, data.total_evtx, data.total_json);
+                        }} else {{
+                            // No ZIPs, just queueing direct files
+                            status.innerHTML = `<div style="color: #00ff7f;">✅ Queueing ${{data.total_evtx + data.total_json}} files...</div>`;
+                            setTimeout(() => {{
+                                window.location.href = '/files';
+                            }}, 2000);
+                        }}
                     }} else {{
                         status.innerHTML = `<div style="color: #ff4444;">❌ ${{data.message}}</div>`;
                         btn.disabled = false;
@@ -5974,6 +6107,105 @@ def render_upload_form(case):
                     btn.disabled = false;
                     btn.innerHTML = '<span>🚀 Process Local Uploads</span>';
                 }});
+            }}
+
+            function showExtractionProgress(taskId, totalZips, totalEvtx, totalJson) {{
+                // Create modal overlay
+                const modal = document.createElement('div');
+                modal.id = 'extractProgressModal';
+                modal.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0,0,0,0.7);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 10000;
+                `;
+                
+                modal.innerHTML = `
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px; border-radius: 15px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); max-width: 600px; width: 90%; color: white; text-align: center;">
+                        <h2 style="margin: 0 0 20px 0; font-size: 28px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">🗜️ Extracting ZIP Files</h2>
+                        <p style="margin: 10px 0; font-size: 16px; opacity: 0.9;">Processing ${{totalZips}} ZIP file(s)...</p>
+                        <p style="margin: 5px 0; font-size: 14px; opacity: 0.7;">Additional files: ${{totalEvtx}} EVTX, ${{totalJson}} JSON</p>
+                        
+                        <div style="margin: 30px 0;">
+                            <div id="extractCurrentFile" style="font-size: 14px; color: rgba(255,255,255,0.8); margin-bottom: 15px; min-height: 20px;"></div>
+                            <div style="background: rgba(0,0,0,0.2); border-radius: 10px; height: 30px; overflow: hidden; position: relative;">
+                                <div id="extractProgressBar" style="background: linear-gradient(90deg, #00ff88, #00ffff); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center; justify-content: center;">
+                                    <span id="extractProgressPercent" style="font-weight: bold; color: #000; font-size: 14px; position: absolute; width: 100%; text-align: center; z-index: 1;">0%</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="extractStats" style="margin-top: 20px; font-size: 14px; color: rgba(255,255,255,0.9);"></div>
+                    </div>
+                `;
+                
+                document.body.appendChild(modal);
+                
+                // Start polling for progress
+                pollExtractionProgress(taskId);
+            }}
+
+            function pollExtractionProgress(taskId) {{
+                const pollInterval = setInterval(() => {{
+                    fetch(`/api/extract-progress/${{taskId}}`)
+                        .then(response => response.json())
+                        .then(data => {{
+                            if (data.success && data.progress) {{
+                                const p = data.progress;
+                                
+                                // Update progress bar
+                                document.getElementById('extractProgressBar').style.width = p.percent + '%';
+                                document.getElementById('extractProgressPercent').textContent = p.percent + '%';
+                                
+                                // Update current file
+                                if (p.current_zip) {{
+                                    document.getElementById('extractCurrentFile').textContent = `Extracting: ${{p.current_zip}}`;
+                                }} else if (p.phase === 'queueing') {{
+                                    document.getElementById('extractCurrentFile').textContent = `Queueing files for processing...`;
+                                }}
+                                
+                                // Update stats
+                                if (p.phase === 'extraction') {{
+                                    document.getElementById('extractStats').innerHTML = `
+                                        ZIPs Processed: ${{p.zips_processed}} / ${{p.total_zips}}<br>
+                                        Files Extracted: ${{p.files_extracted}}<br>
+                                        Files Registered: ${{p.files_registered}}
+                                    `;
+                                }} else if (p.phase === 'queueing') {{
+                                    document.getElementById('extractStats').innerHTML = `
+                                        ✅ Extraction Complete!<br>
+                                        Queueing ${{p.files_registered}} files for processing...
+                                    `;
+                                }} else if (p.status === 'complete') {{
+                                    // Finished!
+                                    clearInterval(pollInterval);
+                                    document.getElementById('extractCurrentFile').textContent = '✅ All files queued!';
+                                    document.getElementById('extractStats').innerHTML = `
+                                        ✅ ${{p.files_registered}} files registered<br>
+                                        ✅ ${{p.files_queued}} files queued for processing<br>
+                                        Redirecting...
+                                    `;
+                                    
+                                    setTimeout(() => {{
+                                        window.location.href = '/files';
+                                    }}, 2000);
+                                }} else if (p.status === 'error') {{
+                                    clearInterval(pollInterval);
+                                    document.getElementById('extractCurrentFile').textContent = '❌ Error during processing';
+                                    document.getElementById('extractStats').innerHTML = `Error: ${{p.error || 'Unknown error'}}`;
+                                }}
+                            }}
+                        }})
+                        .catch(error => {{
+                            console.error('Error polling progress:', error);
+                        }});
+                }}, 1000); // Poll every second
             }}
         </script>
     </body>
