@@ -90,7 +90,8 @@ def update_file_tagged_status(file_id):
         bool: Whether the file has tags
     """
     try:
-        case_file = CaseFile.query.get(file_id)
+        # v9.4.4: Use db.session.get() instead of CaseFile.query.get()
+        case_file = db.session.get(CaseFile, file_id)
         if not case_file:
             logger.error(f"File {file_id} not found for tagged status update")
             return False
@@ -123,7 +124,8 @@ def recalculate_all_case_aggregates():
         dict: Summary of updates
     """
     try:
-        cases = Case.query.filter_by(is_active=True).all()
+        # v9.4.4: Use db.session.query() instead of Case.query
+        cases = db.session.query(Case).filter_by(is_active=True).all()
         total = len(cases)
         updated = 0
         failed = 0

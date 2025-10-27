@@ -115,10 +115,11 @@ try:
             CaseFile.is_hidden == False
         ).first()
         
-        case.total_files = aggregates.total_files or 0
-        case.total_events = aggregates.total_events or 0
-        case.total_events_with_iocs = aggregates.total_events_with_iocs or 0
-        case.total_events_with_sigma = aggregates.total_events_with_sigma or 0
+        # v9.4.4: Use setattr() to avoid SQLAlchemy "no setter" errors
+        setattr(case, 'total_files', aggregates.total_files or 0)
+        setattr(case, 'total_events', int(aggregates.total_events or 0))
+        setattr(case, 'total_events_with_iocs', int(aggregates.total_events_with_iocs or 0))
+        setattr(case, 'total_events_with_sigma', int(aggregates.total_events_with_sigma or 0))
         
         session.commit()
         
