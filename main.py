@@ -1599,11 +1599,11 @@ def upload_finalize():
         db.session.add(case_file)
         db.session.commit()
         
-        # Queue for processing
+        # Queue for processing (v9.5.0 modular)
         if celery_app:
             celery_app.send_task(
-                'tasks.process_file_complete',
-                args=[case_file.id],
+                'tasks.process_file_v9',
+                args=[case_file.id, 'full'],
                 queue='celery',
                 priority=0
             )
@@ -2792,11 +2792,11 @@ def api_reindex_all_files():
                 case_file.violation_count = 0
                 db.session.commit()
                 
-                # Queue v8.0 sequential processing task
+                # Queue v9.5.0 modular processing task
                 if celery_app:
                     celery_app.send_task(
-                        'tasks.process_file_complete',
-                        args=[case_file.id],
+                        'tasks.process_file_v9',
+                        args=[case_file.id, 'full'],
                         queue='celery',
                         priority=0,
                     )
@@ -2937,11 +2937,11 @@ def api_rerun_all_rules():
                 case_file.violation_count = 0
                 db.session.commit()
                 
-                # Queue v8.0 sequential processing (SIGMA + IOC)
+                # Queue v9.5.0 modular processing (SIGMA + IOC)
                 if celery_app:
                     celery_app.send_task(
-                        'tasks.process_file_complete',
-                        args=[case_file.id, 'sigma_only'],
+                        'tasks.process_file_v9',
+                        args=[case_file.id, 'chainsaw_only'],
                         queue='celery',
                         priority=0,
                     )
