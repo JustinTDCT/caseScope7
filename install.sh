@@ -1346,7 +1346,7 @@ copy_application() {
     # Core application files (required for all install types)
     # v9.0.0: Added models.py and utils.py (modular architecture)
     # v9.4.0: Added aggregates.py, migrate_statistics_v9_4_0.py, backfill_statistics_v9_4_0.py
-    for file in main.py models.py utils.py aggregates.py requirements.txt version.json wsgi.py celery_app.py tasks.py theme.py iris_client.py iris_sync.py migrate_statistics_v9_4_0.py backfill_statistics_v9_4_0.py; do
+    for file in main.py models.py utils.py aggregates.py local_uploads.py requirements.txt version.json wsgi.py celery_app.py tasks.py theme.py iris_client.py iris_sync.py migrate_statistics_v9_4_0.py backfill_statistics_v9_4_0.py; do
         if [ -f "$APP_SOURCE_DIR/$file" ]; then
             log "✓ Found $file in source directory"
             cp "$APP_SOURCE_DIR/$file" /opt/casescope/app/ 2>/dev/null || log_error "Failed to copy $file"

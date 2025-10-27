@@ -3672,307 +3672,53 @@ def process_file_complete(self, file_id, operation='full'):
 @celery_app.task(bind=True, name='tasks.process_local_uploads')
 def process_local_uploads(self, case_id):
     """
-    Process all files from the local upload folder.
+    Process all files from the local upload folder (v9.4.6 TWO-PHASE).
     Works like: Drop files in folder → Click button → Walk away
     
+    v9.4.6 ARCHITECTURE:
+    - Refactored to local_uploads.py module (keeps tasks.py manageable)
+    - TWO-PHASE PROCESSING:
+      Phase 1: Extract ALL ZIPs, create ALL CaseFile records (shows in UI immediately!)
+      Phase 2: Queue all files for ingestion at once (parallel processing)
+    
     Supports:
-    - ZIP files (automatically decompressed)
+    - ZIP files (auto-decompressed, files prefixed with ZIP name)
     - EVTX files (processed normally)
     - JSON files (processed normally)
     
+    Benefits:
+    - ALL files visible in UI immediately (Phase 1 creates all DB records)
+    - Accurate file counts from start (no "growing" list)
+    - ZIP prefixes preserved (e.g., "ARCHIVE1_Security.evtx")
+    - Parallel processing (all files queued at once)
+    
     Cleanup: Original files deleted after successful queue
     """
-    import os
-    import shutil
     from main import app, db, SystemSettings, Case, CaseFile, log_audit
-    from utils import sanitize_filename, make_index_name
+    from local_uploads import process_local_uploads_two_phase
     
     with app.app_context():
-        logger.info("="*80)
-        logger.info("LOCAL UPLOAD FOLDER PROCESSING STARTED")
-        logger.info(f"Case ID: {case_id}")
-        logger.info("="*80)
-        
-        # Get case
-        case = db.session.get(Case, case_id)
-        if not case:
-            logger.error(f"Case {case_id} not found")
-            return {'status': 'error', 'message': 'Case not found', 'files_processed': 0}
-        
         # Get local upload folder from settings
         settings = db.session.query(SystemSettings).filter_by(setting_key='local_upload_folder').first()
         local_folder = settings.setting_value if settings else '/opt/casescope/local_uploads'
         
-        if not os.path.exists(local_folder):
-            logger.warning(f"Local upload folder does not exist: {local_folder}")
-            return {'status': 'error', 'message': f'Folder not found: {local_folder}', 'files_processed': 0}
-        
-        logger.info(f"Scanning folder: {local_folder}")
-        
-        # Get all files from folder
-        files = []
-        for filename in os.listdir(local_folder):
-            file_path = os.path.join(local_folder, filename)
-            if os.path.isfile(file_path):
-                files.append((filename, file_path))
-        
-        if not files:
-            logger.info("No files found in local upload folder")
-            return {'status': 'success', 'message': 'No files to process', 'files_processed': 0}
-        
-        logger.info(f"Found {len(files)} files to process")
-        
-        # Stats
-        files_processed = 0
-        files_failed = 0
-        zips_extracted = 0
-        evtx_queued = 0
-        json_queued = 0
-        
-        # Process each file
-        for filename, file_path in files:
-            try:
-                file_ext = filename.lower().split('.')[-1]
-                logger.info(f"Processing: {filename} ({file_ext})")
-                
-                # Handle ZIP files
-                if file_ext == 'zip':
-                    try:
-                        # Extract ZIP to case upload folder
-                        case_upload_dir = f"/opt/casescope/uploads/{case.id}"
-                        os.makedirs(case_upload_dir, exist_ok=True)
-                        
-                        extracted_files = []
-                        with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                            for zip_info in zip_ref.filelist:
-                                if zip_info.filename.lower().endswith('.evtx'):
-                                    # Extract EVTX file
-                                    zip_ref.extract(zip_info, case_upload_dir)
-                                    extracted_path = os.path.join(case_upload_dir, zip_info.filename)
-                                    extracted_files.append((zip_info.filename, extracted_path))
-                        
-                        logger.info(f"Extracted {len(extracted_files)} EVTX files from {filename}")
-                        zips_extracted += 1
-                        
-                        # Queue each extracted EVTX file
-                        for evtx_name, evtx_path in extracted_files:
-                            evtx_size = os.path.getsize(evtx_path)
-                            
-                            # Skip zero-byte files (corrupted/empty)
-                            if evtx_size == 0:
-                                logger.warning(f"Skipping zero-byte file: {evtx_name}")
-                                os.remove(evtx_path)
-                                files_failed += 1
-                                continue
-                            
-                            # Hash file in chunks to avoid memory issues with large files
-                            evtx_hash = hashlib.sha256()
-                            with open(evtx_path, 'rb') as f:
-                                while chunk := f.read(8192):
-                                    evtx_hash.update(chunk)
-                            evtx_hash = evtx_hash.hexdigest()
-                            
-                            # Check for duplicate
-                            existing = db.session.query(CaseFile).filter_by(case_id=case.id, file_hash=evtx_hash).first()
-                            if existing:
-                                logger.info(f"Duplicate file skipped: {evtx_name}")
-                                os.remove(evtx_path)
-                                continue
-                            
-                            # Create CaseFile record
-                            case_file = CaseFile(
-                                case_id=case.id,
-                                filename=os.path.basename(evtx_path),
-                                original_filename=sanitize_filename(evtx_name),
-                                file_path=evtx_path,
-                                file_size=evtx_size,
-                                file_hash=evtx_hash,
-                                mime_type='application/evtx',
-                                uploaded_by=1,  # System user
-                                indexing_status='Queued',
-                                upload_type='local'  # v9.4.0: Track upload method
-                            )
-                            db.session.add(case_file)
-                            db.session.commit()
-                            
-                            # Queue for processing
-                            celery_app.send_task('tasks.process_file_complete', args=[case_file.id])
-                            evtx_queued += 1
-                            logger.info(f"Queued: {evtx_name}")
-                        
-                        # Clean up database session and memory after processing ZIP
-                        db.session.expunge_all()  # Remove all objects from session
-                        import gc
-                        gc.collect()  # Force garbage collection
-                        
-                        # Delete original ZIP after successful extraction
-                        os.remove(file_path)
-                        logger.info(f"Deleted original ZIP: {filename}")
-                        
-                    except Exception as e:
-                        logger.error(f"Failed to process ZIP {filename}: {e}")
-                        files_failed += 1
-                        continue
-                
-                # Handle EVTX files
-                elif file_ext == 'evtx':
-                    try:
-                        # Move to case upload folder
-                        case_upload_dir = f"/opt/casescope/uploads/{case.id}"
-                        os.makedirs(case_upload_dir, exist_ok=True)
-                        dest_path = os.path.join(case_upload_dir, filename)
-                        shutil.move(file_path, dest_path)
-                        
-                        file_size = os.path.getsize(dest_path)
-                        
-                        # Skip zero-byte files (corrupted/empty)
-                        if file_size == 0:
-                            logger.warning(f"Skipping zero-byte EVTX file: {filename}")
-                            os.remove(dest_path)
-                            files_failed += 1
-                            continue
-                        
-                        # Hash file in chunks to avoid memory issues with large files
-                        file_hash = hashlib.sha256()
-                        with open(dest_path, 'rb') as f:
-                            while chunk := f.read(8192):
-                                file_hash.update(chunk)
-                        file_hash = file_hash.hexdigest()
-                        
-                        # Check for duplicate
-                        existing = db.session.query(CaseFile).filter_by(case_id=case.id, file_hash=file_hash).first()
-                        if existing:
-                            logger.info(f"Duplicate file skipped: {filename}")
-                            os.remove(dest_path)
-                            continue
-                        
-                        # Create CaseFile record
-                        case_file = CaseFile(
-                            case_id=case.id,
-                            filename=filename,
-                            original_filename=sanitize_filename(filename),
-                            file_path=dest_path,
-                            file_size=file_size,
-                            file_hash=file_hash,
-                            mime_type='application/evtx',
-                            uploaded_by=1,
-                            indexing_status='Queued',
-                            upload_type='local'  # v9.4.0: Track upload method
-                        )
-                        db.session.add(case_file)
-                        db.session.commit()
-                        
-                        # Queue for processing
-                        celery_app.send_task('tasks.process_file_complete', args=[case_file.id])
-                        evtx_queued += 1
-                        logger.info(f"Queued: {filename}")
-                        
-                        # Clean up database session and memory
-                        db.session.expunge_all()
-                        import gc
-                        gc.collect()
-                        
-                    except Exception as e:
-                        logger.error(f"Failed to process EVTX {filename}: {e}")
-                        files_failed += 1
-                        continue
-                
-                # Handle JSON files
-                elif file_ext in ['json', 'ndjson']:
-                    try:
-                        # Move to case upload folder
-                        case_upload_dir = f"/opt/casescope/uploads/{case.id}"
-                        os.makedirs(case_upload_dir, exist_ok=True)
-                        dest_path = os.path.join(case_upload_dir, filename)
-                        shutil.move(file_path, dest_path)
-                        
-                        file_size = os.path.getsize(dest_path)
-                        
-                        # Skip zero-byte files (corrupted/empty)
-                        if file_size == 0:
-                            logger.warning(f"Skipping zero-byte JSON file: {filename}")
-                            os.remove(dest_path)
-                            files_failed += 1
-                            continue
-                        
-                        # Hash file in chunks to avoid memory issues with large files
-                        file_hash = hashlib.sha256()
-                        with open(dest_path, 'rb') as f:
-                            while chunk := f.read(8192):
-                                file_hash.update(chunk)
-                        file_hash = file_hash.hexdigest()
-                        
-                        # Check for duplicate
-                        existing = db.session.query(CaseFile).filter_by(case_id=case.id, file_hash=file_hash).first()
-                        if existing:
-                            logger.info(f"Duplicate file skipped: {filename}")
-                            os.remove(dest_path)
-                            continue
-                        
-                        # Create CaseFile record
-                        case_file = CaseFile(
-                            case_id=case.id,
-                            filename=filename,
-                            original_filename=sanitize_filename(filename),
-                            file_path=dest_path,
-                            file_size=file_size,
-                            file_hash=file_hash,
-                            mime_type='application/json',
-                            uploaded_by=1,
-                            indexing_status='Queued',
-                            upload_type='local'  # v9.4.0: Track upload method
-                        )
-                        db.session.add(case_file)
-                        db.session.commit()
-                        
-                        # Queue for processing  
-                        celery_app.send_task('tasks.process_file_complete', args=[case_file.id])
-                        json_queued += 1
-                        logger.info(f"Queued: {filename}")
-                        
-                        # Clean up database session and memory
-                        db.session.expunge_all()
-                        import gc
-                        gc.collect()
-                        
-                    except Exception as e:
-                        logger.error(f"Failed to process JSON {filename}: {e}")
-                        files_failed += 1
-                        continue
-                
-                else:
-                    logger.warning(f"Unsupported file type: {filename}")
-                    files_failed += 1
-                    continue
-                
-                files_processed += 1
-                
-            except Exception as e:
-                logger.error(f"Error processing {filename}: {e}")
-                files_failed += 1
-        
-        # Log audit trail
-        log_audit(
-            'local_upload', 
-            'file', 
-            f'Processed {files_processed} files from local folder: {zips_extracted} ZIPs extracted, {evtx_queued} EVTX queued, {json_queued} JSON queued, {files_failed} failed'
+        # Call two-phase processing function (in local_uploads.py)
+        return process_local_uploads_two_phase(
+            case_id=case_id,
+            local_folder=local_folder,
+            db=db,
+            Case=Case,
+            CaseFile=CaseFile,
+            celery_app=celery_app,
+            log_audit_func=log_audit
         )
-        
-        logger.info("="*80)
-        logger.info("LOCAL UPLOAD FOLDER PROCESSING COMPLETED")
-        logger.info(f"Files Processed: {files_processed}")
-        logger.info(f"ZIPs Extracted: {zips_extracted}")
-        logger.info(f"EVTX Queued: {evtx_queued}")
-        logger.info(f"JSON Queued: {json_queued}")
-        logger.info(f"Failed: {files_failed}")
-        logger.info("="*80)
-        
-        return {
-            'status': 'success',
-            'message': f'Processed {files_processed} files',
-            'files_processed': files_processed,
-            'zips_extracted': zips_extracted,
-            'evtx_queued': evtx_queued,
-            'json_queued': json_queued,
-            'files_failed': files_failed
-        }
+# End of process_local_uploads wrapper
+
+
+# ============================================================================
+# LEGACY LOCAL UPLOAD CODE REMOVED
+# ============================================================================
+# The old 300-line sequential processing code has been removed and refactored
+# into local_uploads.py with two-phase processing architecture.
+# If you need to review the old code, see git history before v9.4.6.
+# ============================================================================
