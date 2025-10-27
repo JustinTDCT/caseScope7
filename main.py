@@ -68,7 +68,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Import database models
 from models import (
     db, User, CaseTemplate, AuditLog, SavedSearch, SearchHistory,
-    Case, CaseFile, SigmaRule, SigmaViolation, EventTag, IOC, IOCMatch, SystemSettings
+    Case, CaseFile, SkippedFile, SigmaRule, SigmaViolation, EventTag, IOC, IOCMatch, SystemSettings
 )
 
 # Import utility functions
